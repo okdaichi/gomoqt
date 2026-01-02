@@ -60,7 +60,7 @@ export class TrackMux {
 				}
 
 				// Wait for all sends to complete and then clean up failed announcers
-				const completed = Promise.all(sendPromises).then(() => {
+				const completedPromise = Promise.all(sendPromises).then(() => {
 					for (const failedAnnouncer of failed) {
 						announcers.delete(failedAnnouncer);
 					}
@@ -69,7 +69,7 @@ export class TrackMux {
 					}
 				});
 
-				completePromises.push(completed);
+				completePromises.push(completedPromise);
 			}
 		}
 
@@ -99,7 +99,7 @@ export class TrackMux {
 	async publishFunc(
 		ctx: Promise<void>,
 		path: BroadcastPath,
-		handler: (trackWriter: TrackWriter) => Promise<void>,
+		handler: (trackWriter: TrackWriter) => void | Promise<void>,
 	) {
 		await this.publish(ctx, path, { serveTrack: handler });
 	}
@@ -173,7 +173,7 @@ export class TrackMux {
 export const DefaultTrackMux: TrackMux = new TrackMux();
 
 export interface TrackHandler {
-	serveTrack(trackWriter: TrackWriter): Promise<void>;
+	serveTrack(trackWriter: TrackWriter): void | Promise<void>;
 }
 
 const NotFoundHandler: TrackHandler = {
