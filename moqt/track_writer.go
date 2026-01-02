@@ -126,37 +126,24 @@ func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 	}
 }
 
-// OpenGroup opens a new group with an automatically incremented sequence number.
-// It delegates to OpenGroupAt for the actual group creation.
-// The sequence now starts at 0 and increments by 1 for each call.
-//
-// This is a convenience method for callers that want to append groups at the
-// next available sequence without managing sequences themselves.
+// OpenGroup opens a new group with an automatically incremented sequence number
+// and returns a GroupWriter to write frames into it.
+// The sequence starts at 1 and increments by 1 for each call.
 func (s *TrackWriter) OpenGroup() (*GroupWriter, error) {
-	// Atomically increment the internal next-sequence counter and return the
-	// previously reserved value so the first returned sequence is 0.
-	seq := GroupSequence(s.groupSequence.Add(1) - 1)
-	return s.OpenGroupAt(seq)
+	// Atomically increment and get the next sequence
+	seq := GroupSequence(s.groupSequence.Add(1))
+	return s.openGroupWithSequence(seq)
 }
 
-// OpenGroupAt is the implementation for opening a group with a specific sequence.
-func (s *TrackWriter) OpenGroupAt(seq GroupSequence) (*GroupWriter, error) {
-	// First, ensure the internal groupSequence is updated to avoid collisions.
-	// We advance the internal *next* counter to at least seq+1 so that
-	// subsequent OpenGroup() calls (which return previous reserved values)
-	// will not produce a duplicate sequence that was explicitly chosen via
-	// OpenGroupAt. Use a CAS loop with Go's builtin max for clarity.
-	for {
-		cur := s.groupSequence.Load()
-		new := max(cur, uint64(seq)+1)
-		if new == cur {
-			break
-		}
-		if s.groupSequence.CompareAndSwap(cur, new) {
-			break
-		}
-	}
+// SkipGroups skips the next n group sequences without opening them.
+// This is useful when you need to intentionally create gaps in the sequence,
+// for example, when dropping groups due to packet loss or priority decisions.
+func (s *TrackWriter) SkipGroups(n uint64) {
+	s.groupSequence.Add(n)
+}
 
+// openGroupWithSequence is the internal implementation for opening a group with a specific sequence.
+func (s *TrackWriter) openGroupWithSequence(seq GroupSequence) (*GroupWriter, error) {
 	// Avoid accessing s.ctx directly; it can be nil if the receiveSubscribeStream
 	// has been cleared during Close(). Instead, capture the receiveSubscribeStream
 	// under lock and validate its context below.
