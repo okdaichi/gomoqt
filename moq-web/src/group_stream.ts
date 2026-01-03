@@ -100,8 +100,16 @@ export class GroupReader {
 		}
 
 		// Trim frame.data to the actual length read
+		// For small frames (<512 bytes) with significant waste (>50%), reallocate
+		// to prevent holding large backing buffers (memory optimization)
 		if (frame.data.byteLength > len) {
-			frame.data = frame.data.subarray(0, len);
+			if (len < 512 && frame.data.byteLength > len * 2) {
+				const trimmed = new Uint8Array(len);
+				trimmed.set(frame.data.subarray(0, len));
+				frame.data = trimmed;
+			} else {
+				frame.data = frame.data.subarray(0, len);
+			}
 		}
 
 		return undefined;
