@@ -12,9 +12,9 @@ export class BytesFrame implements Frame {
 		this.data = bytes;
 	}
 
-	get bytes(): Uint8Array {
-		return this.data;
-	}
+	// get bytes(): Uint8Array {
+	// 	return this.data;
+	// }
 
 	get byteLength(): number {
 		return this.data.byteLength;
@@ -30,20 +30,20 @@ export class BytesFrame implements Frame {
 		}
 	}
 
-	clone(buffer?: Uint8Array): BytesFrame {
-		if (buffer && buffer.byteLength >= this.data.byteLength) {
-			buffer.set(this.data);
-			return new BytesFrame(buffer.subarray(0, this.data.byteLength));
-		}
-		return new BytesFrame(this.data.slice());
-	}
+	// clone(buffer?: Uint8Array): BytesFrame {
+	// 	if (buffer && buffer.byteLength >= this.data.byteLength) {
+	// 		buffer.set(this.data);
+	// 		return new BytesFrame(buffer.subarray(0, this.data.byteLength));
+	// 	}
+	// 	return new BytesFrame(this.data.slice());
+	// }
 
-	copyFrom(src: Frame): void {
-		if (src.byteLength > this.data.byteLength) {
-			this.data = new Uint8Array(src.byteLength);
-		}
-		src.copyTo(this.data);
-	}
+	// copyFrom(src: Frame): void {
+	// 	if (src.byteLength > this.data.byteLength) {
+	// 		this.data = new Uint8Array(src.byteLength);
+	// 	}
+	// 	src.copyTo(this.data);
+	// }
 }
 
 export const Frame: {
