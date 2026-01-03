@@ -1,6 +1,6 @@
 import { assertEquals, assertInstanceOf } from "@std/assert";
 import { spy } from "@std/testing/mock";
-import { GroupReader, GroupSequenceFirst, GroupWriter } from "./group_stream.ts";
+import { GroupReader, GroupWriter } from "./group_stream.ts";
 import { GroupMessage, writeVarint } from "./internal/message/mod.ts";
 import { BytesFrame, Frame } from "./frame.ts";
 import { background, withCancelCause } from "@okdaichi/golikejs/context";
@@ -90,7 +90,7 @@ Deno.test("GroupWriter", async (t) => {
 			}),
 			streamId: 1n,
 		});
-		const groupMsg = new GroupMessage({ sequence: GroupSequenceFirst });
+		const groupMsg = new GroupMessage({ sequence: 1 });
 		const gw = new GroupWriter(background(), writer, groupMsg);
 		await gw.cancel(GroupErrorCode.SubscribeCanceled);
 		await gw.cancel(GroupErrorCode.SubscribeCanceled);
@@ -243,7 +243,7 @@ Deno.test("GroupReader", async (t) => {
 		const gr = new GroupReader(
 			background(),
 			reader,
-			new GroupMessage({ sequence: GroupSequenceFirst }),
+			new GroupMessage({ sequence: 1 }),
 		);
 
 		const fr = new BytesFrame(new Uint8Array(1));

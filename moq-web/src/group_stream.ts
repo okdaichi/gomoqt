@@ -8,8 +8,6 @@ import type { Frame } from "./frame.ts";
 import { GroupErrorCode } from "./error.ts";
 import { GroupSequence } from "./alias.ts";
 
-export const GroupSequenceFirst: GroupSequence = 1;
-
 export class GroupWriter {
 	readonly sequence: GroupSequence;
 	#stream: SendStream;
