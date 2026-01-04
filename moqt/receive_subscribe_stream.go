@@ -142,6 +142,11 @@ func (rss *receiveSubscribeStream) Updated() <-chan struct{} {
 }
 
 func (rss *receiveSubscribeStream) Context() context.Context {
+	if rss == nil || rss.ctx == nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		return ctx
+	}
 	return rss.ctx
 }
 

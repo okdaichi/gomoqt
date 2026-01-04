@@ -216,6 +216,11 @@ func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 
 // Context returns the AnnouncementReader's context. It is canceled when the reader is closed.
 func (ras *AnnouncementReader) Context() context.Context {
+	if ras == nil || ras.ctx == nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		return ctx
+	}
 	return ras.ctx
 }
 

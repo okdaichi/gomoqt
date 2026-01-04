@@ -248,6 +248,11 @@ func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 
 // Context returns the AnnouncementWriter's context.
 func (aw *AnnouncementWriter) Context() context.Context {
+	if aw == nil || aw.ctx == nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		return ctx
+	}
 	return aw.ctx
 }
 

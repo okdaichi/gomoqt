@@ -82,6 +82,11 @@ func (sss *sendSubscribeStream) ReadInfo() Info {
 }
 
 func (sss *sendSubscribeStream) Context() context.Context {
+	if sss == nil || sss.ctx == nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		return ctx
+	}
 	return sss.ctx
 }
 
