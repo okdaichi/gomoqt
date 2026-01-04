@@ -1,7 +1,7 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@okdaichi/golikejs@0.7.0": "0.7.0",
+    "jsr:@okdaichi/golikejs@0.8.0": "0.8.0",
     "jsr:@std/assert@^1.0.15": "1.0.16",
     "jsr:@std/assert@^1.0.16": "1.0.16",
     "jsr:@std/async@^1.0.15": "1.0.15",
@@ -15,8 +15,8 @@
     "jsr:@std/testing@^1.0.16": "1.0.16"
   },
   "jsr": {
-    "@okdaichi/golikejs@0.7.0": {
-      "integrity": "8880fbdb21e6c9b313bb51439f4d3c374582cc82ec43f7db7bcc25a2d0988c48"
+    "@okdaichi/golikejs@0.8.0": {
+      "integrity": "dd1a6418bf53ae80078881e8bfe114e1a666f5e158b7fe2d17d60b34f28edc9a"
     },
     "@std/assert@1.0.16": {
       "integrity": "6a7272ed1eaa77defe76e5ff63ca705d9c495077e2d5fd0126d2b53fc5bd6532",
@@ -105,7 +105,7 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@okdaichi/golikejs@0.7.0",
+      "jsr:@okdaichi/golikejs@0.8.0",
       "jsr:@std/assert@^1.0.16",
       "jsr:@std/cli@^1.0.24",
       "jsr:@std/path@^1.1.3",

@@ -4,11 +4,9 @@ import type { CancelCauseFunc, Context } from "@okdaichi/golikejs/context";
 import { WebTransportStreamError } from "./internal/webtransport/error.ts";
 import type { GroupMessage } from "./internal/message/mod.ts";
 import { readFull, readVarint, writeVarint } from "./internal/message/mod.ts";
-import type { Frame } from "./frame.ts";
 import { GroupErrorCode } from "./error.ts";
 import { GroupSequence } from "./alias.ts";
-
-export const GroupSequenceFirst: GroupSequence = 1;
+import { ByteSink, ByteSinkFunc, ByteSource } from "./frame.ts";
 
 export class GroupWriter {
 	readonly sequence: GroupSequence;
@@ -26,13 +24,20 @@ export class GroupWriter {
 		});
 	}
 
-	async writeFrame(src: Frame): Promise<Error | undefined> {
-		let [, err] = await writeVarint(this.#stream, src.data.byteLength);
+	async writeFrame(src: ByteSource): Promise<Error | undefined> {
+		// Convert source to bytes using copyTo
+		const buf = new Uint8Array(src.byteLength);
+		src.copyTo(buf);
+		const bytes = buf;
+
+		// Write length prefix as varint
+		let [, err] = await writeVarint(this.#stream, bytes.byteLength);
 		if (err) {
 			return err;
 		}
-		// Write data
-		[, err] = await this.#stream.write(src.data);
+
+		// Write frame data
+		[, err] = await this.#stream.write(bytes);
 		if (err) {
 			return err;
 		}
@@ -78,7 +83,7 @@ export class GroupReader {
 		});
 	}
 
-	async readFrame(frame: Frame): Promise<Error | undefined> {
+	async readFrame(sink: ByteSink | ByteSinkFunc): Promise<Error | undefined> {
 		// Read length prefix as varint
 		const [len, , err1] = await readVarint(this.#reader);
 		if (err1) {
@@ -86,24 +91,23 @@ export class GroupReader {
 		}
 
 		try {
-			if (frame.data.byteLength < len) {
-				const currentSize = frame.data.byteLength || 0;
-				const cap = Math.max(currentSize * 2, len);
-				// Swap buffers
-				frame.data = new Uint8Array(cap);
+			// Create a buffer for reading
+			const buf = new Uint8Array(len);
+
+			// Read the frame data
+			const [, err2] = await readFull(this.#reader, buf);
+			if (err2) {
+				return err2;
+			}
+
+			// Write to sink (handle both ByteSink and ByteSinkFunc)
+			if (typeof sink === "function") {
+				await sink(buf);
+			} else {
+				await sink.write(buf);
 			}
 		} catch (e) {
 			return e instanceof Error ? e : new Error(String(e));
-		}
-
-		const [, err2] = await readFull(this.#reader, frame.data.subarray(0, len));
-		if (err2) {
-			return err2;
-		}
-
-		// Trim frame.data to the actual length read
-		if (frame.data.byteLength > len) {
-			frame.data = frame.data.subarray(0, len);
 		}
 
 		return undefined;

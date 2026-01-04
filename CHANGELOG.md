@@ -6,6 +6,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **moq-web: Frame API redesign with ByteSource/ByteSink pattern**
+  - Introduced `ByteSource` and `ByteSink` interfaces for flexible data handling
+  - Replaced direct `bytes` property access with `ByteSource.copyTo()` method for safer data access
+  - Implemented `ByteSinkFunc` type for functional-style data writing
+  - Updated `BytesBuffer` to implement both `ByteSource` and `ByteSink` interfaces
+  - Modified `GroupReader.readFrame()` to accept `ByteSink | ByteSinkFunc` for flexible data consumption
+  - Improved buffer management with proper bounds checking in `copyTo()` method
+
+### Fixed
+
+- **moq-web: Fixed buffer overflow in Frame.copyTo()**
+  - Added `Math.min()` check to prevent out-of-bounds access when internal buffer size doesn't match data length
+  - Fixed RangeError in interop tests caused by incorrect Frame usage pattern
+
+- **moq-web: Fixed TypeScript type errors in mock stream implementations**
+  - Properly wrapped partial stream methods to ensure they always return Promises
+  - Eliminated type mismatches between sync and async return types in MockSendStream and MockReceiveStream
+
+### Tests
+
+- moq-web: Updated all Frame-related tests to use new `ArrayBuffer` constructor and `write()` method pattern
+- moq-web: Updated `group_stream_test.ts` to use `copyTo()` method instead of direct `bytes` property access
+- moq-web: Updated `group_stream_benchmark.ts` with new Frame creation patterns
+
+
+## [v0.9.0] - 2025-12-24
+
+### Added
+
+- moqt: `OpenGroupAt(seq GroupSequence)` public API to open a group with an explicit sequence number. When a sequence is specified, the internal next-sequence counter is advanced atomically to at least `seq+1` to prevent collisions with subsequently auto-assigned sequences. (See `moqt/track_writer.go` and `moqt/track_writer_test.go`)
+- moq-web: concurrency test for `ReceiveSubscribeStream.writeInfo` ensuring `SUBSCRIBE_OK` is sent only once when `writeInfo` is called concurrently. (See `moq-web/src/subscribe_stream_test.ts`)
+
+### Changed
+
+- moqt: `OpenGroup()` autoincrement behavior adjusted to return sequences starting from `0` (first created group has sequence `0`), and subsequent groups increment from there. Tests updated to reflect the new baseline behavior.
+- moqt: clarified `OpenGroup` / `OpenGroupAt` comments to document caller responsibilities and concurrent behavior.
+- Use Go builtin `max` where appropriate to improve clarity and express intent.
+
+### Fixed
+
+- moqt: `GroupSequence.Next()` behavior adjusted to wrap from `MaxGroupSequence` to `1` (avoid returning unspecified `0`). Tests updated accordingly.
+
+### Tests
+
+- moqt: Added tests: `TestTrackWriter_OpenGroupAtAdvancesSequence` and `TestTrackWriter_OpenGroupAtConcurrent` to verify explicit sequence assignment advances internal counter and to ensure no duplicate sequences under concurrent usage.
+- moq-web: Added `ReceiveSubscribeStream writeInfo is only executed once even with concurrent calls` test to verify `Once`-based deduplication of `SUBSCRIBE_OK`.
+
+
 ## [v0.8.0] - 2025-12-16
 
 ### Changed
@@ -201,7 +251,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Comprehensive test coverage
 - MIT License
 
-[Unreleased]: https://github.com/okdaichi/gomoqt/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/okdaichi/gomoqt/compare/v0.9.0...HEAD
+[v0.9.0]: https://github.com/okdaichi/gomoqt/compare/v0.8.0...v0.9.0
+[v0.8.0]: https://github.com/okdaichi/gomoqt/compare/v0.7.0...v0.8.0
 [v0.7.0]: https://github.com/okdaichi/gomoqt/compare/v0.6.2...v0.7.0
 [v0.6.2]: https://github.com/okdaichi/gomoqt/compare/v0.6.1...v0.6.2
 [v0.6.1]: https://github.com/okdaichi/gomoqt/compare/v0.6.0...v0.6.1

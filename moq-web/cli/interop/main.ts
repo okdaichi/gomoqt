@@ -51,7 +51,9 @@ async function main() {
 				console.log("...ok");
 
 				console.log("Writing frame to server...");
-				const frame = new Frame(new Uint8Array([72, 69, 76, 76, 79])); // "HELLO"
+				const data = new Uint8Array([72, 69, 76, 76, 79]); // "HELLO"
+				const frame = new Frame(data.buffer);
+				frame.write(data);
 				const writeErr = await group.writeFrame(frame);
 				if (writeErr) throw writeErr;
 				console.log("...ok");
@@ -114,7 +116,7 @@ async function main() {
 		if (readErr) throw readErr;
 
 		// Note: frame.data might contain trailing zeros if payload is smaller than 1024
-		const payload = new TextDecoder().decode(frame.data).replace(/\0/g, "");
+		const payload = new TextDecoder().decode(frame.bytes).replace(/\0/g, "");
 		console.log(`...ok (payload: ${payload})`);
 
 		// Wait for the publish handler to complete
