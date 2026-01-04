@@ -43,13 +43,15 @@ export class BytesBuffer implements ByteSource, ByteSink {
 			throw new Error("Unsupported destination type");
 		}
 
-		if (target.byteLength < this.#buf.byteLength) {
+		if (target.byteLength < this.#len) {
 			throw new Error(
-				`Destination buffer too small: ${target.byteLength} < ${this.#buf.byteLength}`,
+				`Destination buffer too small: ${target.byteLength} < ${this.#len}`,
 			);
 		}
 
-		target.set(new Uint8Array(this.#buf, 0, this.#buf.byteLength));
+		// Ensure we don't exceed the buffer bounds
+		const copyLen = Math.min(this.#len, this.#buf.byteLength);
+		target.set(new Uint8Array(this.#buf, 0, copyLen));
 	}
 }
 

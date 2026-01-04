@@ -51,7 +51,9 @@ async function main() {
 				console.log("...ok");
 
 				console.log("Writing frame to server...");
-				const frame = new Frame(new Uint8Array([72, 69, 76, 76, 79])); // "HELLO"
+				const data = new Uint8Array([72, 69, 76, 76, 79]); // "HELLO"
+				const frame = new Frame(data.buffer);
+				frame.write(data);
 				const writeErr = await group.writeFrame(frame);
 				if (writeErr) throw writeErr;
 				console.log("...ok");
