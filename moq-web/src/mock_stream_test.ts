@@ -22,7 +22,8 @@ export class MockSendStream implements SendStream {
 
 	constructor(partial: Partial<SendStream> = {}) {
 		this.id = partial.id ?? 0n;
-		const writeFunc = partial.write ?? (async (p: Uint8Array) => [p.length, undefined] as [number, Error | undefined]);
+		const writeFunc = partial.write ??
+			(async (p: Uint8Array) => [p.length, undefined] as [number, Error | undefined]);
 		this.write = spy(async (p: Uint8Array) => await writeFunc(p));
 		const closeFunc = partial.close ?? (async () => {});
 		this.close = spy(async () => await closeFunc());
@@ -44,7 +45,8 @@ export class MockReceiveStream implements ReceiveStream {
 
 	constructor(partial: Partial<ReceiveStream> = {}) {
 		this.id = partial.id ?? 0n;
-		const readFunc = partial.read ?? (async () => [0, new EOFError()] as [number, Error | undefined]);
+		const readFunc = partial.read ??
+			(async () => [0, new EOFError()] as [number, Error | undefined]);
 		this.read = spy(async (p: Uint8Array) => await readFunc(p));
 		const cancelFunc = partial.cancel ?? (async () => {});
 		this.cancel = spy(async (code: number) => await cancelFunc(code));
