@@ -101,16 +101,17 @@ export async function writeVarint(
 		buf[2] = (num >> 8) & 0xff;
 		buf[3] = num & 0xff;
 	} else if (num <= Number(MAX_VARINT8)) {
+		// JavaScript bitwise operations are limited to 32 bits,
+		// so use division for shifts exceeding 32 bits
 		buf = new Uint8Array(8);
-		const bn = BigInt(num);
-		buf[0] = Number((bn >> 56n) | 0xc0n);
-		buf[1] = Number((bn >> 48n) & 0xffn);
-		buf[2] = Number((bn >> 40n) & 0xffn);
-		buf[3] = Number((bn >> 32n) & 0xffn);
-		buf[4] = Number((bn >> 24n) & 0xffn);
-		buf[5] = Number((bn >> 16n) & 0xffn);
-		buf[6] = Number((bn >> 8n) & 0xffn);
-		buf[7] = Number(bn & 0xffn);
+		buf[0] = (Math.floor(num / 0x100000000000000) | 0xc0);
+		buf[1] = (Math.floor(num / 0x1000000000000) & 0xff);
+		buf[2] = (Math.floor(num / 0x10000000000) & 0xff);
+		buf[3] = (Math.floor(num / 0x100000000) & 0xff);
+		buf[4] = (Math.floor(num / 0x1000000) & 0xff);
+		buf[5] = (Math.floor(num / 0x10000) & 0xff);
+		buf[6] = (Math.floor(num / 0x100) & 0xff);
+		buf[7] = (num & 0xff);
 	} else {
 		return [0, new RangeError("Value exceeds maximum varint size")];
 	}
@@ -199,6 +200,8 @@ export async function readVarint(
 		return [0, 1 + n2, err2];
 	}
 
+	// QUIC varint: multiply by 256 and add sequentially
+	// JavaScript Number type can accurately represent up to 53 bits
 	for (let i = 0; i < len - 1; i++) {
 		value = value * 256 + remaining[i]!;
 	}
@@ -293,6 +296,9 @@ export function parseVarint(buf: Uint8Array, offset: number): [number, number] {
 	const firstByte = buf[offset]!;
 	const len = 1 << (firstByte >> 6);
 	let value = firstByte & 0x3f;
+	
+	// QUIC varint: multiply by 256 and add sequentially
+	// JavaScript Number type can accurately represent up to 53 bits
 	for (let i = 1; i < len; i++) {
 		value = value * 256 + buf[offset + i]!;
 	}

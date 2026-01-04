@@ -18,8 +18,21 @@ export class BytesBuffer implements ByteSource, ByteSink {
 		return this.#len;
 	}
 
-	constructor(buffer?: ArrayBuffer) {
-		this.#buf = buffer ?? new ArrayBuffer(0);
+	get bytes(): Uint8Array {
+		return new Uint8Array(this.#buf, 0, this.#len);
+	}
+
+	constructor(buffer?: ArrayBuffer | Uint8Array) {
+		if (buffer instanceof Uint8Array) {
+			const slice = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+			this.#buf = slice instanceof SharedArrayBuffer ? new ArrayBuffer(buffer.byteLength) : slice;
+			if (slice instanceof SharedArrayBuffer) {
+				new Uint8Array(this.#buf).set(buffer);
+			}
+			this.#len = buffer.byteLength;
+		} else {
+			this.#buf = buffer ?? new ArrayBuffer(0);
+		}
 	}
 
 	write(p: Uint8Array): void {
@@ -55,8 +68,10 @@ export class BytesBuffer implements ByteSource, ByteSink {
 	}
 }
 
-export interface Frame extends ByteSource, ByteSink {}
+export interface Frame extends ByteSource, ByteSink {
+	readonly bytes: Uint8Array;
+}
 
 export const Frame: {
-	new (buffer: ArrayBuffer): Frame;
+	new (buffer: ArrayBuffer | Uint8Array): Frame;
 } = BytesBuffer;

@@ -29,7 +29,7 @@ func ReadVarint(b []byte) (uint64, int, error) {
 }
 
 // ReadVarintFromReader reads a QUIC varint from an io.Reader
-func ReadVarintFromReader(r io.Reader) (uint64, error) {
+func ReadMessageLength(r io.Reader) (uint64, error) {
 	// Read first byte to determine length
 	firstByte := make([]byte, 1)
 	_, err := io.ReadFull(r, firstByte)
@@ -55,9 +55,9 @@ func ReadVarintFromReader(r io.Reader) (uint64, error) {
 	return val, err
 }
 
-func ReadMessageLength(r io.Reader) (uint64, error) {
-	return ReadVarintFromReader(r)
-}
+// func ReadMessageLength(r io.Reader) (uint64, error) {
+// 	return ReadVarintFromReader(r)
+// }
 
 func ReadBytes(b []byte) ([]byte, int, error) {
 	num, n, err := ReadVarint(b)
