@@ -65,9 +65,7 @@ class ReceiveStreamClass implements ReceiveStream {
 			const n = Math.min(p.length, this.#buf.length);
 			p.set(this.#buf.subarray(0, n));
 			// Release backing buffer when fully consumed (memory optimization)
-			this.#buf = (n >= this.#buf.length)
-				? new Uint8Array(0)
-				: this.#buf.subarray(n);
+			this.#buf = (n >= this.#buf.length) ? new Uint8Array(0) : this.#buf.subarray(n);
 			return [n, undefined];
 		}
 

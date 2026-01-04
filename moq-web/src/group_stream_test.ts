@@ -2,7 +2,7 @@ import { assertEquals, assertInstanceOf } from "@std/assert";
 import { spy } from "@std/testing/mock";
 import { GroupReader, GroupWriter } from "./group_stream.ts";
 import { GroupMessage, writeVarint } from "./internal/message/mod.ts";
-import { BytesFrame, Frame } from "./frame.ts";
+import { Frame } from "./frame.ts";
 import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import { GroupErrorCode } from "./error.ts";
 import { SendStream } from "./internal/webtransport/mod.ts";
@@ -25,7 +25,9 @@ Deno.test("GroupWriter", async (t) => {
 			});
 			const msg = new GroupMessage({ sequence: 1, subscribeId: 0 });
 			const gw = new GroupWriter(ctx, writer, msg);
-			const frame = new Frame(new Uint8Array([1, 2, 3]));
+			const data = new Uint8Array([1, 2, 3]);
+			const frame = new Frame(data.buffer);
+			frame.write(data);
 			const err = await gw.writeFrame(frame);
 			assertEquals(err, undefined);
 			assertEquals(writtenData.length, 2);
@@ -54,7 +56,9 @@ Deno.test("GroupWriter", async (t) => {
 		});
 		const msg = new GroupMessage({ sequence: 1, subscribeId: 0 });
 		const gw = new GroupWriter(ctx, writer, msg);
-		const frame = new Frame(new Uint8Array([1]));
+		const data = new Uint8Array([1]);
+		const frame = new Frame(data.buffer);
+		frame.write(data);
 		const err = await gw.writeFrame(frame);
 		assertEquals(err instanceof Error, true);
 	});
@@ -177,12 +181,14 @@ Deno.test("GroupReader", async (t) => {
 			});
 			const msg = new GroupMessage({ sequence: 1, subscribeId: 0 });
 			const gr = new GroupReader(ctx, rs, msg);
-			const frame = new Frame(new Uint8Array(10));
+			const frame = new Frame(new ArrayBuffer(10));
 			const err = await gr.readFrame(frame);
 			assertEquals(err, undefined);
-			const readSub = frame.data.subarray(0, payload.length);
-			assertEquals(readSub, payload);
-			assertEquals(frame.data.length, payload.length);
+			// readFrame writes the exact data read to the frame
+			assertEquals(frame.byteLength, payload.length);
+			const result = new Uint8Array(frame.byteLength);
+			frame.copyTo(result);
+			assertEquals(result, payload);
 		},
 	);
 
@@ -246,7 +252,7 @@ Deno.test("GroupReader", async (t) => {
 			new GroupMessage({ sequence: 1 }),
 		);
 
-		const fr = new BytesFrame(new Uint8Array(1));
+		const fr = new Frame(new ArrayBuffer(1));
 		const errRes = await gr.readFrame(fr);
 		assertInstanceOf(errRes, Error);
 	});
@@ -271,9 +277,82 @@ Deno.test("GroupReader", async (t) => {
 				new GroupMessage({ sequence: 1, subscribeId: 0 }),
 			);
 
-			const fr = new BytesFrame(new Uint8Array(8));
+			const fr = new Frame(new ArrayBuffer(8));
 			const err = await gr.readFrame(fr);
 			assertInstanceOf(err, Error);
+		},
+	);
+
+	await t.step(
+		"readFrame preserves buffer capacity across multiple reads",
+		async () => {
+			const [ctx] = withCancelCause(background());
+
+			// Simulate two reads: first 256 bytes, then 512 bytes
+			const payloads = [
+				new Uint8Array(256).fill(1), // First frame
+				new Uint8Array(512).fill(2), // Second frame (larger)
+			];
+
+			const encoderWrittenData: Uint8Array[] = [];
+			const ms = {
+				write: spy(
+					async (p: Uint8Array): Promise<[number, Error | undefined]> => {
+						encoderWrittenData.push(new Uint8Array(p));
+						return [p.length, undefined];
+					},
+				),
+			};
+
+			// Encode both frames
+			for (const payload of payloads) {
+				await writeVarint(ms, payload.length);
+				await ms.write(payload);
+			}
+
+			const total = encoderWrittenData.reduce((a, b) => a + b.length, 0);
+			const data = new Uint8Array(total);
+			let off = 0;
+			for (const d of encoderWrittenData) {
+				data.set(d, off);
+				off += d.length;
+			}
+
+			let readOffset = 0;
+			const rs = new MockReceiveStream({
+				id: 9n,
+				read: spy(async (p: Uint8Array) => {
+					if (readOffset >= data.length) {
+						return [0, new EOFError()] as [number, Error | undefined];
+					}
+					const n = Math.min(p.length, data.length - readOffset);
+					p.set(data.subarray(readOffset, readOffset + n));
+					readOffset += n;
+					return [n, undefined] as [number, Error | undefined];
+				}),
+			});
+
+			const msg = new GroupMessage({ sequence: 1, subscribeId: 0 });
+			const gr = new GroupReader(ctx, rs, msg);
+
+			// Create frame with 1024 byte capacity
+			const frame = new Frame(new ArrayBuffer(1024));
+
+			// First read: 256 bytes
+			const err1 = await gr.readFrame(frame);
+			assertEquals(err1, undefined);
+			assertEquals(frame.byteLength, 256, "First read should be 256 bytes");
+			const result1 = new Uint8Array(frame.byteLength);
+			frame.copyTo(result1);
+			assertEquals(result1, payloads[0]);
+
+			// Second read: 512 bytes (larger, but still fits in capacity)
+			const err2 = await gr.readFrame(frame);
+			assertEquals(err2, undefined);
+			assertEquals(frame.byteLength, 512, "Second read should be 512 bytes");
+			const result2 = new Uint8Array(frame.byteLength);
+			frame.copyTo(result2);
+			assertEquals(result2, payloads[1]);
 		},
 	);
 });

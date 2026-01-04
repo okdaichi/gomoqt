@@ -98,10 +98,10 @@ scope(async (defer) => {
 		return;
 	}
 
-	console.log("[Client] Frame data length:", frame.data.byteLength);
+	console.log("[Client] Frame data length:", frame.bytes.byteLength);
 	console.info(
 		"[Client] [OK] Received data from server:",
-		new TextDecoder().decode(frame.data),
+		new TextDecoder().decode(frame.bytes),
 	);
 
 	console.debug("[Client] Operations completed");

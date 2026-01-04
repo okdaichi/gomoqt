@@ -114,7 +114,7 @@ async function main() {
 		if (readErr) throw readErr;
 
 		// Note: frame.data might contain trailing zeros if payload is smaller than 1024
-		const payload = new TextDecoder().decode(frame.data).replace(/\0/g, "");
+		const payload = new TextDecoder().decode(frame.bytes).replace(/\0/g, "");
 		console.log(`...ok (payload: ${payload})`);
 
 		// Wait for the publish handler to complete

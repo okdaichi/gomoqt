@@ -1,6 +1,6 @@
 /**
  * Memory efficiency benchmarks for SendStream and ReceiveStream.
- * 
+ *
  * These benchmarks measure:
  * 1. ReceiveStream buffer retention patterns
  * 2. Subarray vs reallocation memory usage
@@ -46,7 +46,7 @@ Deno.bench({
 		// Read only 64 bytes - rest stays in buffer
 		const buf = new Uint8Array(64);
 		await reader.read(buf);
-		
+
 		// In current implementation, #buf holds subarray referencing 16KB
 	},
 });
@@ -63,7 +63,7 @@ Deno.bench({
 		// Read only 64 bytes
 		const buf = new Uint8Array(64);
 		await reader.read(buf);
-		
+
 		// With optimization, subsequent full consumption releases backing buffer
 		const rest = new Uint8Array(16384 - 64);
 		await reader.read(rest);
@@ -82,7 +82,7 @@ Deno.bench({
 		// Read entire chunk
 		const buf = new Uint8Array(1024);
 		await reader.read(buf);
-		
+
 		// Buffer should be empty (but currently holds zero-length subarray)
 	},
 });
@@ -178,7 +178,7 @@ Deno.bench({
 	fn: async () => {
 		const stream = createMockWritableStream();
 		const writer = new SendStream({ stream, streamId: 1n });
-		
+
 		const data = new Uint8Array(1024);
 		await writer.write(data);
 	},
@@ -190,7 +190,7 @@ Deno.bench({
 	fn: async () => {
 		const stream = createMockWritableStream();
 		const writer = new SendStream({ stream, streamId: 1n });
-		
+
 		// Simulate: varint length + data
 		const header = new Uint8Array(8);
 		const data = new Uint8Array(1024);
@@ -205,7 +205,7 @@ Deno.bench({
 	fn: async () => {
 		const stream = createMockWritableStream();
 		const writer = new SendStream({ stream, streamId: 1n });
-		
+
 		// Combine into single write
 		const combined = new Uint8Array(1032);
 		combined.set(new Uint8Array(8), 0);

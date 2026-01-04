@@ -1,51 +1,60 @@
-export interface Frame {
-	data: Uint8Array;
-
-	byteLength: number;
+export interface ByteSource {
+	readonly byteLength: number;
 	copyTo(target: ArrayBuffer | ArrayBufferView): void;
 }
 
-export class BytesFrame implements Frame {
-	data: Uint8Array;
+export interface ByteSink {
+	write(p: Uint8Array): void | Promise<void>;
+}
 
-	constructor(bytes: Uint8Array) {
-		this.data = bytes;
-	}
+export type ByteSinkFunc = (p: Uint8Array) => void | Promise<void>;
 
-	// get bytes(): Uint8Array {
-	// 	return this.data;
-	// }
+export class BytesBuffer implements ByteSource, ByteSink {
+	#buf: ArrayBuffer; // Internal buffer (full capacity)
+
+	#len: number = 0; // Actual data length
 
 	get byteLength(): number {
-		return this.data.byteLength;
+		return this.#len;
+	}
+
+	constructor(buffer?: ArrayBuffer) {
+		this.#buf = buffer ?? new ArrayBuffer(0);
+	}
+
+	write(p: Uint8Array): void {
+		if (this.#buf.byteLength < p.byteLength) {
+			// Resize buffer if necessary
+			this.#buf = new ArrayBuffer(p.byteLength);
+		}
+
+		const target = new Uint8Array(this.#buf, 0, p.byteLength);
+		target.set(p);
+		this.#len = p.byteLength;
 	}
 
 	copyTo(dest: AllowSharedBufferSource): void {
+		let target: Uint8Array;
 		if (dest instanceof Uint8Array) {
-			dest.set(this.data);
-		} else if (dest instanceof ArrayBuffer) {
-			new Uint8Array(dest).set(this.data);
+			target = dest;
+		} else if (dest instanceof ArrayBuffer || dest instanceof SharedArrayBuffer) {
+			target = new Uint8Array(dest as ArrayBuffer); // Handle both ArrayBuffer and SharedArrayBuffer
 		} else {
 			throw new Error("Unsupported destination type");
 		}
+
+		if (target.byteLength < this.#buf.byteLength) {
+			throw new Error(
+				`Destination buffer too small: ${target.byteLength} < ${this.#buf.byteLength}`,
+			);
+		}
+
+		target.set(new Uint8Array(this.#buf, 0, this.#buf.byteLength));
 	}
-
-	// clone(buffer?: Uint8Array): BytesFrame {
-	// 	if (buffer && buffer.byteLength >= this.data.byteLength) {
-	// 		buffer.set(this.data);
-	// 		return new BytesFrame(buffer.subarray(0, this.data.byteLength));
-	// 	}
-	// 	return new BytesFrame(this.data.slice());
-	// }
-
-	// copyFrom(src: Frame): void {
-	// 	if (src.byteLength > this.data.byteLength) {
-	// 		this.data = new Uint8Array(src.byteLength);
-	// 	}
-	// 	src.copyTo(this.data);
-	// }
 }
 
+export interface Frame extends ByteSource, ByteSink {}
+
 export const Frame: {
-	new (bytes: Uint8Array): Frame;
-} = BytesFrame;
+	new (buffer: ArrayBuffer): Frame;
+} = BytesBuffer;
