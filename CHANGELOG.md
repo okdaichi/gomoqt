@@ -7,6 +7,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 
+## [v0.10.1] - 2026-01-04
+
+### Fixed
+
+- **moq-web: Fixed QUIC varint encoding/decoding for values exceeding 32 bits**
+  - JavaScript bitwise operations are limited to 32 bits, causing incorrect encoding/decoding of 8-byte varints
+  - Changed to use division for shifts exceeding 32 bits in `writeVarint()`
+  - Fixed `readVarint()` and `parseVarint()` to correctly handle values up to 53 bits (JavaScript Number precision limit)
+  - This fix ensures proper operation in browser environments for large sequence numbers and object IDs
+
+### Changed
+
+- **moq-web: Enhanced GroupStream API to accept Uint8Array directly**
+  - `GroupWriter.writeFrame()` now accepts `ByteSource | Uint8Array`
+  - `GroupReader.readFrame()` now accepts `ByteSink | ByteSinkFunc`
+  - Maintains backward compatibility with existing Frame-based code
+
+
 ## [v0.10.0] - 2026-01-04
 
 ### Changed

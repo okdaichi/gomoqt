@@ -24,11 +24,13 @@ export class GroupWriter {
 		});
 	}
 
-	async writeFrame(src: ByteSource): Promise<Error | undefined> {
-		// Convert source to bytes using copyTo
-		const buf = new Uint8Array(src.byteLength);
-		src.copyTo(buf);
-		const bytes = buf;
+	async writeFrame(src: ByteSource | Uint8Array): Promise<Error | undefined> {
+		// Convert source to bytes
+		const bytes = src instanceof Uint8Array ? src : (() => {
+			const buf = new Uint8Array(src.byteLength);
+			src.copyTo(buf);
+			return buf;
+		})();
 
 		// Write length prefix as varint
 		let [, err] = await writeVarint(this.#stream, bytes.byteLength);

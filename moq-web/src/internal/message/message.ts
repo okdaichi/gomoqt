@@ -10,7 +10,6 @@ import {
 	MAX_VARINT1,
 	MAX_VARINT2,
 	MAX_VARINT4,
-	MAX_VARINT8,
 	stringLen,
 	varintLen,
 } from "../webtransport/len.ts";
@@ -100,7 +99,7 @@ export async function writeVarint(
 		buf[1] = (num >> 16) & 0xff;
 		buf[2] = (num >> 8) & 0xff;
 		buf[3] = num & 0xff;
-	} else if (num <= Number(MAX_VARINT8)) {
+	} else {
 		// JavaScript bitwise operations are limited to 32 bits,
 		// so use division for shifts exceeding 32 bits
 		buf = new Uint8Array(8);
@@ -112,8 +111,6 @@ export async function writeVarint(
 		buf[5] = (Math.floor(num / 0x10000) & 0xff);
 		buf[6] = (Math.floor(num / 0x100) & 0xff);
 		buf[7] = (num & 0xff);
-	} else {
-		return [0, new RangeError("Value exceeds maximum varint size")];
 	}
 
 	return await w.write(buf);
