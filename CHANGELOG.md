@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **moq-web: Frame API redesign with ByteSource/ByteSink pattern**
+  - Introduced `ByteSource` and `ByteSink` interfaces for flexible data handling
+  - Replaced direct `bytes` property access with `ByteSource.copyTo()` method for safer data access
+  - Implemented `ByteSinkFunc` type for functional-style data writing
+  - Updated `BytesBuffer` to implement both `ByteSource` and `ByteSink` interfaces
+  - Modified `GroupReader.readFrame()` to accept `ByteSink | ByteSinkFunc` for flexible data consumption
+  - Improved buffer management with proper bounds checking in `copyTo()` method
+
+### Fixed
+
+- **moq-web: Fixed buffer overflow in Frame.copyTo()**
+  - Added `Math.min()` check to prevent out-of-bounds access when internal buffer size doesn't match data length
+  - Fixed RangeError in interop tests caused by incorrect Frame usage pattern
+
+- **moq-web: Fixed TypeScript type errors in mock stream implementations**
+  - Properly wrapped partial stream methods to ensure they always return Promises
+  - Eliminated type mismatches between sync and async return types in MockSendStream and MockReceiveStream
+
+### Tests
+
+- moq-web: Updated all Frame-related tests to use new `ArrayBuffer` constructor and `write()` method pattern
+- moq-web: Updated `group_stream_test.ts` to use `copyTo()` method instead of direct `bytes` property access
+- moq-web: Updated `group_stream_benchmark.ts` with new Frame creation patterns
+
 
 ## [v0.9.0] - 2025-12-24
 
