@@ -234,7 +234,7 @@ func (s *Server) HandleWebTransport(w http.ResponseWriter, r *http.Request) erro
 
 	acceptCtx, cancelAccept := context.WithTimeout(r.Context(), s.Config.setupTimeout())
 	defer cancelAccept()
-	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger, s.Config)
+	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger)
 	if err != nil {
 		connLogger.Error("failed to accept session stream",
 			"error", err,
@@ -285,7 +285,7 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 
 	acceptCtx, cancelAccept := context.WithTimeout(conn.Context(), s.Config.setupTimeout())
 	defer cancelAccept()
-	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger, s.Config)
+	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger)
 	if err != nil {
 		connLogger.Error("moq: failed to accept session stream",
 			"error", err,
@@ -307,7 +307,7 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 	return nil
 }
 
-func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLogger *slog.Logger, config *Config) (*sessionStream, error) {
+func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLogger *slog.Logger) (*sessionStream, error) {
 	sessionID := generateSessionID()
 
 	sessLogger := connLogger.With(
