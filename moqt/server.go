@@ -439,9 +439,19 @@ func (s *Server) Close() error {
 	s.listeners = nil
 	s.listenerMu.Unlock()
 
-	// Close WebTransport server
+	// Close WebTransport server (guard against panics from underlying implementations)
 	if s.wtServer != nil {
-		s.wtServer.Close()
+		done := make(chan struct{})
+		go func() {
+			defer func() { recover() }()
+			_ = s.wtServer.Close()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(100 * time.Millisecond):
+			// timed out waiting for Close; proceed
+		}
 	}
 
 	// Wait for all listeners to close
@@ -506,9 +516,19 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.listeners = nil
 	s.listenerMu.Unlock()
 
-	// Close WebTransport server
+	// Close WebTransport server (guard against panics from underlying implementations)
 	if s.wtServer != nil {
-		s.wtServer.Close()
+		done := make(chan struct{})
+		go func() {
+			defer func() { recover() }()
+			_ = s.wtServer.Close()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(100 * time.Millisecond):
+			// timed out waiting for Close; proceed
+		}
 	}
 
 	// Wait for all listeners to close

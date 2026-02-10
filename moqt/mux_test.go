@@ -872,10 +872,10 @@ func TestMux_AnnouncementDeliveryErrorPropagation(t *testing.T) {
 
 func TestMux_AnnounceWithNilAnnouncementOrHandler(t *testing.T) {
 	mux := NewTrackMux()
-	// Announce with nil Announcement
-	assert.NotPanics(t, func() {
+	// Announce with nil Announcement should panic deliberately
+	assert.Panics(t, func() {
 		mux.Announce(nil, nil)
-	}, "Announce with nil Announcement/handler should not panic")
+	}, "Announce with nil Announcement/handler should panic")
 }
 
 func TestMux_SimultaneousAnnounceAndPublish(t *testing.T) {

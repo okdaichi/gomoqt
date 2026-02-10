@@ -40,54 +40,60 @@ func newAnnouncementReader(stream quic.Stream, prefix prefix, initSuffixes []suf
 				return
 			}
 
-			old, ok := ar.actives[am.TrackSuffix]
-
+			// Use an inner scope to ensure Lock/Unlock are paired even across continue/return
 			switch am.AnnounceStatus {
 			case message.ACTIVE:
-				if !ok || (ok && !old.IsActive()) {
-					// Create a new announcement
-					ann, _ := NewAnnouncement(ar.ctx, BroadcastPath(ar.prefix+am.TrackSuffix))
-					ar.actives[am.TrackSuffix] = ann
-					ar.pendings = append(ar.pendings, ann)
+				{
+					suffix := am.TrackSuffix
+					var shouldClose bool
+					// Mutate maps under lock
+					func() {
+						ar.announcementsMu.Lock()
+						defer func() {
+							ar.announcementsMu.Unlock()
+						}()
+						old, ok := ar.actives[suffix]
+						if !ok || !old.IsActive() {
+							ann, _ := NewAnnouncement(ar.ctx, BroadcastPath(ar.prefix+suffix))
+							ar.actives[suffix] = ann
+							ar.pendings = append(ar.pendings, ann)
+							select {
+							case ar.announcedCh <- struct{}{}:
+							default:
+							}
+							return
+						}
+						shouldClose = true
+					}()
 
-					// Notify that new announcement is available
-					select {
-					case ar.announcedCh <- struct{}{}:
-					default:
+					if shouldClose {
+						_ = ar.CloseWithError(DuplicatedAnnounceErrorCode)
+						return
 					}
-
-					ar.announcementsMu.Unlock()
-
-					continue
-				} else {
-					// Release lock before calling CloseWithError to avoid deadlock
-					ar.announcementsMu.Unlock()
-
-					// Close the stream with an error
-					_ = ar.CloseWithError(DuplicatedAnnounceErrorCode)
-
-					return
 				}
 			case message.ENDED:
-				if ok && old.IsActive() {
-					// End the existing announcement
-					old.end()
-
-					// Remove the announcement from the map
-					delete(ar.actives, am.TrackSuffix)
-
-					ar.announcementsMu.Unlock()
-					continue
-				} else {
-					// Release lock before calling CloseWithError to avoid deadlock
-					ar.announcementsMu.Unlock()
+				{
+					suffix := am.TrackSuffix
+					var handled bool
+					func() {
+						ar.announcementsMu.Lock()
+						defer func() {
+							ar.announcementsMu.Unlock()
+						}()
+						old, ok := ar.actives[suffix]
+						if ok && old.IsActive() {
+							old.end()
+							delete(ar.actives, suffix)
+							handled = true
+						}
+					}()
+					if handled {
+						continue
+					}
 					_ = ar.CloseWithError(DuplicatedAnnounceErrorCode)
 					return
 				}
 			default:
-				ar.announcementsMu.Unlock()
-
-				// Unsupported status, close with error
 				_ = ar.CloseWithError(InvalidAnnounceStatusErrorCode)
 				return
 			}
