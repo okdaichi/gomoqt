@@ -24,8 +24,13 @@ export class BytesBuffer implements ByteSource, ByteSink {
 
 	constructor(buffer?: ArrayBuffer | Uint8Array) {
 		if (buffer instanceof Uint8Array) {
-			const slice = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-			this.#buf = slice instanceof SharedArrayBuffer ? new ArrayBuffer(buffer.byteLength) : slice;
+			const slice = buffer.buffer.slice(
+				buffer.byteOffset,
+				buffer.byteOffset + buffer.byteLength,
+			);
+			this.#buf = slice instanceof SharedArrayBuffer
+				? new ArrayBuffer(buffer.byteLength)
+				: slice;
 			if (slice instanceof SharedArrayBuffer) {
 				new Uint8Array(this.#buf).set(buffer);
 			}
