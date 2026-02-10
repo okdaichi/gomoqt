@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"log/slog"
 	"maps"
 	"strings"
 
@@ -15,132 +14,6 @@ import (
 type ExtensionKey uint64
 
 type parameters map[uint64][]byte
-
-// // Clone creates a deep copy of the parameters.
-// func (p parameters) Clone() parameters {
-// 	if p == nil {
-// 		return nil
-// 	}
-
-// 	return maps.Clone(p)
-// }
-
-// // SetByteArray sets a parameter with a byte array value.
-// func (p parameters) SetByteArray(key uint64, value []byte) {
-// 	if p == nil {
-// 		p = make(parameters)
-// 	}
-// 	p[key] = value
-// }
-
-// // SetString sets a parameter with a string value.
-// func (p parameters) SetString(key uint64, value string) {
-// 	if p == nil {
-// 		p = make(parameters)
-// 	}
-// 	p[key] = []byte(value)
-// }
-
-// // SetUint sets a parameter with an unsigned integer value encoded as a varint.
-// func (p parameters) SetUint(key uint64, value uint64) {
-// 	if p == nil {
-// 		p = make(parameters)
-// 	}
-// 	p[key] = quicvarint.Append(make([]byte, 0), value)
-// }
-
-// // SetBool sets a parameter with a boolean value (1 for true, 0 for false).
-// func (p parameters) SetBool(key uint64, value bool) {
-// 	if p == nil {
-// 		p = make(parameters)
-// 	}
-// 	if value {
-// 		p[key] = quicvarint.Append(make([]byte, 0), 1)
-// 	} else {
-// 		p[key] = quicvarint.Append(make([]byte, 0), 0)
-// 	}
-// }
-
-// // Remove removes a parameter by key.
-// func (p parameters) Remove(key uint64) {
-// 	if p == nil {
-// 		return
-// 	}
-// 	delete(p, key)
-// }
-
-// // GetByteArray retrieves a parameter value as a byte array.
-// // Returns ErrParameterNotFound if the parameter does not exist.
-// func (p parameters) GetByteArray(key uint64) ([]byte, error) {
-// 	if p == nil {
-// 		return nil, ErrParameterNotFound
-// 	}
-// 	value, ok := p[key]
-// 	if !ok {
-// 		return nil, ErrParameterNotFound
-// 	}
-
-// 	return value, nil
-// }
-
-// // GetString retrieves a parameter value as a string.
-// // Returns ErrParameterNotFound if the parameter does not exist.
-// func (p parameters) GetString(key uint64) (string, error) {
-// 	if p == nil {
-// 		return "", ErrParameterNotFound
-// 	}
-
-// 	value, err := p.GetByteArray(key)
-// 	if err != nil {
-// 		return "", err
-// 	}
-
-// 	return string(value), nil
-// }
-
-// // GetUint retrieves a parameter value as an unsigned integer decoded from a varint.
-// // Returns ErrParameterNotFound if the parameter does not exist.
-// func (p parameters) GetUint(key uint64) (uint64, error) {
-// 	if p == nil {
-// 		return 0, ErrParameterNotFound
-// 	}
-
-// 	value, ok := p[key]
-// 	if !ok {
-// 		return 0, ErrParameterNotFound
-// 	}
-
-// 	num, err := quicvarint.Read(quicvarint.NewReader(bytes.NewReader(value)))
-// 	if err != nil {
-// 		slog.Error("failed to read the bytes as uint64")
-// 		return 0, err
-// 	}
-
-// 	return num, nil
-// }
-
-// // GetBool retrieves a parameter value as a boolean (1=true, 0=false).
-// // Returns ErrParameterNotFound if the parameter does not exist.
-// func (p parameters) GetBool(key uint64) (bool, error) {
-// 	if p == nil {
-// 		return false, ErrParameterNotFound
-// 	}
-
-// 	num, err := p.GetUint(key)
-// 	if err != nil {
-// 		slog.Error("failed to read a parameter as uint", "error", err)
-// 		return false, err
-// 	}
-
-// 	switch num {
-// 	case 0:
-// 		return false, nil
-// 	case 1:
-// 		return true, nil
-// 	default:
-// 		return false, errors.New("invalid value as bool")
-// 	}
-// }
 
 // NewExtension creates a new empty parameters instance.
 func NewExtension() *Extension {
@@ -265,7 +138,6 @@ func (p Extension) GetUint(key ExtensionKey) (uint64, error) {
 
 	num, err := quicvarint.Read(quicvarint.NewReader(bytes.NewReader(value)))
 	if err != nil {
-		slog.Error("failed to read the bytes as uint64")
 		return 0, err
 	}
 
@@ -281,7 +153,6 @@ func (p Extension) GetBool(key ExtensionKey) (bool, error) {
 
 	num, err := p.GetUint(key)
 	if err != nil {
-		slog.Error("failed to read a parameter as uint", "error", err)
 		return false, err
 	}
 

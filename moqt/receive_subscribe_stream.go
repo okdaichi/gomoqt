@@ -2,7 +2,6 @@ package moqt
 
 import (
 	"context"
-	"log/slog"
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
@@ -103,17 +102,6 @@ func (rss *receiveSubscribeStream) WriteInfo(info Info) error {
 			err = Cause(rss.ctx)
 			return
 		}
-		// Debug logging to help diagnose subscription handshake issues
-		slog.Debug("sending SUBSCRIBE_OK on receive subscribe stream",
-			"stream_id", rss.stream.StreamID(),
-			"subscribe_id", rss.subscribeID,
-		)
-
-		// Debug log after the encode to disambiguate timing in interop logs.
-		slog.Debug("subcribe_ok encoded and written",
-			"stream_id", rss.stream.StreamID(),
-			"subscribe_id", rss.subscribeID,
-		)
 		sum := message.SubscribeOkMessage{}
 		err = sum.Encode(rss.stream)
 		if err != nil {

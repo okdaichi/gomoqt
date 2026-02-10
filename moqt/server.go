@@ -115,7 +115,6 @@ func (s *Server) init() {
 
 		if s.Logger != nil {
 			s.Logger = s.Logger.With("address", s.Addr)
-			s.Logger.Info("initialized server")
 		}
 	})
 }
@@ -131,13 +130,6 @@ func (s *Server) ServeQUICListener(ln quic.Listener) error {
 
 	s.addListener(ln)
 	defer s.removeListener(ln)
-
-	var listenerLogger *slog.Logger
-	if s.Logger != nil {
-		listenerLogger = s.Logger.With("listener_address", ln.Addr())
-	} else {
-		listenerLogger = slog.New(slog.DiscardHandler)
-	}
 
 	// Create context for listener's Accept operation
 	// This context will be canceled when the server is shutdown
@@ -158,27 +150,18 @@ func (s *Server) ServeQUICListener(ln quic.Listener) error {
 		if err != nil {
 			// Check if this is due to shutdown
 			if s.shuttingDown() {
-				listenerLogger.Debug("listener closed due to shutdown")
 				return ErrServerClosed
 			}
 			// Check if context was cancelled
 			if errors.Is(err, context.Canceled) {
-				listenerLogger.Debug("listener accept cancelled")
 				return ErrServerClosed
 			}
-			listenerLogger.Error("failed to accept QUIC connection",
-				"error", err.Error(),
-			)
-			return err
+			return fmt.Errorf("failed to accept QUIC connection: %w", err)
 		}
 
 		// Handle connection in a goroutine
 		go func(conn quic.Connection) {
-			if err := s.ServeQUICConn(conn); err != nil {
-				listenerLogger.Error("failed to handle connection",
-					"error", err,
-				)
-			}
+			_ = s.ServeQUICConn(conn)
 		}(conn)
 	}
 }
@@ -230,19 +213,12 @@ func (s *Server) HandleWebTransport(w http.ResponseWriter, r *http.Request) erro
 		connLogger = slog.New(slog.DiscardHandler)
 	}
 
-	connLogger.Debug("establishing a WebTransport session")
-
 	acceptCtx, cancelAccept := context.WithTimeout(r.Context(), s.Config.setupTimeout())
 	defer cancelAccept()
 	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger)
 	if err != nil {
-		connLogger.Error("failed to accept session stream",
-			"error", err,
-		)
 		return fmt.Errorf("failed to accept session stream: %w", err)
 	}
-
-	connLogger.Debug("accepted a session stream")
 
 	// Set the path for the session
 	sessStr.Path = r.URL.Path
@@ -251,10 +227,8 @@ func (s *Server) HandleWebTransport(w http.ResponseWriter, r *http.Request) erro
 	req := sessStr.SetupRequest
 
 	if s.SetupHandler != nil {
-		connLogger.Debug("using custom setup handler")
 		s.SetupHandler.ServeMOQ(rsp, req)
 	} else {
-		connLogger.Debug("no setup handler provided, using default router")
 		DefaultRouter.ServeMOQ(rsp, req)
 	}
 
@@ -281,26 +255,19 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 		connLogger = slog.New(slog.DiscardHandler)
 	}
 
-	connLogger.Debug("moq: establishing a QUIC session")
-
 	acceptCtx, cancelAccept := context.WithTimeout(conn.Context(), s.Config.setupTimeout())
 	defer cancelAccept()
 	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger)
 	if err != nil {
-		connLogger.Error("moq: failed to accept session stream",
-			"error", err,
-		)
-		return err
+		return fmt.Errorf("moq: failed to accept session stream: %w", err)
 	}
 
 	rsp := newResponseWriter(conn, sessStr, connLogger, s)
 	req := sessStr.SetupRequest
 
 	if s.SetupHandler != nil {
-		connLogger.Debug("moq: using custom setup handler")
 		s.SetupHandler.ServeMOQ(rsp, req)
 	} else {
-		connLogger.Debug("moq: no setup handler provided, using default router")
 		DefaultRouter.ServeMOQ(rsp, req)
 	}
 
@@ -308,51 +275,25 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 }
 
 func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLogger *slog.Logger) (*sessionStream, error) {
-	sessionID := generateSessionID()
-
-	sessLogger := connLogger.With(
-		"session_id", sessionID,
-	)
-
-	sessLogger.Debug("establishing a session")
-
 	stream, err := conn.AcceptStream(acceptCtx)
 	if err != nil {
-		sessLogger.Error("failed to accept a session stream",
-			"error", err,
-		)
-
 		return nil, fmt.Errorf("failed to accept a session stream: %w", err)
 	}
 
 	var streamType message.StreamType
 	err = streamType.Decode(stream)
 	if err != nil {
-		sessLogger.Error("failed to receive STREAM_TYPE message",
-			"error", err,
-		)
-
 		var appErr *quic.ApplicationError
 		if errors.As(err, &appErr) {
 			return nil, &SessionError{ApplicationError: appErr}
 		} else {
-			return nil, fmt.Errorf("moq: unexpected error occurred on session stream: %w", err)
+			return nil, fmt.Errorf("moq: failed to receive STREAM_TYPE message: %w", err)
 		}
 	}
-
-	streamLogger := sessLogger.With(
-		"stream_id", stream.StreamID(),
-	)
-
-	streamLogger.Debug("accepted a session stream")
 
 	var scm message.SessionClientMessage
 	err = scm.Decode(stream)
 	if err != nil {
-		streamLogger.Error("failed to receive SESSION_CLIENT message",
-			"error", err,
-		)
-
 		var appErr *quic.ApplicationError
 		if errors.As(err, &appErr) {
 			return nil, &SessionError{ApplicationError: appErr}
@@ -406,10 +347,7 @@ func (s *Server) ListenAndServe() error {
 		ln, err = quicgo.ListenAddrEarly(s.Addr, tlsConfig, s.QUICConfig)
 	}
 	if err != nil {
-		if s.Logger != nil {
-			s.Logger.Error("failed to start QUIC listener", "address", s.Addr, "error", err.Error())
-		}
-		return err
+		return fmt.Errorf("failed to start QUIC listener at %s: %w", s.Addr, err)
 	}
 
 	return s.ServeQUICListener(ln)
@@ -429,10 +367,7 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 	certs := make([]tls.Certificate, 1)
 	certs[0], err = tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		if s.Logger != nil {
-			s.Logger.Error("failed to load X509 key pair", "certFile", certFile, "keyFile", keyFile, "error", err.Error())
-		}
-		return err
+		return fmt.Errorf("failed to load X509 key pair (cert=%s, key=%s): %w", certFile, keyFile, err)
 	}
 
 	// Create TLS config with certificates
@@ -448,9 +383,6 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 		ln, err = quicgo.ListenAddrEarly(s.Addr, tlsConfig.Clone(), s.QUICConfig)
 	}
 	if err != nil {
-		if s.Logger != nil {
-			s.Logger.Error("failed to start QUIC listener for TLS", "address", s.Addr, "error", err.Error())
-		}
 		return err
 	}
 
@@ -470,10 +402,6 @@ func (s *Server) Close() error {
 	// Ensure that the server is initialized
 	s.init()
 
-	if s.Logger != nil {
-		s.Logger.Info("closing server", "address", s.Addr)
-	}
-
 	// Close all listeners first to stop accepting new connections
 	s.listenerMu.Lock()
 	for ln := range s.listeners {
@@ -486,11 +414,7 @@ func (s *Server) Close() error {
 	for sess := range s.activeSess {
 		// Close sessions concurrently; log potential errors.
 		go func(sess *Session) {
-			if err := sess.CloseWithError(NoError, SessionErrorText(NoError)); err != nil {
-				if s.Logger != nil {
-					s.Logger.Error("failed to close session during server Close", "error", err)
-				}
-			}
+			_ = sess.CloseWithError(NoError, SessionErrorText(NoError))
 		}(sess)
 	}
 	s.sessMu.Unlock()
@@ -534,19 +458,12 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		return ErrServerClosed
 	}
 
-	if s.Logger != nil {
-		s.Logger.Info("shutting down server", "address", s.Addr)
-	}
-
 	// Set the shutdown flag
 	s.inShutdown.Store(true)
 
 	// Close all listeners first to stop accepting new connections
 	s.listenerMu.Lock()
 	for ln := range s.listeners {
-		if s.Logger != nil {
-			s.Logger.Debug("closing listener")
-		}
 		ln.Close()
 	}
 	s.listenerMu.Unlock()
@@ -570,22 +487,12 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	select {
 	case <-s.doneChan:
 		// All sessions closed gracefully
-		if s.Logger != nil {
-			s.Logger.Debug("all sessions closed gracefully")
-		}
 	case <-ctx.Done():
 		// Context canceled, terminate all sessions forcefully
-		if s.Logger != nil {
-			s.Logger.Warn("shutdown timeout, forcing session termination")
-		}
 		s.sessMu.Lock()
 		for sess := range s.activeSess {
 			go func(sess *Session) {
-				if err := sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode)); err != nil {
-					if s.Logger != nil {
-						s.Logger.Error("failed to close session during shutdown force", "error", err)
-					}
-				}
+				_ = sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
 			}(sess)
 		}
 		s.sessMu.Unlock()
@@ -606,10 +513,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	// Wait for all listeners to close
 	s.listenerGroup.Wait()
-
-	if s.Logger != nil {
-		s.Logger.Info("server shutdown complete")
-	}
 
 	return nil
 }
@@ -665,10 +568,6 @@ func (s *Server) removeSession(sess *Session) {
 
 	delete(s.activeSess, sess)
 
-	if s.Logger != nil {
-		s.Logger.Debug("session removed", "active_sessions", len(s.activeSess))
-	}
-
 	// Send completion signal if connections reach zero and server is shutting down
 	if len(s.activeSess) == 0 && s.shuttingDown() {
 		// Close the done channel to signal server is done
@@ -676,9 +575,6 @@ func (s *Server) removeSession(sess *Session) {
 		case <-s.doneChan:
 			// Already closed
 		default:
-			if s.Logger != nil {
-				s.Logger.Debug("all sessions closed, signaling shutdown completion")
-			}
 			close(s.doneChan)
 		}
 	}

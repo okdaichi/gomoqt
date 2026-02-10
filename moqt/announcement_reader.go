@@ -3,7 +3,6 @@ package moqt
 import (
 	"context"
 	"iter"
-	"log/slog"
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
@@ -40,15 +39,6 @@ func newAnnouncementReader(stream quic.Stream, prefix prefix, initSuffixes []suf
 			if err != nil {
 				return
 			}
-
-			slog.Debug("received announce message", "message", am)
-
-			// Check if announcement is already closed during decoding
-			if ar.ctx.Err() != nil {
-				return
-			}
-
-			ar.announcementsMu.Lock()
 
 			old, ok := ar.actives[am.TrackSuffix]
 

@@ -3,7 +3,6 @@ package moqt
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
@@ -103,12 +102,7 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 				AnnounceStatus: message.ENDED,
 				TrackSuffix:    sfx,
 			}).Encode(aw.stream); err != nil {
-				var strErr *quic.StreamError
-				if errors.As(err, &strErr) {
-					slog.Error("failed to write announce ended message", "error", err, "suffix", sfx, "stream_error", strErr.Error())
-				} else {
-					slog.Error("failed to write announce ended message", "error", err, "suffix", sfx)
-				}
+				// Silently ignore encode errors
 			}
 		}
 	})
@@ -124,12 +118,7 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 			AnnounceStatus: message.ENDED,
 			TrackSuffix:    sfx,
 		}).Encode(aw.stream); err != nil {
-			var strErr *quic.StreamError
-			if errors.As(err, &strErr) {
-				slog.Error("failed to write announce ended message (end handler)", "error", err, "suffix", sfx, "stream_error", strErr.Error())
-			} else {
-				slog.Error("failed to write announce ended message (end handler)", "error", err, "suffix", sfx)
-			}
+			// Silently ignore encode errors
 		}
 	}
 }

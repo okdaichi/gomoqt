@@ -70,10 +70,6 @@ func (c *Client) init() {
 	c.initOnce.Do(func() {
 		c.activeSess = make(map[*Session]struct{})
 		c.doneChan = make(chan struct{}, 1)
-
-		if c.Logger != nil {
-			c.Logger.Info("client initialized")
-		}
 	})
 }
 
@@ -81,22 +77,13 @@ func (c *Client) init() {
 // The provided TrackMux is used to route incoming service tracks if non-nil.
 // Dial returns the newly created Session or an error.
 func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (*Session, error) {
-	var logger *slog.Logger
-	if c.Logger != nil {
-		logger = c.Logger
-	} else {
-		logger = slog.New(slog.DiscardHandler)
-	}
-
 	if c.shuttingDown() {
-		logger.Warn("dial rejected: client shutting down")
 		return nil, ErrClientClosed
 	}
 	c.init()
 
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		logger.Error("URL parsing failed", "error", err)
 		return nil, err
 	}
 
@@ -107,7 +94,6 @@ func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (*Sessi
 	case "moqt":
 		return c.DialQUIC(ctx, parsedURL.Hostname()+":"+parsedURL.Port(), parsedURL.Path, mux)
 	default:
-		logger.Error("unsupported URL scheme", "scheme", parsedURL.Scheme)
 		return nil, ErrInvalidScheme
 	}
 }
@@ -134,7 +120,6 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 	}
 
 	if c.shuttingDown() {
-		clientLogger.Warn("WebTransport dial rejected: client shutting down")
 		return nil, ErrClientClosed
 	}
 
@@ -143,8 +128,6 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 	dialTimeout := c.Config.setupTimeout()
 	dialCtx, cancelDial := context.WithTimeout(ctx, dialTimeout)
 	defer cancelDial()
-
-	clientLogger.Debug("dialing WebTransport")
 
 	var conn quic.Connection
 	var err error
@@ -156,7 +139,6 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 	}
 
 	if err != nil {
-		clientLogger.Error("WebTransport dial failed", "error", err)
 		return nil, err
 	}
 
@@ -168,19 +150,14 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 		"alpn", conn.ConnectionState().TLS.NegotiatedProtocol,
 	)
 
-	connLogger.Info("WebTransport connection established")
-
 	sessStream, err := openSessionStream(conn, path, webTransportExtensions(), connLogger)
 	if err != nil {
-		connLogger.Error("session establishment failed", "error", err)
 		return nil, err
 	}
 
 	var sess *Session
 	sess = newSession(conn, sessStream, mux, connLogger, func() { c.removeSession(sess) })
 	c.addSession(sess)
-
-	connLogger.Info("moq: established a new session over WebTransport successfully")
 
 	return sess, nil
 }
@@ -211,15 +188,12 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 	var err error
 
 	if c.DialQUICFunc != nil {
-		clientLogger.Debug("using custom QUIC dial function")
 		conn, err = c.DialQUICFunc(dialCtx, addr, c.TLSConfig, c.QUICConfig)
 	} else {
-		clientLogger.Debug("using default QUIC dial function")
 		conn, err = quicgo.DialAddrEarly(dialCtx, addr, c.TLSConfig, c.QUICConfig)
 	}
 
 	if err != nil {
-		clientLogger.Error("QUIC connection failed", "error", err)
 		return nil, err
 	}
 
@@ -232,11 +206,8 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 	)
 	// TODO: Add connection ID
 
-	connLogger.Info("QUIC connection established")
-
 	sessStream, err := openSessionStream(conn, path, quicExtensions(path), connLogger)
 	if err != nil {
-		connLogger.Error("failed to open session stream", "error", err)
 		return nil, err
 	}
 
@@ -267,28 +238,16 @@ func openSessionStream(
 	extensions *Extension,
 	connLogger *slog.Logger,
 ) (*sessionStream, error) {
-	connLogger.Debug("moq: opening session stream")
-
 	stream, err := conn.OpenStream()
 	if err != nil {
-		connLogger.Error("moq: failed to open session stream", "error", err)
 		return nil, err
 	}
-
-	streamLogger := connLogger.With(
-		"stream_id", stream.StreamID(),
-	)
 
 	// Send STREAM_TYPE message
 	err = message.StreamTypeSession.Encode(stream)
 	if err != nil {
-		streamLogger.Error("moq: failed to send STREAM_TYPE message",
-			"error", err,
-		)
 		return nil, err
 	}
-
-	streamLogger.Debug("moq: opened session stream")
 
 	versions := make([]uint64, len(DefaultClientVersions))
 	for i, v := range DefaultClientVersions {
@@ -301,9 +260,6 @@ func openSessionStream(
 	}
 	err = scm.Encode(stream)
 	if err != nil {
-		streamLogger.Error("moq: failed to send SESSION_CLIENT message",
-			"error", err,
-		)
 		return nil, err
 	}
 
@@ -320,7 +276,6 @@ func openSessionStream(
 
 	err = rsp.AwaitAccepted()
 	if err != nil {
-		streamLogger.Error("moq: failed to set up session", "error", err)
 		_ = conn.CloseWithError(quic.ApplicationErrorCode(InternalSessionErrorCode), "moq: failed to set up session")
 		return nil, err
 	}
@@ -333,19 +288,10 @@ func (c *Client) addSession(sess *Session) {
 	defer c.sessMu.Unlock()
 
 	if sess == nil {
-		if c.Logger != nil {
-			c.Logger.Warn("attempted to add nil session")
-		}
 		return
 	}
 
 	c.activeSess[sess] = struct{}{}
-
-	if c.Logger != nil {
-		c.Logger.Info("session added successfully",
-			"total_active_sessions", len(c.activeSess),
-		)
-	}
 }
 
 func (c *Client) removeSession(sess *Session) {
@@ -379,10 +325,6 @@ func (c *Client) shuttingDown() bool {
 func (c *Client) Close() error {
 	c.inShutdown.Store(true)
 
-	if c.Logger != nil {
-		c.Logger.Info("initiating client shutdown")
-	}
-
 	c.sessMu.Lock()
 	for sess := range c.activeSess {
 		go func(sess *Session) {
@@ -391,17 +333,9 @@ func (c *Client) Close() error {
 	}
 	c.sessMu.Unlock()
 
-	if c.Logger != nil {
-		c.Logger.Debug("terminated all active sessions")
-	}
-
 	// Wait for active connections to complete if any
 	if len(c.activeSess) > 0 {
 		<-c.doneChan
-	}
-
-	if c.Logger != nil {
-		c.Logger.Info("client shutdown completed")
 	}
 
 	return nil
@@ -417,16 +351,7 @@ func (c *Client) Shutdown(ctx context.Context) error {
 
 	c.inShutdown.Store(true)
 
-	logger := c.Logger
-	if logger != nil {
-		logger.Info("shutting down client gracefully")
-	}
-
 	c.goAway()
-
-	if logger != nil {
-		logger.Debug("sent go-away to all active sessions")
-	}
 	// For active connections, wait for completion or context cancellation
 	if len(c.activeSess) > 0 {
 		select {
@@ -438,19 +363,9 @@ func (c *Client) Shutdown(ctx context.Context) error {
 						_ = sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
 					}(sess)
 				}
-
-				if logger != nil {
-					logger.Warn("graceful shutdown timeout, forcing session termination",
-						"context_error", ctx.Err(),
-					)
-				}
 			}
 			return ctx.Err()
 		}
-	}
-
-	if logger != nil {
-		logger.Info("graceful client shutdown completed")
 	}
 
 	return nil

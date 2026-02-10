@@ -53,13 +53,7 @@ func newSession(
 			return // Normal closure
 		}
 
-		sessLogger.Warn("session stream context closed unexpectedly",
-			"reason", reason,
-		)
-
-		if err := sess.CloseWithError(ProtocolViolationErrorCode, "session stream closed unexpectedly"); err != nil {
-			sessLogger.Error("failed to close session after stream context closed", "error", err)
-		}
+		_ = sess.CloseWithError(ProtocolViolationErrorCode, "session stream closed unexpectedly")
 	})
 
 	// Listen bidirectional streams
@@ -117,15 +111,9 @@ func (s *Session) Context() context.Context {
 // CloseWithError closes the connection with an error code and message.
 func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 	if s.terminating() {
-		s.logger.Debug("termination already in progress")
 		return s.sessErr
 	}
 	s.isTerminating.Store(true)
-
-	s.logger.Info("terminating session",
-		"code", code,
-		"message", msg,
-	)
 
 	if s.onClose != nil {
 		s.onClose()
@@ -139,22 +127,14 @@ func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 				ApplicationError: appErr,
 			}
 			s.sessErr = reason
-			s.logger.Error("session already terminated",
-				"error", reason,
-			)
 			return reason
 		}
 		s.sessErr = err
-		s.logger.Error("session termination failed",
-			"error", err,
-		)
-		return err
+		return fmt.Errorf("session termination failed: %w", err)
 	}
 
 	// Wait for finishing handling streams
 	s.wg.Wait()
-
-	s.logger.Info("session terminated successfully")
 
 	return nil
 }
@@ -175,34 +155,20 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 
 	stream, err := s.conn.OpenStream()
 	if err != nil {
-		s.logger.Error("failed to open bidirectional stream",
-			"error", err,
-		)
 		var appErr *quic.ApplicationError
 		if errors.As(err, &appErr) {
 			return nil, &SessionError{
 				ApplicationError: appErr,
 			}
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to open bidirectional stream: %w", err)
 	}
-
-	streamLogger := s.logger.With("stream_id", stream.StreamID())
-
-	streamLogger.Info("opening SUBSCRIBE stream",
-		"stream_id", stream.StreamID(),
-		"subscribe_id", id,
-		"path", path,
-	)
 
 	err = message.StreamTypeSubscribe.Encode(stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
-			streamLogger.Error("failed to encode stream type message",
-				"error", strErr,
-			)
 			return nil, &SubscribeError{
 				StreamError: strErr,
 			}
@@ -210,10 +176,7 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 		strErrCode := quic.StreamErrorCode(InternalSubscribeErrorCode)
 		stream.CancelWrite(strErrCode)
 		stream.CancelRead(strErrCode)
-		streamLogger.Error("failed to encode stream type message",
-			"error", err,
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to encode stream type message: %w", err)
 	}
 
 	// Send a SUBSCRIBE message
@@ -225,18 +188,12 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 	}
 	err = sm.Encode(stream)
 	if err == nil {
-		streamLogger.Debug("sent SUBSCRIBE message",
-			"subscribe_id", id,
-			"path", path,
-		)
+		// Message sent successfully
 	}
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
-			streamLogger.Error("failed to encode SUBSCRIBE message",
-				"error", strErr,
-			)
 			return nil, &SubscribeError{
 				StreamError: strErr,
 			}
@@ -246,22 +203,12 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 		stream.CancelWrite(strErrCode)
 		stream.CancelRead(strErrCode)
 
-		streamLogger.Error("failed to encode SUBSCRIBE message",
-			"error", err,
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to encode SUBSCRIBE message: %w", err)
 	}
 
 	// Register TrackReader AFTER sending SUBSCRIBE but BEFORE waiting for SUBSCRIBE_OK
 	// This ensures we're ready to receive data streams immediately when server approves
 	substr := newSendSubscribeStream(id, stream, config, Info{})
-
-	streamLogger.Debug("subscribe stream opened",
-		"subscribe_id", id,
-		"broadcast_path", path,
-		"track_name", name,
-		"subscribe_config", config,
-	)
 
 	// Create a receive group stream queue
 	trackReceiver := newTrackReader(path, name, substr, func() {
@@ -282,31 +229,19 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 			strErrCode := quic.StreamErrorCode(strErr.ErrorCode)
 			stream.CancelWrite(strErrCode)
 
-			streamLogger.Error("failed to read SUBSCRIBE_OK response",
-				"error", strErr,
-			)
 			return nil, &SubscribeError{
 				StreamError: strErr,
 			}
 		}
 
-		// If Decode returned an error that's not a QUIC StreamError, log it and fail.
-		streamLogger.Error("failed to read SUBSCRIBE_OK response",
-			"error", err,
-		)
-
+		// If Decode returned an error that's not a QUIC StreamError, fail.
 		// For non-QUIC stream errors (e.g., io.EOF), do not cancel the stream
 		// aggressively. Allow the caller to close the session or the remote to
 		// clean up; canceling here may trigger a remote Reset which can break
 		// the normal lifecycle and lead to spurious EOFs on the server side.
-		return nil, err
+		return nil, fmt.Errorf("failed to read SUBSCRIBE_OK response: %w", err)
 	} else {
-		// Successful receipt of SUBSCRIBE_OK. Log at Info level to aid debugging.
-		streamLogger.Debug("received SUBSCRIBE_OK for subscription",
-			"subscribe_id", sm.SubscribeID,
-			"broadcast_path", sm.BroadcastPath,
-			"track_name", sm.TrackName,
-		)
+		// Successful receipt of SUBSCRIBE_OK.
 	}
 
 	return trackReceiver, nil
@@ -331,9 +266,6 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
-		sess.logger.Error("failed to open stream for announce",
-			"error", err,
-		)
 		var appErr *quic.ApplicationError
 		if errors.As(err, &appErr) {
 
@@ -342,12 +274,8 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 			}
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("failed to open stream for announce: %w", err)
 	}
-
-	// Create a stream-specific logger
-	streamLogger := sess.logger.With("stream_id", stream.StreamID())
-	streamLogger.Debug("opened bidirectional stream")
 
 	err = message.StreamTypeAnnounce.Encode(stream)
 	if err != nil {
@@ -356,36 +284,20 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 			strErrCode := quic.StreamErrorCode(InternalAnnounceErrorCode)
 			stream.CancelRead(strErrCode)
 
-			streamLogger.Error("failed to encode stream type message",
-				"error", strErr,
-			)
 			return nil, &AnnounceError{
 				StreamError: strErr,
 			}
 		}
 
-		streamLogger.Error("failed to encode stream type message",
-			"error", err,
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to encode stream type message: %w", err)
 	}
 
 	err = message.AnnouncePleaseMessage{
 		TrackPrefix: prefix,
 	}.Encode(stream)
 	if err != nil {
-		streamLogger.Error("failed to send ANNOUNCE_PLEASE message",
-			"error", err,
-		)
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
-			streamLogger.Debug("<<ANNOUNCE_PLEASE_WRITE_ERROR: stream error details>>",
-				"error_type", fmt.Sprintf("%T", strErr),
-				"stream_id", stream.StreamID(),
-				"remote", strErr.Remote,
-				"error_code", strErr.ErrorCode,
-				"error_msg", strErr.Error(),
-			)
 			strErrCode := quic.StreamErrorCode(InternalAnnounceErrorCode)
 			stream.CancelRead(strErrCode)
 
@@ -398,25 +310,15 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		stream.CancelWrite(strErrCode)
 		stream.CancelRead(strErrCode)
 
-		return nil, err
+		return nil, fmt.Errorf("failed to send ANNOUNCE_PLEASE message: %w", err)
 	}
 
 	var aim message.AnnounceInitMessage
 	err = aim.Decode(stream)
 	if err != nil {
-		streamLogger.Error("failed to read ANNOUNCE_INIT message",
-			"error", err,
-		)
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
 			// Helpful debug logging for interop investigation: show exact stream error details
-			streamLogger.Debug("<<ANNOUNCE_READ_ERROR: stream error details>>",
-				"error_type", fmt.Sprintf("%T", strErr),
-				"stream_id", stream.StreamID(),
-				"remote", strErr.Remote,
-				"error_code", strErr.ErrorCode,
-				"error_msg", strErr.Error(),
-			)
 			strErrCode := quic.StreamErrorCode(InternalAnnounceErrorCode)
 			stream.CancelRead(strErrCode)
 
@@ -425,7 +327,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 			}
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("failed to read ANNOUNCE_INIT message: %w", err)
 	}
 
 	return newAnnouncementReader(stream, prefix, aim.Suffixes), nil
@@ -450,13 +352,10 @@ func (sess *Session) handleBiStreams() {
 	for { // Accept a bidirectional stream
 		stream, err := sess.conn.AcceptStream(sess.ctx)
 		if err != nil {
-			sess.logger.Error("moq: failed to accept bidirectional stream",
-				"error", err,
-			)
 			return
 		}
 
-		streamLogger := sess.logger.With("stream_id", stream.StreamID())
+		streamLogger := sess.logger
 
 		// Handle the stream
 		go sess.processBiStream(stream, streamLogger)
@@ -467,12 +366,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 	var streamType message.StreamType
 	err := streamType.Decode(stream)
 	if err != nil {
-		streamLogger.Error("failed to decode stream type message",
-			"error", err,
-		)
-		if err2 := sess.CloseWithError(ProtocolViolationErrorCode, err.Error()); err2 != nil {
-			streamLogger.Error("failed to close session after stream decode error", "error", err2)
-		}
+		_ = sess.CloseWithError(ProtocolViolationErrorCode, err.Error())
 		return
 	}
 
@@ -481,22 +375,13 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		var apm message.AnnouncePleaseMessage
 		err := apm.Decode(stream)
 		if err != nil {
-			streamLogger.Error("failed to decode ANNOUNCE_PLEASE message",
-				"error", err,
-			)
 			cancelStreamWithError(stream, quic.StreamErrorCode(InternalAnnounceErrorCode))
 			return
 		}
 
 		prefix := apm.TrackPrefix
 
-		annLogger := streamLogger.With(
-			"track_prefix", prefix,
-		)
-
 		annstr := newAnnouncementWriter(stream, prefix)
-
-		annLogger.Debug("accepted an announce stream")
 
 		sess.mux.serveAnnouncements(annstr)
 
@@ -506,9 +391,6 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		var sm message.SubscribeMessage
 		err := sm.Decode(stream)
 		if err != nil {
-			streamLogger.Error("failed to decode SUBSCRIBE message",
-				"error", err,
-			)
 			cancelStreamWithError(stream, quic.StreamErrorCode(InternalSubscribeErrorCode))
 			return
 		}
@@ -517,17 +399,8 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		config := &TrackConfig{
 			TrackPriority: TrackPriority(sm.TrackPriority),
 		}
-		// Create a subscription-specific logger
-		subLogger := streamLogger.With(
-			"subscribe_id", sm.SubscribeID,
-			"broadcast_path", sm.BroadcastPath,
-			"track_name", sm.TrackName,
-			"config", config.String(),
-		)
 
 		substr := newReceiveSubscribeStream(SubscribeID(sm.SubscribeID), stream, config)
-
-		subLogger.Debug("accepted a subscribe stream")
 
 		track := newTrackWriter(
 			BroadcastPath(sm.BroadcastPath), TrackName(sm.TrackName),
@@ -540,12 +413,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		// Ensure the track writer is closed when done
 		track.Close()
 	default:
-		streamLogger.Error("unknown bidirectional stream type",
-			"stream_type", streamType,
-		)
-		if err := sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown bidirectional stream type: %v", streamType)); err != nil {
-			streamLogger.Error("failed to close session for unknown bidirectional stream type", "error", err)
-		}
+		_ = sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown bidirectional stream type: %v", streamType))
 		return
 	}
 }
@@ -557,13 +425,10 @@ func (sess *Session) handleUniStreams() {
 		 */
 		stream, err := sess.conn.AcceptUniStream(sess.ctx)
 		if err != nil {
-			sess.logger.Debug("failed to accept unidirectional stream, handler stopping",
-				"error", err,
-			)
 			return
 		}
 
-		streamLogger := sess.logger.With("stream_id", stream.StreamID())
+		streamLogger := sess.logger
 
 		// Handle the stream
 		go sess.processUniStream(stream, streamLogger)
@@ -577,9 +442,6 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 	var streamType message.StreamType
 	err := streamType.Decode(stream)
 	if err != nil {
-		streamLogger.Error("failed to decode stream type message",
-			"error", err,
-		)
 		return
 	}
 
@@ -589,39 +451,20 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 		var gm message.GroupMessage
 		err := gm.Decode(stream)
 		if err != nil {
-			streamLogger.Error("failed to decode group message",
-				"error", err,
-			)
 			return
 		}
 
-		// Create a group-specific logger
-		groupLogger := streamLogger.With(
-			"subscribe_id", gm.SubscribeID,
-			"group_sequence", gm.GroupSequence,
-		)
-
 		track, ok := sess.trackReaders[SubscribeID(gm.SubscribeID)]
 		if !ok {
-			groupLogger.Warn("received group for unknown subscription")
 			stream.CancelRead(quic.StreamErrorCode(InvalidSubscribeIDErrorCode))
 			return
 		}
 
-		groupLogger.Debug("accepted group stream")
-		groupLogger.Info("enqueueing group to trackReader", "subscribe_id", gm.SubscribeID, "group_sequence", gm.GroupSequence, "stream_id", stream.StreamID())
-
 		// Enqueue the receiver
 		track.enqueueGroup(GroupSequence(gm.GroupSequence), stream)
 	default:
-		streamLogger.Error("unknown unidirectional stream type received",
-			"stream_type", streamType,
-		)
-
 		// Terminate the session
-		if err := sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown unidirectional stream type: %v", streamType)); err != nil {
-			streamLogger.Error("failed to close session for unknown unidirectional stream type", "error", err)
-		}
+		_ = sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown unidirectional stream type: %v", streamType))
 		return
 	}
 }
@@ -631,11 +474,6 @@ func (s *Session) addTrackWriter(id SubscribeID, writer *TrackWriter) {
 	defer s.trackWriterMapLocker.Unlock()
 
 	s.trackWriters[id] = writer
-	s.logger.Debug("added track writer",
-		"subscribe_id", id,
-		"track_path", writer.BroadcastPath,
-		"track_name", writer.TrackName,
-	)
 }
 
 func (s *Session) removeTrackWriter(id SubscribeID) {

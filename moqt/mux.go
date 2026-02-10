@@ -2,7 +2,6 @@ package moqt
 
 import (
 	"context"
-	"log/slog"
 	"sync"
 )
 
@@ -115,16 +114,10 @@ func (mux *TrackMux) removeHandler(handler *announcedTrackHandler) {
 
 func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) {
 	if announcement == nil {
-		slog.Debug("[TrackMux] Announce called with nil Announcement")
-		return
+		panic("[TrackMux] nil announcement")
 	}
 
-	path := announcement.path
-
 	if !announcement.IsActive() {
-		slog.Debug("[TrackMux] announcement is not active",
-			"path", path,
-		)
 		return
 	}
 
@@ -186,9 +179,7 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 				// Close the AW to signal the writer to cleanup and close its channel.
 				go func(a *AnnouncementWriter) {
 					// Use InternalAnnounceErrorCode to indicate an internal error condition
-					if err := a.CloseWithError(InternalAnnounceErrorCode); err != nil {
-						slog.Error("failed to close AnnouncementWriter (internal) in goroutine", "error", err)
-					}
+					_ = a.CloseWithError(InternalAnnounceErrorCode)
 				}(ac.aw)
 			}
 		}
@@ -275,7 +266,6 @@ func (mux *TrackMux) findTrackHandler(path BroadcastPath) *announcedTrackHandler
 
 	// Rare case: treat typed-nil handler functions as absent
 	if hf, ok := ath.TrackHandler.(TrackHandlerFunc); ok && hf == nil {
-		slog.Warn("mux: handler function is nil for path", "path", path)
 		return nil
 	}
 
@@ -286,7 +276,6 @@ func (mux *TrackMux) findTrackHandler(path BroadcastPath) *announcedTrackHandler
 // It finds the handler for the path and delegates the serving to it.
 func (mux *TrackMux) serveTrack(tw *TrackWriter) {
 	if tw == nil {
-		slog.Error("mux: nil track writer")
 		return
 	}
 
@@ -295,7 +284,6 @@ func (mux *TrackMux) serveTrack(tw *TrackWriter) {
 	// Use findTrackHandler for consistent lookup with optimized locking
 	ath := mux.findTrackHandler(path)
 	if ath == nil {
-		slog.Debug("mux: no handler found for path", "path", path)
 		tw.CloseWithError(TrackNotFoundErrorCode)
 		return
 	}
@@ -313,16 +301,11 @@ func (mux *TrackMux) serveTrack(tw *TrackWriter) {
 // It registers the AnnouncementWriter and sends announcements for matching tracks.
 func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 	if aw == nil {
-		slog.Error("mux: nil announcement writer")
 		return
 	}
 
-	slog.Debug("serveAnnouncements start", "prefix", aw.prefix)
-
 	if !isValidPrefix(aw.prefix) {
-		if err := aw.CloseWithError(InvalidPrefixErrorCode); err != nil {
-			slog.Error("failed to close AnnouncementWriter due to invalid prefix", "error", err)
-		}
+		_ = aw.CloseWithError(InvalidPrefixErrorCode)
 		return
 	}
 
@@ -415,10 +398,7 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 
 	err := aw.init(actives)
 	if err != nil {
-		slog.Error("[TrackMux] failed to initialize announcement writer", "error", err)
-		if err2 := aw.CloseWithError(InternalAnnounceErrorCode); err2 != nil {
-			slog.Error("failed to close AnnouncementWriter after init failure", "error", err2)
-		}
+		_ = aw.CloseWithError(InternalAnnounceErrorCode)
 		return
 	}
 
@@ -430,9 +410,7 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 				return
 			}
 			if err := aw.SendAnnouncement(ann); err != nil {
-				if err2 := aw.CloseWithError(InternalAnnounceErrorCode); err2 != nil {
-					slog.Error("failed to close AnnouncementWriter after SendAnnouncement error", "error", err2)
-				}
+				_ = aw.CloseWithError(InternalAnnounceErrorCode)
 				return
 			}
 		case <-aw.Context().Done():
