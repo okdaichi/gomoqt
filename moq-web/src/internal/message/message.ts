@@ -10,6 +10,7 @@ import {
 	MAX_VARINT1,
 	MAX_VARINT2,
 	MAX_VARINT4,
+	MAX_VARINT8,
 	stringLen,
 	varintLen,
 } from "../webtransport/len.ts";
@@ -84,6 +85,9 @@ export async function writeVarint(
 ): Promise<[number, Error | undefined]> {
 	if (num < 0) {
 		return [0, new Error("Varint cannot be negative")];
+	}
+	if (!Number.isFinite(num) || num > MAX_VARINT8) {
+		return [0, new RangeError("Value exceeds maximum varint size")];
 	}
 
 	let buf: Uint8Array;
