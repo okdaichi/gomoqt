@@ -14,10 +14,6 @@ type rawQuicStream struct {
 	stream *quicgo_quicgo.Stream
 }
 
-func (wrapper rawQuicStream) StreamID() quic.StreamID {
-	return quic.StreamID(wrapper.stream.StreamID())
-}
-
 func (wrapper rawQuicStream) Read(b []byte) (int, error) {
 	return wrapper.stream.Read(b)
 }
@@ -63,9 +59,6 @@ type rawQuicReceiveStream struct {
 	stream *quicgo_quicgo.ReceiveStream
 }
 
-func (wrapper rawQuicReceiveStream) StreamID() quic.StreamID {
-	return quic.StreamID(wrapper.stream.StreamID())
-}
 func (wrapper rawQuicReceiveStream) Read(b []byte) (int, error) {
 	return wrapper.stream.Read(b)
 }
@@ -86,10 +79,6 @@ var _ quic.SendStream = (*rawQuicSendStream)(nil)
 
 type rawQuicSendStream struct {
 	stream *quicgo_quicgo.SendStream
-}
-
-func (wrapper rawQuicSendStream) StreamID() quic.StreamID {
-	return quic.StreamID(wrapper.stream.StreamID())
 }
 
 func (wrapper rawQuicSendStream) Write(b []byte) (int, error) {

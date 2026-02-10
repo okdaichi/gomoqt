@@ -14,10 +14,6 @@ type streamWrapper struct {
 	stream *quicgo_webtransportgo.Stream
 }
 
-func (wrapper streamWrapper) StreamID() quic.StreamID {
-	return quic.StreamID(wrapper.stream.StreamID())
-}
-
 func (wrapper streamWrapper) Read(b []byte) (int, error) {
 	return wrapper.stream.Read(b)
 }
@@ -61,9 +57,6 @@ type receiveStreamWrapper struct {
 	stream *quicgo_webtransportgo.ReceiveStream
 }
 
-func (wrapper receiveStreamWrapper) StreamID() quic.StreamID {
-	return quic.StreamID(wrapper.stream.StreamID())
-}
 func (wrapper receiveStreamWrapper) Read(b []byte) (int, error) {
 	return wrapper.stream.Read(b)
 }
@@ -81,10 +74,6 @@ func (wrapper receiveStreamWrapper) SetReadDeadline(time time.Time) error {
  */
 type sendStreamWrapper struct {
 	stream *quicgo_webtransportgo.SendStream
-}
-
-func (wrapper sendStreamWrapper) StreamID() quic.StreamID {
-	return quic.StreamID(wrapper.stream.StreamID())
 }
 
 func (wrapper sendStreamWrapper) Write(b []byte) (int, error) {

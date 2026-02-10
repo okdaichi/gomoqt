@@ -21,9 +21,6 @@ type SendStream interface {
 	io.Writer
 	io.Closer
 
-	// StreamID returns the stream's unique identifier.
-	StreamID() StreamID
-
 	// CancelWrite cancels writing with the given error code.
 	CancelWrite(StreamErrorCode)
 
@@ -37,9 +34,6 @@ type SendStream interface {
 // ReceiveStream is a unidirectional QUIC stream for receiving data.
 type ReceiveStream interface {
 	io.Reader
-
-	// StreamID returns the stream's unique identifier.
-	StreamID() StreamID
 
 	// CancelRead cancels reading with the given error code.
 	CancelRead(StreamErrorCode)
