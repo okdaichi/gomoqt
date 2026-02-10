@@ -7,6 +7,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 
+## [v0.10.2] - 2026-02-10
+
+### Fixed
+
+- **moq-web: Added validation for maximum varint size in writeVarint function**
+  - Added check for `Infinity` and values exceeding `MAX_VARINT8`
+  - Now properly returns `RangeError` for invalid values instead of attempting to write them
+  - Ensures consistent error handling for varint encoding edge cases
+
+### Changed
+
+- **moqt: Improved announcement handling and server closure safety**
+  - Enhanced nil checks for context in AnnouncementReader, AnnouncementWriter, receiveSubscribeStream, and sendSubscribeStream
+  - Improved announcement handling logic
+  - Enhanced server closure safety mechanisms
+
+- **moqt: Code refactoring and cleanup**
+  - Simplified buffer initialization in message handling
+  - Improved logging in moqt package
+  - Removed StreamID method from stream wrappers for cleaner API
+  - Removed config parameter from acceptSessionStream function
+
+- **Dependencies: Updated QUIC and WebTransport libraries**
+  - Updated `github.com/quic-go/quic-go` to v0.59.0
+  - Updated `github.com/quic-go/webtransport-go` to v0.10.0
+
+
 ## [v0.10.1] - 2026-01-04
 
 ### Fixed
