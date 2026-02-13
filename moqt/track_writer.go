@@ -132,6 +132,25 @@ func (s *TrackWriter) OpenGroup() (*GroupWriter, error) {
 	return s.openGroupWithSequence(seq)
 }
 
+// OpenGroupAt opens a new group with the specified sequence number.
+// It advances the internal next-sequence counter to at least seq+1 so that
+// subsequent OpenGroup calls will not produce a duplicate sequence.
+func (s *TrackWriter) OpenGroupAt(seq GroupSequence) (*GroupWriter, error) {
+	// Advance the internal counter to avoid collisions with subsequent
+	// OpenGroup calls. CAS loop ensures correctness under concurrency.
+	for {
+		cur := s.groupSequence.Load()
+		next := max(cur, uint64(seq)+1)
+		if next == cur {
+			break
+		}
+		if s.groupSequence.CompareAndSwap(cur, next) {
+			break
+		}
+	}
+	return s.openGroupWithSequence(seq)
+}
+
 // SkipGroups skips the next n group sequences without opening them.
 // This is useful when you need to intentionally create gaps in the sequence,
 // for example, when dropping groups due to packet loss or priority decisions.
