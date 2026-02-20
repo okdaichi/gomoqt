@@ -12,13 +12,7 @@ import (
 // as defined in github.com/quic-go/webtransport-go/protocol.go.
 const settingsEnableWebtransport uint64 = 0x2b603742
 
-// TestNewServer_ConnContextIsSet is a regression test for the bug introduced
-// when webtransport-go changed Server.H3 from a value type to *http3.Server.
-//
-// webtransport-go v0.10.0 requires ConfigureHTTP3Server to be called on H3 so
-// that H3.ConnContext injects the *quic.Conn into every HTTP/3 request context.
-// Without it, Server.Upgrade() cannot find the connection and returns:
-//   "webtransport: missing QUIC connection"
+// Ensure ConfigureHTTP3Server was applied (ConnContext must be non-nil).
 func TestNewServer_ConnContextIsSet(t *testing.T) {
 	srv := NewServer(nil)
 

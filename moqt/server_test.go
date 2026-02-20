@@ -1981,14 +1981,7 @@ func TestServer_GoAway(t *testing.T) {
 // Regression tests for webtransport-go v0.10.0 compatibility
 // ---------------------------------------------------------------------------
 
-// TestServer_ListenAndServe_SetsWebTransportQUICFlags verifies that
-// ListenAndServe automatically enables the QUIC flags required by
-// webtransport-go v0.10.0's ServeQUICConn:
-//   - EnableDatagrams
-//   - EnableStreamResetPartialDelivery
-//
-// Without these, every WebTransport connection fails immediately at the
-// ServeQUICConn level before any HTTP/3 request is processed.
+// Ensure ListenAndServe enables QUIC flags required by WebTransport.
 func TestServer_ListenAndServe_SetsWebTransportQUICFlags(t *testing.T) {
 	var capturedConfig *quic.Config
 
@@ -2010,15 +2003,13 @@ func TestServer_ListenAndServe_SetsWebTransportQUICFlags(t *testing.T) {
 		"EnableStreamResetPartialDelivery must be true for WebTransport (ServeQUICConn requirement)")
 }
 
-// TestServer_ListenAndServe_DoesNotMutateOriginalQUICConfig verifies that
-// ListenAndServe clones the caller-supplied QUICConfig before mutating it,
-// so the original struct is left unchanged.
+// Ensure ListenAndServe clones the provided QUICConfig before modifying it.
 func TestServer_ListenAndServe_DoesNotMutateOriginalQUICConfig(t *testing.T) {
 	original := &quic.Config{EnableDatagrams: false}
 
 	server := &Server{
-		Addr:      ":0",
-		TLSConfig: &tls.Config{},
+		Addr:       ":0",
+		TLSConfig:  &tls.Config{},
 		QUICConfig: original,
 		ListenFunc: func(_ string, _ *tls.Config, _ *quic.Config) (quic.Listener, error) {
 			return nil, errors.New("stop")
@@ -2031,10 +2022,7 @@ func TestServer_ListenAndServe_DoesNotMutateOriginalQUICConfig(t *testing.T) {
 		"original QUICConfig.EnableDatagrams must not be mutated by ListenAndServe")
 }
 
-// TestServer_Close_DoesNotDeadlockWhenListenerConcurrent is a regression test
-// for the race condition where Close() cleared s.listeners before calling
-// listenerGroup.Wait(). If removeListener fired after the map was nilled out,
-// it could not find its entry to call Done(), causing Wait() to block forever.
+// Regression: Close() must not deadlock when a listener goroutine runs concurrently.
 func TestServer_Close_DoesNotDeadlockWhenListenerConcurrent(t *testing.T) {
 	server := &Server{Addr: ":8080"}
 

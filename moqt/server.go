@@ -470,10 +470,7 @@ func (s *Server) Close() error {
 		}
 	}
 
-	// Wait for all listener goroutines to exit before clearing the map.
-	// removeListener looks up the listener in the map to decide whether to call Done();
-	// clearing the map first would cause Done() to be skipped, leaving the WaitGroup
-	// permanently at a non-zero count.
+	// Wait for listener goroutines to exit so removeListener can call Done().
 	s.listenerGroup.Wait()
 
 	// Clear listeners map
@@ -550,8 +547,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	// Wait for all listener goroutines to exit before clearing the map (same
-	// race as in Close: removeListener must still find the entry to call Done()).
+	// Wait for listener goroutines to exit so removeListener can call Done().
 	s.listenerGroup.Wait()
 
 	// Clear listeners map

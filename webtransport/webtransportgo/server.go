@@ -18,11 +18,8 @@ func NewServer(checkOrigin func(r *http.Request) bool) webtransport.Server {
 		H3:          &http3.Server{},
 		CheckOrigin: checkOrigin,
 	}
-	// ConfigureHTTP3Server injects the *quic.Conn into every HTTP/3 request
-	// context via H3.ConnContext. Without it, Server.Upgrade() cannot retrieve
-	// the QUIC connection and returns "webtransport: missing QUIC connection".
-	// It also sets H3.AdditionalSettings[settingsEnableWebtransport]=1 and
-	// H3.EnableDatagrams=true which are required by the WebTransport spec.
+	// Apply HTTP/3 settings required for WebTransport and install ConnContext
+	// so Upgrade() can access the underlying *quic.Conn.
 	quicgo_webtransportgo.ConfigureHTTP3Server(wtserver.H3)
 
 	return wrapServer(wtserver)
