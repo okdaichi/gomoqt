@@ -1976,3 +1976,101 @@ func TestServer_GoAway(t *testing.T) {
 		server.goAway()
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Regression tests for webtransport-go v0.10.0 compatibility
+// ---------------------------------------------------------------------------
+
+// TestServer_ListenAndServe_SetsWebTransportQUICFlags verifies that
+// ListenAndServe automatically enables the QUIC flags required by
+// webtransport-go v0.10.0's ServeQUICConn:
+//   - EnableDatagrams
+//   - EnableStreamResetPartialDelivery
+//
+// Without these, every WebTransport connection fails immediately at the
+// ServeQUICConn level before any HTTP/3 request is processed.
+func TestServer_ListenAndServe_SetsWebTransportQUICFlags(t *testing.T) {
+	var capturedConfig *quic.Config
+
+	server := &Server{
+		Addr:      ":0",
+		TLSConfig: &tls.Config{},
+		ListenFunc: func(_ string, _ *tls.Config, quicConf *quic.Config) (quic.Listener, error) {
+			capturedConfig = quicConf
+			return nil, errors.New("stop")
+		},
+	}
+
+	_ = server.ListenAndServe()
+
+	require.NotNil(t, capturedConfig, "ListenFunc must receive a non-nil QUICConfig")
+	assert.True(t, capturedConfig.EnableDatagrams,
+		"EnableDatagrams must be true for WebTransport (ServeQUICConn requirement)")
+	assert.True(t, capturedConfig.EnableStreamResetPartialDelivery,
+		"EnableStreamResetPartialDelivery must be true for WebTransport (ServeQUICConn requirement)")
+}
+
+// TestServer_ListenAndServe_DoesNotMutateOriginalQUICConfig verifies that
+// ListenAndServe clones the caller-supplied QUICConfig before mutating it,
+// so the original struct is left unchanged.
+func TestServer_ListenAndServe_DoesNotMutateOriginalQUICConfig(t *testing.T) {
+	original := &quic.Config{EnableDatagrams: false}
+
+	server := &Server{
+		Addr:      ":0",
+		TLSConfig: &tls.Config{},
+		QUICConfig: original,
+		ListenFunc: func(_ string, _ *tls.Config, _ *quic.Config) (quic.Listener, error) {
+			return nil, errors.New("stop")
+		},
+	}
+
+	_ = server.ListenAndServe()
+
+	assert.False(t, original.EnableDatagrams,
+		"original QUICConfig.EnableDatagrams must not be mutated by ListenAndServe")
+}
+
+// TestServer_Close_DoesNotDeadlockWhenListenerConcurrent is a regression test
+// for the race condition where Close() cleared s.listeners before calling
+// listenerGroup.Wait(). If removeListener fired after the map was nilled out,
+// it could not find its entry to call Done(), causing Wait() to block forever.
+func TestServer_Close_DoesNotDeadlockWhenListenerConcurrent(t *testing.T) {
+	server := &Server{Addr: ":8080"}
+
+	started := make(chan struct{})
+	mockListener := &MockEarlyListener{}
+	mockListener.On("Addr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	mockListener.On("Accept", mock.Anything).
+		Return(nil, context.Canceled).
+		Run(func(mock.Arguments) {
+			select {
+			case <-started:
+			default:
+				close(started)
+			}
+		})
+	mockListener.On("Close").Return(nil)
+
+	go func() { _ = server.ServeQUICListener(mockListener) }()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("ServeQUICListener did not start within 1s")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		server.Close()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// pass — Close() returned without deadlocking
+	case <-time.After(3 * time.Second):
+		t.Fatal("Close() deadlocked: listenerGroup.Wait() never returned " +
+			"(listeners map was likely cleared before listenerGroup.Wait)")
+	}
+}
