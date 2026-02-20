@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 
+## [v0.10.5] - 2026-02-20
+
+### Fixed
+
+- **webtransport/webtransportgo:** call `ConfigureHTTP3Server(wtserver.H3)` in `NewServer()`.  
+  Without this, `H3.ConnContext` is `nil` and `Server.Upgrade()` cannot retrieve the QUIC connection from the HTTP request context, returning `"webtransport: missing QUIC connection"` on every WebTransport upgrade attempt.  
+  `ConfigureHTTP3Server` performs three necessary steps:
+  - sets `H3.AdditionalSettings[settingsEnableWebtransport] = 1` (WebTransport protocol negotiation)
+  - sets `H3.EnableDatagrams = true` (HTTP/3-level datagram support)
+  - installs `H3.ConnContext` to inject `*quic.Conn` into each HTTP/3 request context so `Upgrade` can retrieve it
+
+
 ## [v0.10.4] - 2026-02-20
 
 ### Fixed
@@ -314,7 +326,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Comprehensive test coverage
 - MIT License
 
-[Unreleased]: https://github.com/okdaichi/gomoqt/compare/v0.10.3...HEAD
+[Unreleased]: https://github.com/okdaichi/gomoqt/compare/v0.10.5...HEAD
+[v0.10.5]: https://github.com/okdaichi/gomoqt/compare/v0.10.4...v0.10.5
 [v0.10.4]: https://github.com/okdaichi/gomoqt/compare/v0.10.3...v0.10.4
 [v0.10.3]: https://github.com/okdaichi/gomoqt/compare/v0.10.2...v0.10.3
 [v0.9.0]: https://github.com/okdaichi/gomoqt/compare/v0.8.0...v0.9.0
