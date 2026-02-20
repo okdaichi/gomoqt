@@ -3,7 +3,6 @@ module github.com/okdaichi/gomoqt
 go 1.25.0
 
 require (
-	github.com/magefile/mage v1.15.0
 	github.com/quic-go/quic-go v0.59.0
 	github.com/quic-go/webtransport-go v0.10.0
 	github.com/stretchr/testify v1.11.1
