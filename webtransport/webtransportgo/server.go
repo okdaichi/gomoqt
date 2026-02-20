@@ -9,11 +9,13 @@ import (
 	"github.com/okdaichi/gomoqt/quic"
 	"github.com/okdaichi/gomoqt/webtransport"
 	quicgo_quicgo "github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
 )
 
 func NewServer(checkOrigin func(r *http.Request) bool) webtransport.Server {
 	wtserver := &quicgo_webtransportgo.Server{
+		H3:          &http3.Server{},
 		CheckOrigin: checkOrigin,
 	}
 

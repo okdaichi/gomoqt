@@ -328,7 +328,7 @@ func (s *Server) ListenAndServe() error {
 
 	// Configure TLS for QUIC
 	if s.TLSConfig == nil {
-		return errors.New("configuration for TLS is required for QUIC")
+		return fmt.Errorf("configuration for TLS is required for QUIC")
 	}
 
 	// Clone the TLS config to avoid modifying the original
@@ -339,12 +339,22 @@ func (s *Server) ListenAndServe() error {
 		tlsConfig.NextProtos = []string{NextProtoMOQ}
 	}
 
+	// Ensure WebTransport required QUIC flags are enabled.
+	var quicConf *quic.Config
+	if s.QUICConfig == nil {
+		quicConf = &quic.Config{}
+	} else {
+		quicConf = s.QUICConfig.Clone()
+	}
+	quicConf.EnableDatagrams = true
+	quicConf.EnableStreamResetPartialDelivery = true
+
 	var ln quic.Listener
 	var err error
 	if s.ListenFunc != nil {
-		ln, err = s.ListenFunc(s.Addr, tlsConfig, s.QUICConfig)
+		ln, err = s.ListenFunc(s.Addr, tlsConfig, quicConf)
 	} else {
-		ln, err = quicgo.ListenAddrEarly(s.Addr, tlsConfig, s.QUICConfig)
+		ln, err = quicgo.ListenAddrEarly(s.Addr, tlsConfig, quicConf)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to start QUIC listener at %s: %w", s.Addr, err)
@@ -376,11 +386,22 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 		NextProtos:   []string{NextProtoMOQ, webtransport.NextProtoH3},
 	}
 
+	// Ensure WebTransport required QUIC flags are enabled.
+	quicConf := s.QUICConfig
+	if quicConf == nil {
+		quicConf = &quic.Config{}
+	} else {
+		clone := *quicConf
+		quicConf = &clone
+	}
+	quicConf.EnableDatagrams = true
+	quicConf.EnableStreamResetPartialDelivery = true
+
 	var ln quic.Listener
 	if s.ListenFunc != nil {
-		ln, err = s.ListenFunc(s.Addr, tlsConfig.Clone(), s.QUICConfig)
+		ln, err = s.ListenFunc(s.Addr, tlsConfig.Clone(), quicConf)
 	} else {
-		ln, err = quicgo.ListenAddrEarly(s.Addr, tlsConfig.Clone(), s.QUICConfig)
+		ln, err = quicgo.ListenAddrEarly(s.Addr, tlsConfig.Clone(), quicConf)
 	}
 	if err != nil {
 		return err
@@ -434,11 +455,6 @@ func (s *Server) Close() error {
 
 	<-s.doneChan
 
-	// Clear listeners map
-	s.listenerMu.Lock()
-	s.listeners = nil
-	s.listenerMu.Unlock()
-
 	// Close WebTransport server (guard against panics from underlying implementations)
 	if s.wtServer != nil {
 		done := make(chan struct{})
@@ -454,8 +470,16 @@ func (s *Server) Close() error {
 		}
 	}
 
-	// Wait for all listeners to close
+	// Wait for all listener goroutines to exit before clearing the map.
+	// removeListener looks up the listener in the map to decide whether to call Done();
+	// clearing the map first would cause Done() to be skipped, leaving the WaitGroup
+	// permanently at a non-zero count.
 	s.listenerGroup.Wait()
+
+	// Clear listeners map
+	s.listenerMu.Lock()
+	s.listeners = nil
+	s.listenerMu.Unlock()
 
 	return nil
 }
@@ -511,11 +535,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		<-s.doneChan
 	}
 
-	// Clear listeners map
-	s.listenerMu.Lock()
-	s.listeners = nil
-	s.listenerMu.Unlock()
-
 	// Close WebTransport server (guard against panics from underlying implementations)
 	if s.wtServer != nil {
 		done := make(chan struct{})
@@ -531,8 +550,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	// Wait for all listeners to close
+	// Wait for all listener goroutines to exit before clearing the map (same
+	// race as in Close: removeListener must still find the entry to call Done()).
 	s.listenerGroup.Wait()
+
+	// Clear listeners map
+	s.listenerMu.Lock()
+	s.listeners = nil
+	s.listenerMu.Unlock()
 
 	return nil
 }
