@@ -424,7 +424,7 @@ func TestServer_AcceptSession(t *testing.T) {
 
 			ctx := context.Background()
 
-			sessStream, err := acceptSessionStream(ctx, mockConn, slog.Default())
+			sessStream, err := acceptSessionStream(ctx, mockConn)
 			if tt.expectOK {
 				assert.NoError(t, err, "acceptSessionStream() should not return error")
 				assert.NotNil(t, sessStream, "acceptSessionStream() should return session stream")
@@ -460,7 +460,7 @@ func TestServer_AcceptSession_AcceptStreamError(t *testing.T) {
 
 			ctx := context.Background()
 
-			sessStream, err := acceptSessionStream(ctx, mockConn, slog.Default())
+			sessStream, err := acceptSessionStream(ctx, mockConn)
 
 			assert.Error(t, err, "acceptSessionStream() should return an error")
 			assert.Contains(t, err.Error(), tt.expectErr.Error(), "acceptSessionStream() should return wrapped accept error")
