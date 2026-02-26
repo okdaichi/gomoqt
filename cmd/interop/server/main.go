@@ -78,7 +78,7 @@ func main() {
 		sess, err := moqt.Accept(w, r, mux)
 		if err != nil {
 			fmt.Printf("...failed\n  Error: %v\n", err)
-			_ = w.Reject(moqt.ProtocolViolationErrorCode)
+			w.Reject(moqt.ProtocolViolationErrorCode)
 			return
 		}
 		fmt.Println("...ok")
