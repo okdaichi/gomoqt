@@ -244,9 +244,6 @@ func openSessionStream(
 	if request == nil {
 		request = &SetupRequest{}
 	}
-	if request.ClientExtensions == nil {
-		request.ClientExtensions = NewExtension()
-	}
 
 	// Send STREAM_TYPE message
 	err = message.StreamTypeSession.Encode(stream)
@@ -258,11 +255,16 @@ func openSessionStream(
 	for i, v := range request.Versions {
 		versions[i] = uint64(v)
 	}
+	var params parameters
+	if request.ClientExtensions != nil {
+		params = request.ClientExtensions.parameters
+	}
 	// Send a SESSION_CLIENT message
 	scm := message.SessionClientMessage{
 		SupportedVersions: versions,
-		Parameters:        request.ClientExtensions.parameters,
+		Parameters:        params,
 	}
+
 	err = scm.Encode(stream)
 	if err != nil {
 		return nil, err
