@@ -222,7 +222,7 @@ func (s *Server) HandleWebTransport(w http.ResponseWriter, r *http.Request) erro
 	// Use the path in the HTTP request as the MoQ setup request
 	req.Path = r.URL.Path
 
-	responseWriter := newResponseWriter(conn, rsp, s)
+	responseWriter := newResponseWriter(conn, rsp, s, req.Versions)
 
 	return s.setupAndServe(responseWriter, req)
 }
@@ -241,7 +241,7 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 		return fmt.Errorf("moq: failed to accept session stream: %w", err)
 	}
 
-	w := newResponseWriter(conn, rsp, s)
+	w := newResponseWriter(conn, rsp, s, req.Versions)
 
 	return s.setupAndServe(w, req)
 }

@@ -318,7 +318,7 @@ func TestSessionStream_Reject(t *testing.T) {
 		stream: mockStream,
 	}
 	resp := &response{sessionStream: sessStr}
-	w := newResponseWriter(mockConn, resp, nil)
+	w := newResponseWriter(mockConn, resp, nil, nil) // no client versions in this test
 	w.Reject(SessionErrorCode(1))
 
 	mockStream.AssertExpectations(t)

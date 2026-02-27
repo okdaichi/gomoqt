@@ -118,11 +118,12 @@ func (ss *sessionStream) closeWithError(code SessionErrorCode) {
 
 var _ SetupResponseWriter = (*responseWriter)(nil)
 
-func newResponseWriter(conn quic.Connection, rsp *response, server *Server) *responseWriter {
+func newResponseWriter(conn quic.Connection, rsp *response, server *Server, clientVersions []Version) *responseWriter {
 	return &responseWriter{
-		response: rsp,
-		conn:     conn,
-		server:   server,
+		response:       rsp,
+		conn:           conn,
+		server:         server,
+		clientVersions: clientVersions,
 	}
 }
 
