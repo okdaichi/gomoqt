@@ -100,29 +100,27 @@ func main() {
 		// panics on close.
 		doneCh := make(chan struct{}, 1)
 		mux.PublishFunc(context.Background(), path, func(tw *moqt.TrackWriter) {
-			fmt.Println("Serving a track: " + string(path) + "," + string(tw.TrackName))
+			fmt.Printf("Serving a track: %s,%s\n", string(path), string(tw.TrackName))
 
-			fmt.Print("Opening group...")
 			group, err := tw.OpenGroup()
 			if err != nil {
-				fmt.Printf("...failed\n  Error: %v\n", err)
+				fmt.Printf("Opening group... failed\n  Error: %v\n", err)
 				return
 			}
-			fmt.Println("...ok")
+			fmt.Println("Opening group... ok")
 
 			defer group.Close()
 
-			fmt.Print("Writing frame to client...")
 			frame := moqt.NewFrame(1024)
 			_, _ = frame.Write([]byte("HELLO"))
 
 			err = group.WriteFrame(frame)
 			if err != nil {
-				fmt.Printf("...failed\n  Error: %v\n", err)
+				fmt.Printf("Writing frame to client... failed\n  Error: %v\n", err)
 				return
 			}
 
-			fmt.Println("...ok")
+			fmt.Println("Writing frame to client... ok")
 
 			// Close the group to send FIN.
 			group.Close()
