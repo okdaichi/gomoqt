@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.10.7] - 2026-02-27
+
+### Added
+
+- Non-root `appuser` and workspace ownership in Dockerfile.
+- Tests for `buildTSClientCmd` and error handling when `moq-web` is missing.
+
+### Changed
+
+- Wired client-supported versions through `responseWriter` and updated constructors/tests.
+- Revamped `session_stream` channel-closing logic to avoid races.
+- Dropped misleading `moq-web` fallback in interop command.
+- Updated multiple README documents across languages.
+- Misc test adjustments and ts client refactor.
+
+### Fixed
+
+- mkcert invocation now fails build on error.
+- Deno install owned by non-root.
+- Several server and session bugs surfaced by new tests.
+
 
 ## [v0.10.5] - 2026-02-20
 
