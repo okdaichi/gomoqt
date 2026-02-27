@@ -364,10 +364,10 @@ func regenerateCerts() error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("...failed\n  Error: %v\n", err)
+		fmt.Printf("failed\n  Error: %v\n", err)
 		return err
 	}
-	fmt.Println("...ok")
+	fmt.Println("ok")
 	return nil
 }
 
