@@ -10,7 +10,35 @@ scope(async (defer) => {
 
 	const mux = new TrackMux();
 
-	// Channel to signal that the publish handler has completed
+	// basic prefixed log functions
+	function info(msg: string, ...args: any[]) {
+		console.log("[Client]", msg, ...args);
+	}
+	function debug(msg: string, ...args: any[]) {
+		console.debug("[Client]", msg, ...args);
+	}
+
+	// helper to log a step and mark success/failure on one line
+	// write string to stdout without newline (Deno equivalent of process.stdout.write)
+	async function write(s: string) {
+		const encoder = new TextEncoder();
+		await Deno.stdout.write(encoder.encode(s));
+	}
+
+	async function step<T>(msg: string, fn: () => Promise<T>): Promise<T> {
+		await write(`[Client] ${msg}...`);
+		try {
+			const res = await fn();
+			console.log(" ok");
+			return res;
+		} catch (err: any) {
+			// include error message on same line so output stays aligned
+			console.log(" failed:", err instanceof Error ? err.message : err);
+			throw err;
+		}
+	}
+
+	// Channel to signal publish handler completion
 	const doneCh = new Array<() => void>();
 	let done = false;
 
@@ -21,22 +49,18 @@ scope(async (defer) => {
 			try {
 				console.debug("[Client] Server subscribed, sending data...");
 
-				const [group, trackErr] = await track.openGroup();
-				if (trackErr) {
-					console.error("[Client] Failed to open group:", trackErr);
-					return;
-				}
+				const group = await step("Opening group", async () => {
+					const [group, err] = await track.openGroup()
+					if (err) throw err;
+					return group;
+				});
 				defer(() => group.close());
 
 				const frame = new Frame(
 					new TextEncoder().encode("Hello from moq-ts client"),
 				);
 
-				const groupErr = await group.writeFrame(frame);
-				if (groupErr) {
-					console.error("[Client] Failed to write frame:", groupErr);
-					return;
-				}
+				await step("Writing frame to server", () => group.writeFrame(frame));
 
 				console.info("[Client] [OK] Data sent to server");
 			} catch (e) {
@@ -49,62 +73,48 @@ scope(async (defer) => {
 		},
 	);
 
-	console.debug("[Client] Registering /interop/client handler");
+	debug("Registering /interop/client handler");
 
-	const session = await client.dial("http://127.0.0.1:9000/", mux);
+	const session = await step("Connecting to server", () => client.dial("http://127.0.0.1:9000/", mux));
 
-	console.debug("[Client] Connected to server");
+	const announced = await step("Accepting server announcements", async () => {
+		const [a, err] = await session.acceptAnnounce("/");
+		if (err) throw err;
+		return a;
+	});
 
-	const [announced, annReqErr] = await session.acceptAnnounce("/");
-	if (annReqErr) {
-		console.error("[Client] Failed to accept announce:", annReqErr);
-		return;
-	}
+	const announcement = await step("Receiving announcement", async () => {
+		const [a, err] = await announced.receive(background().done());
+		if (err) throw err;
+		return a;
+	});
 
-	console.debug("[Client] Starting to accept server announcements...");
+	info(`Discovered broadcast: ${announcement.broadcastPath}`);
 
-	const [announcement, annErr] = await announced.receive(background().done());
-	if (annErr) {
-		console.error("[Client] Failed to receive announcement:", annErr);
-		console.error("[Client] Error details:", annErr);
-		return;
-	}
+	const track = await step("Subscribing to broadcast", async () => {
+		const [t, err] = await session.subscribe(
+			announcement.broadcastPath,
+			"",
+		);
+		if (err) throw err;
+		return t;
+	});
 
-	console.debug("[Client] Discovered broadcast:", announcement.broadcastPath);
+	const group = await step("Accepting group", async () => {
+		const [g, err] = await track.acceptGroup(background().done());
+		if (err) throw err;
+		return g;
+	});
 
-	const [track, subErr] = await session.subscribe(
-		announcement.broadcastPath,
-		"",
-	);
-	if (subErr) {
-		console.error("[Client] Failed to subscribe to track:", subErr);
-		return;
-	}
+	await step("Reading frame from server", async () => {
+		const frame = new Frame(new Uint8Array(1024));
+		const err = await group.readFrame(frame);
+		if (err) throw err;
+		info("Frame data length:", frame.bytes.byteLength);
+		info("Received data from server:", new TextDecoder().decode(frame.bytes));
+	});
 
-	console.debug("[Client] Subscribed to a track");
-
-	const [group, groupErr] = await track.acceptGroup(background().done());
-	if (groupErr) {
-		console.error("[Client] Failed to accept group:", groupErr);
-		return;
-	}
-
-	console.debug("[Client] Received a group");
-
-	const frame = new Frame(new Uint8Array(1024));
-	const readErr = await group.readFrame(frame);
-	if (readErr) {
-		console.error("[Client] Failed to read frame:", readErr);
-		return;
-	}
-
-	console.log("[Client] Frame data length:", frame.bytes.byteLength);
-	console.info(
-		"[Client] [OK] Received data from server:",
-		new TextDecoder().decode(frame.bytes),
-	);
-
-	console.debug("[Client] Operations completed");
+	debug("Operations completed");
 
 	// Wait for the handler to complete (like Go's doneCh)
 	if (!done) {
@@ -117,9 +127,7 @@ scope(async (defer) => {
 	// Wait for a longer time before closing to allow server to read the frame
 	await new Promise((resolve) => setTimeout(resolve, 2000));
 
-	console.debug("[Client] Closing session...");
-	await session.closeWithError(0, "no error");
-	console.debug("[Client] ...ok");
+	await step("Closing session", () => session.closeWithError(0, "no error"));
 
 	defer(() => {
 		Deno.exit(0);

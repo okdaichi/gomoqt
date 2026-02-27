@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,7 +54,14 @@ func main() {
 	// Start server in background (run server package under cmd/interop)
 	// Server binds to :port (all interfaces), not hostname:port
 	_, port, _ := strings.Cut(*addr, ":")
-	serverCmd := exec.CommandContext(ctx, "go", "run", "./server", "-addr", ":"+port)
+	// determine project root so we can run the server package regardless of cwd
+	root, err := findRootDir()
+	if err != nil {
+		// fall back to relative path; it will likely fail below
+		root = ""
+	}
+	serverPath := filepath.Join(root, "cmd", "interop", "server")
+	serverCmd := exec.CommandContext(ctx, "go", "run", serverPath, "-addr", ":"+port)
 
 	// Pipe server output so we can reformat and unify logs
 	serverStdout, err := serverCmd.StdoutPipe()
@@ -94,8 +102,20 @@ func main() {
 		}
 	}()
 
-	// Wait for server to be ready
-	time.Sleep(2 * time.Second)
+	// Wait for server to start listening by polling the port.  The server
+	// process is "go run" which may take some time to build inside Docker,
+	// so a fixed sleep is unreliable.
+	{
+		addrToCheck := "localhost:" + port
+		for i := 0; i < 40; i++ { // try up to 20 seconds
+			c, err := net.Dial("tcp", addrToCheck)
+			if err == nil {
+				c.Close()
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
 
 	// Run client and wait for completion
 	slog.Debug(" Starting client...")

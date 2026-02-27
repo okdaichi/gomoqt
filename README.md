@@ -34,17 +34,14 @@ This implementation follows the [MOQ Lite specification](https://kixelated.githu
 # install Mage (Go 1.25+)
 go install github.com/magefile/mage@latest
 
-# run interop server (WebTransport + QUIC)
-mage interop:server
+# run interop test in Docker (preferred; builds container + exercises TS or Go client)
+#
+# by default this runs the TypeScript client.  to pick a language explicitly:
+#
+#   mage interop:ts    # containerized TS client + server
+#   mage interop:go    # containerized Go client + server
 
-# in another terminal, run a Go client
-mage interop:client go
-
-# or run the TypeScript client
-# (the secure wrapper will compute and pin the server certificate hash)
-mage interop:client ts
 ```
-
 ## Features
 - **MOQ Lite Protocol** — Lightweight version of MoQ specification
   - **Low-latency playback** — Minimizes latency from data discovery, transmission/reception to playback
