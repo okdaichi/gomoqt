@@ -36,10 +36,14 @@
 # установить Mage (Go 1.25+)
 go install github.com/magefile/mage@latest
 
-# Запустить interop-тест в Docker-контейнере (TypeScript клиент + сервер)
-mage interop:ts
-# или запустить Go-клиент
-mage interop:go
+# запустить interop-сервер (WebTransport + QUIC)
+mage interop:server
+
+# в другом терминале запустить Go-клиент
+mage interop:client go
+
+# или запустить клиент на TypeScript
+mage interop:client ts
 ```
 
 ## Возможности

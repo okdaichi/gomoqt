@@ -16,20 +16,7 @@ async function main() {
 	}
 
 	const addr = args.addr;
-	// helper prints a step and appends ok/failed (streamAndLog prefixes [Client])
-	async function step<T>(msg: string, fn: () => Promise<T>): Promise<T> {
-		process.stdout.write(`${msg}...`);
-		try {
-			const res = await fn();
-			console.log(" ok");
-			return res;
-		} catch (err) {
-			console.log(" failed");
-			throw err;
-		}
-	}
-
-	console.log(`Connecting to server at ${addr}`);
+	console.log(`Connecting to server at ${addr}...`);
 
 	// For local development with self-signed certificates
 	let transportOptions: WebTransportOptions = {};
@@ -56,27 +43,20 @@ async function main() {
 		// Create a context promise that never resolves (unless we want to stop publishing)
 		const ctx = new Promise<void>(() => {});
 
-		// helper that prints step and status
-		async function step<T>(msg: string, fn: () => Promise<T>): Promise<T> {
-			process.stdout.write(`${msg}...`);
-			try {
-				const res = await fn();
-				console.log(" ok");
-				return res;
-			} catch (e) {
-				console.log(" failed");
-				throw e;
-			}
-		}
-
 		mux.publishFunc(ctx, "/interop/client", async (tw) => {
 			try {
-				const [group] = await step("Opening group", () => tw.openGroup());
+				console.log("Opening group...");
+				const [group, err] = await tw.openGroup();
+				if (err) throw err;
+				console.log("...ok");
 
+				console.log("Writing frame to server...");
 				const data = new Uint8Array([72, 69, 76, 76, 79]); // "HELLO"
 				const frame = new Frame(data.buffer);
 				frame.write(data);
-				await step("Writing frame to server", () => group.writeFrame(frame));
+				const writeErr = await group.writeFrame(frame);
+				if (writeErr) throw writeErr;
+				console.log("...ok");
 
 				await group.close();
 				resolve();
@@ -89,44 +69,55 @@ async function main() {
 
 	let sess;
 	try {
-		sess = await step("Connecting to server", () => client.dial(addr, mux));
+		sess = await client.dial(addr, mux);
+		console.log("...ok");
 	} catch (err) {
-		console.error("Failed to connect:", err);
+		console.error("...failed\n  Error:", err);
 		return;
 	}
 
 	try {
 		// Step 1: Accept announcements from server
-		const [anns, acceptErr] = await step("Accepting server announcements", () => sess.acceptAnnounce("/"));
+		console.log("Accepting server announcements...");
+		const [anns, acceptErr] = await sess.acceptAnnounce("/");
 		if (acceptErr) throw acceptErr;
+		console.log("...ok");
 
-		const [ann, annErr] = await step("Receiving announcement", () => anns.receive(new Promise(() => {})));
+		console.log("Receiving announcement...");
+		// Use a never-resolving promise for signal if we don't want timeout
+		const [ann, annErr] = await anns.receive(new Promise(() => {}));
 		if (annErr) throw annErr;
 		if (!ann) {
 			throw new Error("Announcement stream closed");
 		}
+		console.log("...ok");
 		console.log(`Discovered broadcast: ${ann.broadcastPath}`);
 
 		// Close announcement stream after receiving what we need
 		anns.close();
 
 		// Step 2: Subscribe to the server's broadcast and receive data
-		const [track, subErr] = await step("Subscribing to server broadcast", () => sess.subscribe(ann.broadcastPath, ""));
+		console.log("Subscribing to server broadcast...");
+		const [track, subErr] = await sess.subscribe(ann.broadcastPath, "");
 		if (subErr) throw subErr;
+		console.log("...ok");
 
-		const [group, groupErr] = await step("Accepting group from server", () => track.acceptGroup(new Promise(() => {})));
+		console.log("Accepting group from server...");
+		const [group, groupErr] = await track.acceptGroup(new Promise(() => {}));
 		if (groupErr) throw groupErr;
 		if (!group) {
 			throw new Error("Track closed before group received");
 		}
+		console.log("...ok");
 
+		console.log("Reading the first frame from server...");
 		const frame = new Frame(new Uint8Array(1024));
-		const readErr = await step("Reading the first frame from server", () => group.readFrame(frame));
+		const readErr = await group.readFrame(frame);
 		if (readErr) throw readErr;
 
 		// Note: frame.data might contain trailing zeros if payload is smaller than 1024
 		const payload = new TextDecoder().decode(frame.bytes).replace(/\0/g, "");
-		console.log(`Payload: ${payload}`);
+		console.log(`...ok (payload: ${payload})`);
 
 		// Wait for the publish handler to complete
 		await donePromise;
@@ -146,10 +137,9 @@ async function main() {
 			console.error("Error during interop:", err);
 		}
 	} finally {
-		// close using the same step helper so the status appears on one line
-		if (sess) {
-			await step("Closing session", () => sess.closeWithError(0, "no error"));
-		}
+		console.log("Closing session...");
+		await sess.closeWithError(0, "no error");
+		console.log("...ok");
 	}
 }
 

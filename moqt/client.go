@@ -130,18 +130,19 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 		baseLogger = slog.New(slog.DiscardHandler)
 	}
 
-	dialCtx, cancelDial := context.WithTimeout(ctx, c.Config.setupTimeout())
+	dialTimeout := c.Config.setupTimeout()
+	dialCtx, cancelDial := context.WithTimeout(ctx, dialTimeout)
 	defer cancelDial()
 
 	var conn quic.Connection
 	var err error
-	var dialFunc webtransport.DialAddrFunc
+
 	if c.DialWebTransportFunc != nil {
-		dialFunc = c.DialWebTransportFunc
+		_, conn, err = c.DialWebTransportFunc(dialCtx, host+path, http.Header{}, c.TLSConfig)
 	} else {
-		dialFunc = webtransportgo.Dial
+		_, conn, err = webtransportgo.Dial(dialCtx, "https://"+host+path, http.Header{}, c.TLSConfig)
 	}
-	_, conn, err = dialFunc(dialCtx, "https://"+host+path, http.Header{}, c.TLSConfig)
+
 	if err != nil {
 		return nil, err
 	}
@@ -155,19 +156,13 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 	)
 	connLogger.Info("connection established")
 
-	req := &SetupRequest{
-		Path:       path,
-		Versions:   DefaultClientVersions,
-		RemoteAddr: conn.RemoteAddr().String(),
-	}
-
-	rsp, err := openSessionStream(conn, req)
+	sessStream, err := openSessionStream(conn, path, webTransportExtensions())
 	if err != nil {
 		return nil, err
 	}
 
 	var sess *Session
-	sess = newSession(conn, rsp.sessionStream, mux, func() { c.removeSession(sess) })
+	sess = newSession(conn, sessStream, mux, func() { c.removeSession(sess) })
 	c.addSession(sess)
 
 	return sess, nil
@@ -188,42 +183,32 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 	dialCtx, cancelDial := context.WithTimeout(ctx, dialTimeout)
 	defer cancelDial()
 
-	var dialFunc quic.DialAddrFunc
+	var conn quic.Connection
+	var err error
+
 	if c.DialQUICFunc != nil {
-		dialFunc = c.DialQUICFunc
+		conn, err = c.DialQUICFunc(dialCtx, addr, c.TLSConfig, c.QUICConfig)
 	} else {
-		dialFunc = quicgo.DialAddrEarly
+		conn, err = quicgo.DialAddrEarly(dialCtx, addr, c.TLSConfig, c.QUICConfig)
 	}
-	// if c.DialQUICFunc != nil {
-	// 	conn, err = c.DialQUICFunc(dialCtx, addr, c.TLSConfig, c.QUICConfig)
-	// } else {
-	// 	conn, err = quicgo.DialAddrEarly(dialCtx, addr, c.TLSConfig, c.QUICConfig)
-	// }
-	conn, err := dialFunc(dialCtx, addr, c.TLSConfig, c.QUICConfig)
+
 	if err != nil {
 		return nil, err
 	}
 
-	req := &SetupRequest{
-		Path:             path,
-		Versions:         DefaultClientVersions,
-		ClientExtensions: extensionsWithPath(path),
-		RemoteAddr:       conn.RemoteAddr().String(),
-	}
-
-	rsp, err := openSessionStream(conn, req)
+	sessStream, err := openSessionStream(conn, path, quicExtensions(path))
 	if err != nil {
 		return nil, err
 	}
 
 	var sess *Session
-	sess = newSession(conn, rsp.sessionStream, mux, func() { c.removeSession(sess) })
+	sess = newSession(conn, sessStream, mux, func() { c.removeSession(sess) })
 	c.addSession(sess)
 
 	return sess, nil
 }
 
-func extensionsWithPath(path string) *Extension {
+func quicExtensions(path string) *Extension {
 	params := NewExtension()
 
 	params.SetString(param_type_path, path)
@@ -231,18 +216,20 @@ func extensionsWithPath(path string) *Extension {
 	return params
 }
 
+func webTransportExtensions() *Extension {
+	params := NewExtension()
+
+	return params
+}
+
 func openSessionStream(
 	conn quic.Connection,
-	request *SetupRequest,
-) (*response, error) {
+	path string,
+	extensions *Extension,
+) (*sessionStream, error) {
 	stream, err := conn.OpenStream()
 	if err != nil {
 		return nil, err
-	}
-
-	// Ensure we have a valid request and extension container to avoid panics
-	if request == nil {
-		request = &SetupRequest{}
 	}
 
 	// Send STREAM_TYPE message
@@ -251,43 +238,39 @@ func openSessionStream(
 		return nil, err
 	}
 
-	versions := make([]uint64, len(request.Versions))
-	for i, v := range request.Versions {
+	versions := make([]uint64, len(DefaultClientVersions))
+	for i, v := range DefaultClientVersions {
 		versions[i] = uint64(v)
-	}
-	var params parameters
-	if request.ClientExtensions != nil {
-		params = request.ClientExtensions.parameters
 	}
 	// Send a SESSION_CLIENT message
 	scm := message.SessionClientMessage{
 		SupportedVersions: versions,
-		Parameters:        params,
+		Parameters:        extensions.parameters,
 	}
-
 	err = scm.Encode(stream)
 	if err != nil {
 		return nil, err
 	}
 
-	if request != nil {
-		request.reqCtx = stream.Context()
+	req := &SetupRequest{
+		Path:             path,
+		Versions:         DefaultClientVersions,
+		ClientExtensions: extensions,
+		RemoteAddr:       conn.RemoteAddr().String(),
+		ctx:              stream.Context(),
 	}
 
-	var sum message.SessionServerMessage
-	err = sum.Decode(stream)
+	sessStr := newSessionStream(stream, req)
+
+	rsp := newResponse(sessStr)
+
+	err = rsp.AwaitAccepted()
 	if err != nil {
 		_ = conn.CloseWithError(quic.ApplicationErrorCode(InternalSessionErrorCode), "moq: failed to set up session")
 		return nil, err
 	}
 
-	response := newResponse(
-		newSessionStream(stream),
-		Version(sum.SelectedVersion),
-		&Extension{sum.Parameters},
-	)
-
-	return response, nil
+	return rsp.sessionStream, nil
 }
 
 func (c *Client) addSession(sess *Session) {

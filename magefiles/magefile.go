@@ -199,60 +199,77 @@ func (t Test) Coverage() error {
 
 type Interop mg.Namespace
 
+// Server runs the interop server
+// Usage:
+//
+//	mage interop:server              - Run server (normal mode)
+//	MKCERT=1 mage interop:server     - Run server with certificate regeneration
+func (Interop) Server() error {
+	fmt.Println("Starting interop server...")
+
+	// Check for MKCERT environment variable
+	mkcert := os.Getenv("MKCERT") != ""
+
+	// If MKCERT env var is set, regenerate certificates first
+	if mkcert {
+		fmt.Println("Regenerating certificates...")
+		if err := regenerateCerts(); err != nil {
+			return err
+		}
+	}
+
+	// Save current working directory
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	// Restore working directory when done
+	defer func() {
+		_ = os.Chdir(wd)
+	}()
+
+	// Change to interop server directory
+	if err := os.Chdir("cmd/interop/server"); err != nil {
+		return err
+	}
+
+	return sh.RunV("go", "run", ".")
+}
+
 // Client runs the interop client with the specified language.
+// Usage:
+//
+//	mage interop:client go        - Run Go client
+//	mage interop:client ts        - Run TypeScript client
+func (Interop) Client(lang string) error {
+	fmt.Printf("Starting interop test with %s client...\n", lang)
 
-// Ts runs the interop server+client inside a Docker container using the
-// TypeScript client.  This replaces the old bare-metal interop:client ts.
-func (Interop) Ts() error {
-	if _, err := exec.LookPath("docker"); err != nil {
-		fmt.Println("docker not found; please install Docker to use this target")
-		return err
-	}
-	fmt.Println("Building interop docker image...")
-	if err := sh.RunV("docker", "build", "-t", "gomoqt-interop", "."); err != nil {
-		return err
-	}
+	// Save current working directory
 	wd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	fmt.Println("Running TypeScript interop test inside container...")
-	return sh.RunV("docker", "run", "--rm",
-		"-v", fmt.Sprintf("%s:/work", wd),
-		"-w", "/work",
-		"-e", "MKCERT=1",
-		"gomoqt-interop",
-		"go", "run", "./cmd/interop", "-lang", "ts")
+	defer func() {
+		_ = os.Chdir(wd)
+	}()
+
+	// Change to interop directory and run main.go
+	if err := os.Chdir("cmd/interop"); err != nil {
+		return err
+	}
+
+	// Allow overriding server address via INTEROP_ADDR env var (e.g. INTEROP_ADDR=localhost:9001)
+	addr := os.Getenv("INTEROP_ADDR")
+	args := []string{"run", ".", "-lang", lang}
+	if addr != "" {
+		args = append(args, "-addr", addr)
+	}
+	return sh.RunV("go", args...)
 }
 
-// Go runs the interop server+client inside a Docker container using the
-// Go client.  This replaces the old bare-metal interop:client go.
-func (Interop) Go() error {
-	if _, err := exec.LookPath("docker"); err != nil {
-		fmt.Println("docker not found; please install Docker to use this target")
-		return err
-	}
-	fmt.Println("Building interop docker image...")
-	if err := sh.RunV("docker", "build", "-t", "gomoqt-interop", "."); err != nil {
-		return err
-	}
-	wd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	fmt.Println("Running Go interop test inside container...")
-	return sh.RunV("docker", "run", "--rm",
-		"-v", fmt.Sprintf("%s:/work", wd),
-		"-w", "/work",
-		"-e", "MKCERT=1",
-		"gomoqt-interop",
-		"go", "run", "./cmd/interop", "-lang", "go")
-}
-
-// Default now runs the TypeScript interop test inside Docker.
+// Default runs the interop client with Go (same as Client go)
 func (i Interop) Default() error {
-	fmt.Println("Default interop target now uses Docker TS client; executing mage interop ts")
-	return i.Ts()
+	return i.Client("go")
 }
 
 // ======================================
@@ -323,8 +340,10 @@ func Help() {
 	fmt.Println("  mage test:coverage - Run tests with coverage")
 	fmt.Println("")
 	fmt.Println("Interop:")
-	fmt.Println("  mage interop ts                       - Dockerized interop using TypeScript client (preferred)")
-	fmt.Println("  mage interop go                       - Dockerized interop using Go client")
+	fmt.Println("  mage interop:server                    - Start interop server")
+	fmt.Println("  MKCERT=1 mage interop:server           - Start server with certificate regeneration")
+	fmt.Println("  mage interop:client go                 - Start server + Go client")
+	fmt.Println("  mage interop:client ts                 - Start server + TypeScript client")
 	fmt.Println("")
 	fmt.Println("Development:")
 	fmt.Println("  mage lint   - Run golangci-lint")
