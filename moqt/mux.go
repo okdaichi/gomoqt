@@ -187,47 +187,6 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 
 	lastNode := current
 
-	// Send announcement to all registered channels with retry mechanism
-	// lastNode.mu.RLock()
-	// for ch := range lastNode.channels {
-	// 	go func(channel chan *Announcement) {
-	// 		defer func() { recover() }() // ignore panic on closed channel
-	// 		select {
-	// 		case channel <- announcement:
-	// 			// Successfully sent to channel
-	// 		default:
-	// 			// Channel is busy, start retry goroutine
-	// 			ticker := time.NewTicker(10 * time.Millisecond)
-	// 			defer ticker.Stop()
-
-	// 			for {
-	// 				select {
-	// 				case <-announcement.Done():
-	// 					// Announcement ended, no need to send
-	// 					return
-	// 				default:
-	// 					// Check if context is done before sending
-	// 					if !announced.IsActive() {
-	// 						return
-	// 					}
-	// 					select {
-	// 					case channel <- announcement:
-	// 						// Successfully sent to channel
-	// 						return
-	// 					case <-ticker.C:
-	// 						// Timeout, retry
-	// 						continue
-	// 					case <-announcement.Done():
-	// 						// Announcement ended during send attempt
-	// 						return
-	// 					}
-	// 				}
-	// 			}
-	// 		}
-	// 	}(ch)
-	// }
-	// lastNode.mu.RUnlock()
-
 	// Ensure the announcement is removed when it ends
 	announcement.AfterFunc(func() {
 		// Remove the announcement from the tree unconditionally
@@ -315,64 +274,6 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 
 	// Register the handler on the routing tree (protect children with per-leafNode lock)
 	leafNode := mux.announcementTree.createNode(prefixSegments(aw.prefix))
-	// for _, seg := range prefixSegments(aw.prefix) {
-	// 	current.mu.Lock()
-	// 	if current.children == nil {
-	// 		current.children = make(map[string]*announcingNode)
-	// 	}
-	// 	child, ok := current.children[seg]
-	// 	if !ok {
-	// 		child = newAnnouncingNode()
-	// 		current.children[seg] = child
-	// 	}
-	// 	next := child
-	// 	current.mu.Unlock()
-	// 	current = next
-	// }
-
-	// ch := make(chan *Announcement, 8) // TODO: configurable buffer size
-	// current.mu.Lock()
-	// current.subscriptions[aw] = ch
-	// current.mu.Unlock()
-
-	// // Cleanup channel when done
-	// defer func() {
-	// 	current.mu.Lock()
-	// 	delete(current.subscriptions, aw)
-	// 	current.mu.Unlock()
-	// 	close(ch)
-	// }()
-
-	// current.serve(aw)
-
-	// // Get existing announcements in a separate goroutine to avoid blocking new announcements
-	// current.mu.RLock()
-	// err := aw.init(current.announcements)
-	// current.mu.RUnlock()
-	// if err != nil {
-	// 	slog.Error("[TrackMux] failed to initialize announcement writer", "error", err)
-	// 	aw.CloseWithError(InternalAnnounceErrorCode)
-	// 	return
-	// }
-
-	// Process announcements from channel
-	// for {
-	// 	select {
-	// 	case ann, ok := <-ch:
-	// 		if !ok {
-	// 			return // Channel closed
-	// 		}
-	// 		err := aw.SendAnnouncement(ann)
-	// 		if err != nil {
-	// 			slog.Error("[TrackMux] failed to send announcement", "error", err)
-	// 			aw.CloseWithError(InternalAnnounceErrorCode)
-	// 			return
-	// 		}
-	// 	case <-aw.Context().Done():
-	// 		// Writer context cancelled
-	// 		return
-	// 	}
-	// }
 
 	leafNode.mu.Lock()
 
@@ -419,8 +320,6 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 	}
 }
 
-// Clear removed: previously used for resetting state in tests. Use NewTrackMux() for test isolation or implement a shutdown API for production.
-
 type prefixSegment = string
 
 type announcingNode struct {
@@ -432,7 +331,6 @@ type announcingNode struct {
 
 	children map[prefixSegment]*announcingNode
 
-	// channels map[chan *Announcement]struct{}
 	subscriptions map[*AnnouncementWriter](chan *Announcement)
 
 	announcements map[*Announcement]struct{}
