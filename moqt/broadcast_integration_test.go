@@ -24,8 +24,7 @@ func BenchmarkBroadcastServer_HighLoad(b *testing.B) {
 
 	for _, numClients := range clients {
 		b.Run(fmt.Sprintf("clients-%d", numClients), func(b *testing.B) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := b.Context()
 
 			// Setup server
 			server, addr := setupBroadcastServer(b, ctx)
@@ -79,8 +78,7 @@ func BenchmarkBroadcastServer_Profile(b *testing.B) {
 		b.Skip("Skipping long-running profile benchmark in short mode")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := b.Context()
 
 	// Setup server
 	server, addr := setupBroadcastServer(b, ctx)
@@ -141,8 +139,7 @@ func BenchmarkBroadcastServer_FrameSizes(b *testing.B) {
 
 	for _, frameSize := range frameSizes {
 		b.Run(fmt.Sprintf("size-%d", frameSize), func(b *testing.B) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := b.Context()
 
 			server, addr := setupBroadcastServerWithFrameSize(b, ctx, frameSize)
 			defer server.Close()
@@ -158,11 +155,9 @@ func BenchmarkBroadcastServer_FrameSizes(b *testing.B) {
 				clientCtx, clientCancel := context.WithTimeout(ctx, 5*time.Second)
 
 				for range numClients {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+					wg.Go(func() {
 						_ = runBroadcastClient(clientCtx, addr, &framesReceived, &bytesReceived)
-					}()
+					})
 				}
 
 				wg.Wait()

@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -209,11 +210,12 @@ func BenchmarkTrackMux_PathTraversal(b *testing.B) {
 			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 
 			// Create a path with the specified depth
-			path := "/"
+			var path strings.Builder
+			path.WriteString("/")
 			for i := range depth {
-				path += "seg" + formatInt(i)
+				path.WriteString("seg" + formatInt(i))
 				if i < depth-1 {
-					path += "/"
+					path.WriteString("/")
 				}
 			}
 
@@ -221,7 +223,7 @@ func BenchmarkTrackMux_PathTraversal(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				ann, end := NewAnnouncement(ctx, BroadcastPath(path))
+				ann, end := NewAnnouncement(ctx, BroadcastPath(path.String()))
 				mux.Announce(ann, handler)
 				end()
 			}

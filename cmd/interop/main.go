@@ -107,7 +107,7 @@ func main() {
 	// so a fixed sleep is unreliable.
 	{
 		addrToCheck := "localhost:" + port
-		for i := 0; i < 40; i++ { // try up to 20 seconds
+		for range 40 { // try up to 20 seconds
 			c, err := net.Dial("tcp", addrToCheck)
 			if err == nil {
 				c.Close()

@@ -235,11 +235,12 @@ func BenchmarkTrackMux_DeepNestedPaths(b *testing.B) {
 			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 
 			// Create deeply nested path
-			pathBuilder := "/root"
+			var pathBuilder strings.Builder
+			pathBuilder.WriteString("/root")
 			for i := range depth {
-				pathBuilder += fmt.Sprintf("/level%d", i)
+				pathBuilder.WriteString(fmt.Sprintf("/level%d", i))
 			}
-			path := BroadcastPath(pathBuilder)
+			path := BroadcastPath(pathBuilder.String())
 
 			b.ReportAllocs()
 			b.ResetTimer()
