@@ -53,12 +53,14 @@ mage interop:go
 
 ### See also
 - [moqt/](moqt/) — core package (frames, session, track muxing)
+- [msf/](msf/) — MSF catalog, delta, timeline, and catalog-track helper package
 - [quic/](quic/) — QUIC wrapper and `examples/native_quic`
 - [webtransport/](webtransport/), [webtransport/webtransportgo/](webtransport/webtransportgo/), [moq-web/](moq-web/) — WebTransport and client-side code
 - [examples/](examples/) — sample apps (broadcast, echo, native_quic, relay)
 
 ## Components
 - `moqt` — Core Go package for Media over QUIC (MOQ) protocol.
+- `msf` — MOQT Streaming Format catalog, delta, and timeline modeling package.
 - `moq-web` — TypeScript implementation for the web client side.
 - `quic` — QUIC wrapper utilities used by the core library and examples.
 - `webtransport` — WebTransport server wrappers (plus `webtransportgo`).
@@ -76,6 +78,7 @@ The [examples](examples) directory includes sample applications demonstrating ho
 ## Documentation
 - [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 - [MOQ Lite Specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html)
+- [MSF package README](msf/README.md)
 - [Implementation Status](moqt/README.md) — Detailed implementation progress
 
 ## Specification Compliance
