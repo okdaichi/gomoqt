@@ -91,6 +91,6 @@ if err != nil {
 ## References
 
 - [MSF draft-ietf-moq-msf-00](https://datatracker.ietf.org/doc/html/draft-ietf-moq-msf-00)
-- [CM SF draft-ietf-moq-cmsf-00](https://datatracker.ietf.org/doc/html/draft-ietf-moq-cmsf-00)
+- [CMSF draft-ietf-moq-cmsf-00](https://datatracker.ietf.org/doc/html/draft-ietf-moq-cmsf-00)
 - [Core `moqt` package](../moqt/)
 - [Root project README](../README.md)

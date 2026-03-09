@@ -88,20 +88,25 @@ func (b *Broadcast) SetCatalog(catalog Catalog) error {
 		return fmt.Errorf("msf: nil broadcast")
 	}
 
+	catalogTrackName := b.CatalogTrackName()
 	clone := catalog.Clone()
 	if err := clone.Validate(); err != nil {
 		return err
 	}
+	if err := validateCatalogForBroadcast(clone, catalogTrackName); err != nil {
+		return err
+	}
 
 	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.initLocked()
 	staleTrackNames := b.staleTrackNamesLocked(clone)
 	b.catalog = clone
-	b.mu.Unlock()
-
 	for _, name := range staleTrackNames {
 		b.tracks.Remove(name)
 	}
+
 	return nil
 }
 
@@ -124,12 +129,20 @@ func (b *Broadcast) RegisterTrack(track Track, handler moqt.TrackHandler) error 
 		return fmt.Errorf("msf: %q is reserved for the catalog track", track.Name)
 	}
 
-	updated := b.Catalog()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.initLocked()
 	trackClone := track.Clone()
+	updated := b.catalog.Clone()
+	trackID := trackClone.ID(updated.DefaultNamespace)
 
 	replaced := false
 	for i := range updated.Tracks {
 		if updated.Tracks[i].Name == trackClone.Name {
+			if updated.Tracks[i].ID(updated.DefaultNamespace) != trackID {
+				return fmt.Errorf("msf: broadcast requires unique track names across namespaces; duplicate name %q found for %q and %q", trackClone.Name, updated.Tracks[i].ID(updated.DefaultNamespace).String(), trackID.String())
+			}
 			updated.Tracks[i] = trackClone
 			replaced = true
 			break
@@ -141,12 +154,11 @@ func (b *Broadcast) RegisterTrack(track Track, handler moqt.TrackHandler) error 
 	if err := updated.Validate(); err != nil {
 		return err
 	}
+	if err := validateCatalogForBroadcast(updated, b.catalogTrackName); err != nil {
+		return err
+	}
 
-	b.mu.Lock()
-	b.initLocked()
 	b.catalog = updated
-	b.mu.Unlock()
-
 	return b.tracks.Register(moqt.TrackName(trackClone.Name), handler)
 }
 
@@ -159,19 +171,23 @@ func (b *Broadcast) RemoveTrack(name moqt.TrackName) bool {
 	}
 
 	b.mu.Lock()
-	b.initLocked()
+	defer b.mu.Unlock()
 
+	b.initLocked()
+	updated := b.catalog.Clone()
 	removed := false
-	for i := range b.catalog.Tracks {
-		if moqt.TrackName(b.catalog.Tracks[i].Name) == name {
-			b.catalog.Tracks = append(b.catalog.Tracks[:i], b.catalog.Tracks[i+1:]...)
+	for i := range updated.Tracks {
+		if moqt.TrackName(updated.Tracks[i].Name) == name {
+			updated.Tracks = append(updated.Tracks[:i], updated.Tracks[i+1:]...)
 			removed = true
 			break
 		}
 	}
-	b.mu.Unlock()
 
-	return b.tracks.Remove(name) || removed
+	b.catalog = updated
+	removedFromTracks := b.tracks.Remove(name)
+
+	return removed || removedFromTracks
 }
 
 // Handler returns the TrackHandler responsible for serving the named track.
@@ -261,4 +277,21 @@ func (b *Broadcast) staleTrackNamesLocked(catalog Catalog) []moqt.TrackName {
 	}
 
 	return stale
+}
+
+// validateCatalogForBroadcast rejects catalog shapes that cannot be routed by Broadcast.
+func validateCatalogForBroadcast(catalog Catalog, catalogTrackName moqt.TrackName) error {
+	seen := make(map[moqt.TrackName]TrackID, len(catalog.Tracks))
+	for _, track := range catalog.Tracks {
+		name := moqt.TrackName(track.Name)
+		if name == catalogTrackName {
+			return fmt.Errorf("msf: catalog contains reserved track name %q", catalogTrackName)
+		}
+		id := track.ID(catalog.DefaultNamespace)
+		if previous, ok := seen[name]; ok && previous != id {
+			return fmt.Errorf("msf: broadcast requires unique track names across namespaces; duplicate name %q found for %q and %q", name, previous.String(), id.String())
+		}
+		seen[name] = id
+	}
+	return nil
 }

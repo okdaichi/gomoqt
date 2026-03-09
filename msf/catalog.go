@@ -86,7 +86,6 @@ func (r Role) IsKnown() bool {
 	default:
 		return false
 	}
-
 }
 
 // Error returns the aggregated validation problems as a single error string.
@@ -788,9 +787,11 @@ func (t *Track) unmarshalObject(raw map[string]json.RawMessage) error {
 			}
 			t.IsLive = &v
 		case "targetLatency":
-			if err := json.Unmarshal(value, &t.TargetLatency); err != nil {
+			var v int64
+			if err := json.Unmarshal(value, &v); err != nil {
 				return err
 			}
+			t.TargetLatency = &v
 		case "label":
 			if err := json.Unmarshal(value, &t.Label); err != nil {
 				return err

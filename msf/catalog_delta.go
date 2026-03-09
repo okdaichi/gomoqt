@@ -3,7 +3,6 @@ package msf
 import (
 	"encoding/json"
 	"fmt"
-	"maps"
 	"slices"
 )
 
@@ -369,9 +368,4 @@ func cloneTrackClones(in []TrackClone) []TrackClone {
 		out[i] = track.Clone()
 	}
 	return out
-}
-
-// cloneDeltaExtraFields copies extension fields into dst for delta metadata merging.
-func cloneDeltaExtraFields(dst map[string]json.RawMessage, src map[string]json.RawMessage) {
-	maps.Copy(dst, cloneRawMessages(src))
 }

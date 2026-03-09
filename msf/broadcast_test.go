@@ -28,6 +28,7 @@ func TestBroadcastRegisterTrack_UpdatesCatalogAndHandler(t *testing.T) {
 	tw := &moqt.TrackWriter{TrackName: "video"}
 	handler.On("ServeTrack", tw).Return().Once()
 	broadcast.Handler("video").ServeTrack(tw)
+	handler.AssertCalled(t, "ServeTrack", tw)
 }
 
 func TestBroadcastHandler_ResolvesCatalogAndTrackHandlers(t *testing.T) {
@@ -43,11 +44,12 @@ func TestBroadcastHandler_ResolvesCatalogAndTrackHandlers(t *testing.T) {
 	}, handler)
 	require.NoError(t, err)
 
-	assert.NotNil(t, broadcast.Handler(broadcast.CatalogTrackName()))
 	tw := &moqt.TrackWriter{TrackName: "audio"}
 	handler.On("ServeTrack", tw).Return().Once()
 	broadcast.Handler("audio").ServeTrack(tw)
-	assert.NotNil(t, broadcast.Handler("missing"))
+	handler.AssertCalled(t, "ServeTrack", tw)
+	broadcast.Handler("missing").ServeTrack(tw)
+	handler.AssertNumberOfCalls(t, "ServeTrack", 1)
 }
 
 func TestBroadcastRemoveTrack_RemovesCatalogEntryAndHandler(t *testing.T) {
@@ -66,8 +68,9 @@ func TestBroadcastRemoveTrack_RemovesCatalogEntryAndHandler(t *testing.T) {
 	removed := broadcast.RemoveTrack("video")
 	assert.True(t, removed)
 	assert.Empty(t, broadcast.Catalog().Tracks)
-	_, ok := broadcast.Handler("video").(*MockTrackHandler)
-	assert.False(t, ok)
+	tw := &moqt.TrackWriter{TrackName: "video"}
+	broadcast.Handler("video").ServeTrack(tw)
+	handler.AssertNotCalled(t, "ServeTrack", tw)
 }
 
 func TestBroadcastCatalogBytes_EncodesCurrentCatalog(t *testing.T) {
@@ -175,6 +178,7 @@ func TestBroadcastRegisterTrack_ReplacesExistingTrackAndHandler(t *testing.T) {
 	tw := &moqt.TrackWriter{TrackName: "video"}
 	secondHandler.On("ServeTrack", tw).Return().Once()
 	broadcast.Handler("video").ServeTrack(tw)
+	secondHandler.AssertCalled(t, "ServeTrack", tw)
 }
 
 func TestBroadcastZeroValue_UsesDefaultCatalogTrackName(t *testing.T) {
@@ -216,7 +220,70 @@ func TestBroadcastSetCatalog_PrunesRemovedTrackHandlers(t *testing.T) {
 	}}})
 	require.NoError(t, err)
 
-	assert.NotNil(t, broadcast.Handler("audio"))
-	_, ok := broadcast.Handler("video").(*MockTrackHandler)
-	assert.False(t, ok)
+	tw := &moqt.TrackWriter{TrackName: "video"}
+	broadcast.Handler("video").ServeTrack(tw)
+	handler.AssertNotCalled(t, "ServeTrack", tw)
+}
+
+func TestBroadcastSetCatalog_RejectsReservedCatalogTrackName(t *testing.T) {
+	broadcast, err := NewBroadcast(Catalog{Version: 1})
+	require.NoError(t, err)
+
+	err = broadcast.SetCatalog(Catalog{Version: 1, Tracks: []Track{{
+		Name:      string(DefaultCatalogTrackName),
+		Packaging: PackagingLOC,
+		IsLive:    new(false),
+	}}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reserved track name")
+}
+
+func TestNewBroadcast_RejectsReservedCatalogTrackName(t *testing.T) {
+	_, err := NewBroadcast(Catalog{Version: 1, Tracks: []Track{{
+		Name:      string(DefaultCatalogTrackName),
+		Packaging: PackagingLOC,
+		IsLive:    new(false),
+	}}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reserved track name")
+}
+
+func TestBroadcastSetCatalog_RejectsDuplicateTrackNamesAcrossNamespaces(t *testing.T) {
+	broadcast, err := NewBroadcast(Catalog{Version: 1})
+	require.NoError(t, err)
+
+	err = broadcast.SetCatalog(Catalog{
+		Version:          1,
+		DefaultNamespace: "live/main",
+		Tracks: []Track{
+			{Name: "video", Packaging: PackagingLOC, IsLive: new(false)},
+			{Namespace: "live/backup", Name: "video", Packaging: PackagingLOC, IsLive: new(false)},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unique track names across namespaces")
+}
+
+func TestBroadcastRegisterTrack_RejectsDuplicateTrackNamesAcrossNamespaces(t *testing.T) {
+	broadcast, err := NewBroadcast(Catalog{
+		Version:          1,
+		DefaultNamespace: "live/main",
+		Tracks: []Track{{
+			Name:      "video",
+			Packaging: PackagingLOC,
+			IsLive:    new(false),
+		}},
+	})
+	require.NoError(t, err)
+
+	handler := &MockTrackHandler{}
+	t.Cleanup(func() { handler.AssertExpectations(t) })
+	err = broadcast.RegisterTrack(Track{
+		Namespace: "live/backup",
+		Name:      "video",
+		Packaging: PackagingLOC,
+		IsLive:    new(false),
+	}, handler)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unique track names across namespaces")
 }
