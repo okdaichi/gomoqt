@@ -43,7 +43,11 @@ try {
 				if (!m) {
 					throw new Error("no certificate block");
 				}
-				const b64 = m[1].replace(/\s+/g, "");
+				const certificateBody = m[1];
+				if (certificateBody === undefined) {
+					throw new Error("certificate body missing");
+				}
+				const b64 = certificateBody.replace(/\s+/g, "");
 				const der = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 				const hashBuf = await crypto.subtle.digest("SHA-256", der);
 				const hashBytes = new Uint8Array(hashBuf);
