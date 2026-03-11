@@ -191,6 +191,8 @@ When submitting a pull request:
 3. **Tests**: Ensure all tests pass
 4. **Documentation**: Update docs if needed
 5. **Breaking Changes**: Clearly mark any breaking changes
+6. **Changelog**: Add or update an entry in `CHANGELOG.md` describing your changes. A GitHub workflow enforces this requirement and will block the PR if `CHANGELOG.md` isn't modified.
+
 
 ### Testing Requirements
 
