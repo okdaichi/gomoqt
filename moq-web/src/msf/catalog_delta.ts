@@ -198,10 +198,11 @@ export function applyCatalogDelta(baseCatalog: Catalog, deltaCatalog: CatalogDel
 	if (deltaCatalog.isComplete) {
 		result.isComplete = true;
 	}
-	result.extraFields = {
+	const mergedExtraFields = {
 		...(result.extraFields ?? {}),
 		...(deltaCatalog.extraFields ?? {}),
 	};
+	result.extraFields = Object.keys(mergedExtraFields).length > 0 ? mergedExtraFields : undefined;
 
 	const order = deltaCatalog.deltaOpOrder && deltaCatalog.deltaOpOrder.length > 0
 		? deltaCatalog.deltaOpOrder
