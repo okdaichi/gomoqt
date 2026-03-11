@@ -241,7 +241,7 @@ func (c Catalog) Validate() error {
 		problems = append(problems, "catalog version is required")
 	}
 	for i, track := range c.Tracks {
-		problems = append(problems, track.validate(trackContextCatalog, fmt.Sprintf("tracks[%d]", i))...)
+		problems = append(problems, track.validate(fmt.Sprintf("tracks[%d]", i))...)
 	}
 	seen := make(map[TrackID]struct{}, len(c.Tracks))
 	for i, track := range c.Tracks {
@@ -510,15 +510,8 @@ func (t Track) effectiveNamespace(defaultNamespace string) string {
 	return inheritedNamespaceSentinel
 }
 
-type trackContext string
-
-const (
-	trackContextCatalog trackContext = "catalog"
-	trackContextAdd     trackContext = "add"
-)
-
 // validate checks track-level constraints for either an independent catalog or addTracks entry.
-func (t Track) validate(ctx trackContext, path string) []string {
+func (t Track) validate(path string) []string {
 	var problems []string
 	if t.Name == "" {
 		problems = append(problems, path+": name is required")

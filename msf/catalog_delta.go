@@ -73,7 +73,7 @@ func (d CatalogDelta) Validate() error {
 		problems = append(problems, "delta catalog must contain addTracks, removeTracks, or cloneTracks")
 	}
 	for i, track := range d.AddTracks {
-		problems = append(problems, track.validate(trackContextAdd, fmt.Sprintf("addTracks[%d]", i))...)
+		problems = append(problems, track.validate(fmt.Sprintf("addTracks[%d]", i))...)
 	}
 	for i, track := range d.RemoveTracks {
 		problems = append(problems, track.Validate(fmt.Sprintf("removeTracks[%d]", i))...)
