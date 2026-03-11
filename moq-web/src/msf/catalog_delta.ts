@@ -10,7 +10,9 @@ import {
 	validateCatalog,
 	validateTrack,
 	ValidationError,
+	zodSchemaError,
 } from "./catalog.ts";
+import { z } from "zod";
 
 export type DeltaOperationKind = "addTracks" | "removeTracks" | "cloneTracks";
 
@@ -36,8 +38,32 @@ export interface CatalogDelta {
 	deltaOpOrder?: DeltaOperationKind[];
 }
 
+const trackRefSchema = z.object({
+	namespace: z.string().optional(),
+	name: z.string().optional(),
+}).catchall(z.unknown());
+
+const trackCloneSchema = z.object({
+	parentName: z.string().optional(),
+}).catchall(z.unknown());
+
+const catalogDeltaSchema = z.object({
+	deltaUpdate: z.literal(true),
+	defaultNamespace: z.string().optional(),
+	generatedAt: z.number().optional(),
+	isComplete: z.boolean().optional(),
+	addTracks: z.array(z.unknown()).optional(),
+	removeTracks: z.array(z.unknown()).optional(),
+	cloneTracks: z.array(z.unknown()).optional(),
+}).catchall(z.unknown());
+
 function parseTrackRef(value: unknown): TrackRef {
-	const raw = asRecord(value, "msf: remove track reference must be a JSON object");
+	const rawRecord = asRecord(value, "msf: remove track reference must be a JSON object");
+	const parsed = trackRefSchema.safeParse(rawRecord);
+	if (!parsed.success) {
+		throw zodSchemaError("msf: remove track reference must be a JSON object", parsed.error);
+	}
+	const raw = parsed.data;
 	const extra: Record<string, unknown> = {};
 	for (const [key, fieldValue] of Object.entries(raw)) {
 		if (key !== "namespace" && key !== "name") {
@@ -45,15 +71,20 @@ function parseTrackRef(value: unknown): TrackRef {
 		}
 	}
 	return {
-		namespace: typeof raw.namespace === "string" ? raw.namespace : undefined,
-		name: typeof raw.name === "string" ? raw.name : undefined,
+		namespace: raw.namespace,
+		name: raw.name,
 		extraFields: Object.keys(extra).length > 0 ? extra : undefined,
 	};
 }
 
 function parseTrackClone(value: unknown): TrackClone {
-	const raw = asRecord(value, "msf: clone track entry must be a JSON object");
-	const parentName = typeof raw.parentName === "string" ? raw.parentName : undefined;
+	const rawRecord = asRecord(value, "msf: clone track entry must be a JSON object");
+	const parsed = trackCloneSchema.safeParse(rawRecord);
+	if (!parsed.success) {
+		throw zodSchemaError("msf: clone track entry must be a JSON object", parsed.error);
+	}
+	const raw = parsed.data;
+	const parentName = raw.parentName;
 	const trackRecord = { ...raw };
 	delete trackRecord.parentName;
 	return {
@@ -63,16 +94,19 @@ function parseTrackClone(value: unknown): TrackClone {
 }
 
 export function parseCatalogDelta(data: string | Uint8Array): CatalogDelta {
-	const root = asRecord(JSON.parse(decodeText(data)), "msf: expected JSON object");
-	if (root.deltaUpdate !== true) {
-		throw new Error("msf: delta catalog must include deltaUpdate=true");
+	const decoded = JSON.parse(decodeText(data));
+	const rawRoot = asRecord(decoded, "msf: expected JSON object");
+	const parsed = catalogDeltaSchema.safeParse(rawRoot);
+	if (!parsed.success) {
+		throw zodSchemaError("msf: expected JSON object", parsed.error);
 	}
+	const root = parsed.data;
 	if ("version" in root || "tracks" in root) {
 		throw new Error("msf: independent catalog fields are not allowed in a delta catalog");
 	}
 
 	const deltaOpOrder: DeltaOperationKind[] = [];
-	for (const key of Object.keys(root)) {
+	for (const key of Object.keys(rawRoot)) {
 		if (key === "addTracks" || key === "removeTracks" || key === "cloneTracks") {
 			deltaOpOrder.push(key);
 		}
@@ -102,10 +136,8 @@ export function parseCatalogDelta(data: string | Uint8Array): CatalogDelta {
 	}
 
 	return {
-		defaultNamespace: typeof root.defaultNamespace === "string"
-			? root.defaultNamespace
-			: undefined,
-		generatedAt: typeof root.generatedAt === "number" ? root.generatedAt : undefined,
+		defaultNamespace: root.defaultNamespace,
+		generatedAt: root.generatedAt,
 		isComplete: root.isComplete === true,
 		addTracks,
 		removeTracks,

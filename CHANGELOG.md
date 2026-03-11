@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.11.0] - 2026-03-12
+
+### Added
+
+- **moq-web/msf:** adopted `zod` for JSON boundary validation in catalog, catalog delta, and timeline parsing.
+
+### Changed
+
+- **moq-web/msf:** tightened parse-time validation for invalid JSON field types while preserving existing higher-level catalog validation APIs.
+- **moq-web:** bumped the published package version to `0.11.0`.
+
 ## [v0.10.8] - 2026-03-12
 
 ### Changed
@@ -369,7 +380,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Comprehensive test coverage
 - MIT License
 
-[Unreleased]: https://github.com/okdaichi/gomoqt/compare/v0.10.8...HEAD
+[Unreleased]: https://github.com/okdaichi/gomoqt/compare/v0.11.0...HEAD
+[v0.11.0]: https://github.com/okdaichi/gomoqt/compare/v0.10.8...v0.11.0
 [v0.10.8]: https://github.com/okdaichi/gomoqt/compare/v0.10.7...v0.10.8
 [v0.10.7]: https://github.com/okdaichi/gomoqt/compare/v0.10.6...v0.10.7
 [v0.10.6]: https://github.com/okdaichi/gomoqt/compare/v0.10.5...v0.10.6

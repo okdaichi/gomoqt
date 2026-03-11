@@ -17,11 +17,30 @@ Deno.test("parseCatalog rejects delta-only fields", () => {
 	);
 });
 
+Deno.test("parseCatalog rejects invalid track field types", () => {
+	assertThrows(
+		() =>
+			parseCatalog(
+				'{"version":1,"tracks":[{"name":"alpha","packaging":"cmaf","bitrate":"fast"}]}',
+			),
+		Error,
+		"tracks.0.bitrate",
+	);
+});
+
 Deno.test("parseCatalogDelta rejects independent catalog fields", () => {
 	assertThrows(
 		() => parseCatalogDelta('{"deltaUpdate":true,"version":1}'),
 		Error,
 		"independent catalog fields are not allowed",
+	);
+});
+
+Deno.test("parseCatalogDelta rejects invalid removeTrack field types", () => {
+	assertThrows(
+		() => parseCatalogDelta('{"deltaUpdate":true,"removeTracks":[{"name":1}]}'),
+		Error,
+		"name",
 	);
 });
 

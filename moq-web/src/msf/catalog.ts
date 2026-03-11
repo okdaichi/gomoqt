@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 type OpenString = string & Record<PropertyKey, never>;
 
 export type Packaging =
@@ -101,6 +103,55 @@ const TRACK_KNOWN_KEYS = new Set<string>([
 	"trackDuration",
 ]);
 
+const trackShape = {
+	namespace: z.string().optional(),
+	name: z.string().optional(),
+	packaging: z.string().optional(),
+	eventType: z.string().optional(),
+	role: z.string().optional(),
+	isLive: z.boolean().optional(),
+	targetLatency: z.number().optional(),
+	label: z.string().optional(),
+	renderGroup: z.number().optional(),
+	altGroup: z.number().optional(),
+	initData: z.string().optional(),
+	depends: z.array(z.string()).optional(),
+	temporalId: z.number().optional(),
+	spatialId: z.number().optional(),
+	codec: z.string().optional(),
+	mimeType: z.string().optional(),
+	framerate: z.number().optional(),
+	timescale: z.number().optional(),
+	bitrate: z.number().optional(),
+	width: z.number().optional(),
+	height: z.number().optional(),
+	samplerate: z.number().optional(),
+	channelConfig: z.string().optional(),
+	displayWidth: z.number().optional(),
+	displayHeight: z.number().optional(),
+	lang: z.string().optional(),
+	trackDuration: z.number().optional(),
+} satisfies Record<string, z.ZodType<unknown>>;
+
+const trackSchema = z.object(trackShape).catchall(z.unknown());
+
+const catalogSchema = z.object({
+	defaultNamespace: z.string().optional(),
+	version: z.number().optional(),
+	generatedAt: z.number().optional(),
+	isComplete: z.boolean().optional(),
+	tracks: z.array(trackSchema).optional(),
+}).catchall(z.unknown());
+
+export function zodSchemaError(prefix: string, error: z.ZodError): Error {
+	const issue = error.issues[0];
+	if (!issue) {
+		return new Error(prefix);
+	}
+	const path = issue.path.length > 0 ? ` at ${issue.path.join(".")}` : "";
+	return new Error(`${prefix}${path}: ${issue.message}`);
+}
+
 export function asRecord(value: unknown, errorMessage: string): Record<string, unknown> {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		throw new Error(errorMessage);
@@ -142,46 +193,52 @@ function trackExtraFields(raw: Record<string, unknown>): Record<string, unknown>
 }
 
 export function parseTrack(value: unknown): Track {
-	const raw = asRecord(value, "msf: track must be a JSON object");
-	const extraFields = trackExtraFields(raw);
-	const depends = Array.isArray(raw.depends)
-		? raw.depends.filter((v): v is string => typeof v === "string")
-		: undefined;
+	const rawRecord = asRecord(value, "msf: track must be a JSON object");
+	const raw = trackSchema.safeParse(rawRecord);
+	if (!raw.success) {
+		throw zodSchemaError("msf: track must be a JSON object", raw.error);
+	}
+	const parsed = raw.data;
+	const extraFields = trackExtraFields(parsed);
 
 	return {
-		namespace: typeof raw.namespace === "string" ? raw.namespace : undefined,
-		name: typeof raw.name === "string" ? raw.name : undefined,
-		packaging: typeof raw.packaging === "string" ? (raw.packaging as Packaging) : undefined,
-		eventType: typeof raw.eventType === "string" ? raw.eventType : undefined,
-		role: typeof raw.role === "string" ? (raw.role as Role) : undefined,
-		isLive: typeof raw.isLive === "boolean" ? raw.isLive : undefined,
-		targetLatency: typeof raw.targetLatency === "number" ? raw.targetLatency : undefined,
-		label: typeof raw.label === "string" ? raw.label : undefined,
-		renderGroup: typeof raw.renderGroup === "number" ? raw.renderGroup : undefined,
-		altGroup: typeof raw.altGroup === "number" ? raw.altGroup : undefined,
-		initData: typeof raw.initData === "string" ? raw.initData : undefined,
-		depends,
-		temporalId: typeof raw.temporalId === "number" ? raw.temporalId : undefined,
-		spatialId: typeof raw.spatialId === "number" ? raw.spatialId : undefined,
-		codec: typeof raw.codec === "string" ? raw.codec : undefined,
-		mimeType: typeof raw.mimeType === "string" ? raw.mimeType : undefined,
-		framerate: typeof raw.framerate === "number" ? raw.framerate : undefined,
-		timescale: typeof raw.timescale === "number" ? raw.timescale : undefined,
-		bitrate: typeof raw.bitrate === "number" ? raw.bitrate : undefined,
-		width: typeof raw.width === "number" ? raw.width : undefined,
-		height: typeof raw.height === "number" ? raw.height : undefined,
-		samplerate: typeof raw.samplerate === "number" ? raw.samplerate : undefined,
-		channelConfig: typeof raw.channelConfig === "string" ? raw.channelConfig : undefined,
-		displayWidth: typeof raw.displayWidth === "number" ? raw.displayWidth : undefined,
-		displayHeight: typeof raw.displayHeight === "number" ? raw.displayHeight : undefined,
-		lang: typeof raw.lang === "string" ? raw.lang : undefined,
-		trackDuration: typeof raw.trackDuration === "number" ? raw.trackDuration : undefined,
+		namespace: parsed.namespace,
+		name: parsed.name,
+		packaging: parsed.packaging as Packaging | undefined,
+		eventType: parsed.eventType,
+		role: parsed.role as Role | undefined,
+		isLive: parsed.isLive,
+		targetLatency: parsed.targetLatency,
+		label: parsed.label,
+		renderGroup: parsed.renderGroup,
+		altGroup: parsed.altGroup,
+		initData: parsed.initData,
+		depends: parsed.depends,
+		temporalId: parsed.temporalId,
+		spatialId: parsed.spatialId,
+		codec: parsed.codec,
+		mimeType: parsed.mimeType,
+		framerate: parsed.framerate,
+		timescale: parsed.timescale,
+		bitrate: parsed.bitrate,
+		width: parsed.width,
+		height: parsed.height,
+		samplerate: parsed.samplerate,
+		channelConfig: parsed.channelConfig,
+		displayWidth: parsed.displayWidth,
+		displayHeight: parsed.displayHeight,
+		lang: parsed.lang,
+		trackDuration: parsed.trackDuration,
 		extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
 	};
 }
 
 export function parseCatalog(data: string | Uint8Array): Catalog {
-	const root = asRecord(JSON.parse(decodeText(data)), "msf: expected JSON object");
+	const parsed = catalogSchema.safeParse(JSON.parse(decodeText(data)));
+	if (!parsed.success) {
+		throw zodSchemaError("msf: expected JSON object", parsed.error);
+	}
+	const root = parsed.data;
 	if (
 		"deltaUpdate" in root ||
 		"addTracks" in root ||
@@ -206,11 +263,9 @@ export function parseCatalog(data: string | Uint8Array): Catalog {
 	}
 
 	return {
-		defaultNamespace: typeof root.defaultNamespace === "string"
-			? root.defaultNamespace
-			: undefined,
-		version: typeof root.version === "number" ? root.version : 0,
-		generatedAt: typeof root.generatedAt === "number" ? root.generatedAt : undefined,
+		defaultNamespace: root.defaultNamespace,
+		version: root.version ?? 0,
+		generatedAt: root.generatedAt,
 		isComplete: root.isComplete === true,
 		tracks: tracksRaw.map(parseTrack),
 		extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
