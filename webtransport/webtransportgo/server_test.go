@@ -13,7 +13,7 @@ import (
 const settingsEnableWebtransport uint64 = 0x2b603742
 
 // Ensure init() configures the internal server (ConnContext must be non-nil).
-func TestInit_ConnContextIsSet(t *testing.T) {
+func TestServer_Init_ConnContextIsSet(t *testing.T) {
 	srv := &Server{}
 	srv.init()
 
@@ -25,7 +25,7 @@ func TestInit_ConnContextIsSet(t *testing.T) {
 
 // TestInit_EnableDatagramsIsSet verifies that H3.EnableDatagrams is true,
 // which is required for HTTP/3-level QUIC datagram support used by WebTransport.
-func TestInit_EnableDatagramsIsSet(t *testing.T) {
+func TestServer_Init_EnableDatagramsIsSet(t *testing.T) {
 	srv := &Server{}
 	srv.init()
 
@@ -35,7 +35,7 @@ func TestInit_EnableDatagramsIsSet(t *testing.T) {
 
 // TestInit_WebTransportSettingAdvertised verifies that the HTTP/3 SETTINGS
 // frame will advertise WebTransport support to clients.
-func TestInit_WebTransportSettingAdvertised(t *testing.T) {
+func TestServer_Init_WebTransportSettingAdvertised(t *testing.T) {
 	srv := &Server{}
 	srv.init()
 
@@ -51,7 +51,7 @@ func TestInit_WebTransportSettingAdvertised(t *testing.T) {
 
 // TestInit_CheckOriginPropagated verifies that the checkOrigin function
 // provided by the caller is forwarded to the underlying webtransport-go Server.
-func TestInit_CheckOriginPropagated(t *testing.T) {
+func TestServer_Init_CheckOriginPropagated(t *testing.T) {
 	called := false
 	checkOrigin := func(r *http.Request) bool {
 		called = true
@@ -71,7 +71,7 @@ func TestInit_CheckOriginPropagated(t *testing.T) {
 
 // TestInit_NilCheckOriginDoesNotPanic verifies that passing nil for
 // CheckOrigin is safe (the underlying library substitutes its own default).
-func TestInit_NilCheckOriginDoesNotPanic(t *testing.T) {
+func TestServer_Init_NilCheckOriginDoesNotPanic(t *testing.T) {
 	srv := &Server{}
 	assert.NotPanics(t, func() {
 		srv.init()
