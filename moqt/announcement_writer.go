@@ -41,8 +41,8 @@ type AnnouncementWriter struct {
 	initErr  error
 }
 
-// init initializes the AnnouncementWriter with the given announcements.
-// It sends ACTIVE AnnounceMessage entries for current actives and sets up end handlers.
+// init snapshots the currently active announcements, sends an ACTIVE AnnounceMessage
+// for each active track suffix on the announce stream, and sets up end handlers.
 func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) error {
 	var err error
 	aw.initOnce.Do(func() {

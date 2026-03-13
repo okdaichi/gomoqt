@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **moqt:** aligned SUBSCRIBE/SUBSCRIBE_OK/SUBSCRIBE_UPDATE message schemas with MoQ draft3, introducing explicit subscriber-side (SubscriberPriority, SubscriberOrdered, SubscriberMaxLatency, StartGroup, EndGroup) and publisher-side fields with proper field encoding/decoding.
+- **moqt:** updated session stream handling to treat unknown bidirectional and unidirectional stream types as stream-local errors (reset/cancel) rather than session-terminating violations, enabling safer extension probing.
+- **moqt:** refactored AnnouncementWriter initialization to emit individual per-suffix ACTIVE AnnounceMessage frames instead of ANNOUNCE_INIT, and simplified synchronization logic by removing unnecessary atomic flags and helper functions.
+- **moqt/internal/message:** added draft3 stream type constants (FETCH, PROBE) and deprecated legacy OBJECT/OBJECT_STREAM types.
+- **moqt/internal/message:** extended ANNOUNCE message encoding to include Hops field for draft3 alignment.
+
 ## [v0.11.0] - 2026-03-12
 
 ### Added

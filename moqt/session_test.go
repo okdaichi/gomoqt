@@ -1841,7 +1841,7 @@ func TestSession_AcceptAnnounce_EncodePleaseMessageStreamError(t *testing.T) {
 	_ = session.CloseWithError(NoError, "")
 }
 
-func TestSession_AcceptAnnounce_DecodeInitMessageStreamError(t *testing.T) {
+func TestSession_AcceptAnnounce_DeferredInitDecodeStreamError(t *testing.T) {
 	conn := &MockQUICConnection{}
 	conn.On("Context").Return(context.Background())
 	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
@@ -1879,7 +1879,7 @@ func TestSession_AcceptAnnounce_DecodeInitMessageStreamError(t *testing.T) {
 	_ = session.CloseWithError(NoError, "")
 }
 
-func TestSession_AcceptAnnounce_DecodeInitMessageError(t *testing.T) {
+func TestSession_AcceptAnnounce_DeferredInitDecodeError(t *testing.T) {
 	conn := &MockQUICConnection{}
 	conn.On("Context").Return(context.Background())
 	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)

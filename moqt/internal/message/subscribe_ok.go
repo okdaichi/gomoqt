@@ -1,12 +1,20 @@
 package message
 
 import (
+	"errors"
 	"io"
 )
 
+var ErrInvalidSubscribeOkMessageType = errors.New("invalid message type for SubscribeOkMessage")
+
 /*
  * SUBSCRIBE_OK Message {
- *   Group Frequency (varint),
+ *   Type (varint),
+ *   Publisher Priority (varint),
+ *   Publisher Ordered (varint),
+ *   Publisher Max Latency (varint),
+ *   Start Group (varint),
+ *   End Group (varint),
  * }
  */
 type SubscribeOkMessage struct {
@@ -69,7 +77,7 @@ func (som *SubscribeOkMessage) Decode(src io.Reader) error {
 	b = b[n:]
 
 	if msgType != subscribeOkMessageType {
-		return ErrMessageTooShort
+		return ErrInvalidSubscribeOkMessageType
 	}
 
 	num, n, err = ReadVarint(b)

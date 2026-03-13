@@ -6,7 +6,11 @@ import (
 
 /*
  * SUBSCRIBE_UPDATE Message {
- *   Track Priority (varint),
+ *   Subscriber Priority (varint),
+ *   Subscriber Ordered (varint),
+ *   Subscriber Max Latency (varint),
+ *   Start Group (varint),
+ *   End Group (varint),
  * }
  */
 type SubscribeUpdateMessage struct {

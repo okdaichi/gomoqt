@@ -407,9 +407,19 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 			return
 		}
 
-		// Create a receiveSubscribeStream
+		// Create a receiveSubscribeStream with draft3 fields decoded from SUBSCRIBE message
 		config := &TrackConfig{
 			TrackPriority: TrackPriority(sm.SubscriberPriority),
+			Ordered:       sm.SubscriberOrdered != 0,
+			MaxLatencyMs:  sm.SubscriberMaxLatency,
+		}
+
+		// Decode 0-sentinel / +1-encoded fields (matching SUBSCRIBE_UPDATE logic)
+		if sm.StartGroup > 0 {
+			config.StartGroup = GroupSequence(sm.StartGroup - 1)
+		}
+		if sm.EndGroup > 0 {
+			config.EndGroup = GroupSequence(sm.EndGroup - 1)
 		}
 
 		substr := newReceiveSubscribeStream(SubscribeID(sm.SubscribeID), stream, config)
