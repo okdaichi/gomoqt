@@ -10,7 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/okdaichi/gomoqt/moqt/internal/message"
 	"github.com/okdaichi/gomoqt/quic"
 	"github.com/okdaichi/gomoqt/quic/quicgo"
 	"github.com/okdaichi/gomoqt/webtransport"
@@ -152,19 +151,8 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 	)
 	connLogger.Info("connection established")
 
-	req := &SetupRequest{
-		Path:       path,
-		Versions:   DefaultClientVersions,
-		RemoteAddr: conn.RemoteAddr().String(),
-	}
-
-	rsp, err := openSessionStream(conn, req)
-	if err != nil {
-		return nil, err
-	}
-
 	var sess *Session
-	sess = newSession(conn, rsp.sessionStream, mux, func() { c.removeSession(sess) })
+	sess = newSession(conn, mux, func() { c.removeSession(sess) })
 	c.addSession(sess)
 
 	return sess, nil
@@ -212,90 +200,11 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 		return nil, err
 	}
 
-	req := &SetupRequest{
-		Path:             path,
-		Versions:         DefaultClientVersions,
-		ClientExtensions: extensionsWithPath(path),
-		RemoteAddr:       conn.RemoteAddr().String(),
-	}
-
-	rsp, err := openSessionStream(conn, req)
-	if err != nil {
-		return nil, err
-	}
-
 	var sess *Session
-	sess = newSession(conn, rsp.sessionStream, mux, func() { c.removeSession(sess) })
+	sess = newSession(conn, mux, func() { c.removeSession(sess) })
 	c.addSession(sess)
 
 	return sess, nil
-}
-
-func extensionsWithPath(path string) *Extension {
-	params := NewExtension()
-
-	params.SetString(param_type_path, path)
-
-	return params
-}
-
-func openSessionStream(
-	conn quic.Connection,
-	request *SetupRequest,
-) (*response, error) {
-	stream, err := conn.OpenStream()
-	if err != nil {
-		return nil, err
-	}
-
-	// Ensure we have a valid request and extension container to avoid panics
-	if request == nil {
-		request = &SetupRequest{}
-	}
-
-	// Send STREAM_TYPE message
-	err = message.StreamTypeSession.Encode(stream)
-	if err != nil {
-		return nil, err
-	}
-
-	versions := make([]uint64, len(request.Versions))
-	for i, v := range request.Versions {
-		versions[i] = uint64(v)
-	}
-	var params parameters
-	if request.ClientExtensions != nil {
-		params = request.ClientExtensions.parameters
-	}
-	// Send a SESSION_CLIENT message
-	scm := message.SessionClientMessage{
-		SupportedVersions: versions,
-		Parameters:        params,
-	}
-
-	err = scm.Encode(stream)
-	if err != nil {
-		return nil, err
-	}
-
-	if request != nil {
-		request.reqCtx = stream.Context()
-	}
-
-	var sum message.SessionServerMessage
-	err = sum.Decode(stream)
-	if err != nil {
-		_ = conn.CloseWithError(quic.ApplicationErrorCode(InternalSessionErrorCode), "moq: failed to set up session")
-		return nil, err
-	}
-
-	response := newResponse(
-		newSessionStream(stream),
-		Version(sum.SelectedVersion),
-		&Extension{sum.Parameters},
-	)
-
-	return response, nil
 }
 
 func (c *Client) addSession(sess *Session) {

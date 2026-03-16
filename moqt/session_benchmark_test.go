@@ -66,10 +66,8 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 				return mockBiStream, nil
 			}
 
-			sessStream := newSessionStream(mockStream)
-
 			mux := NewTrackMux()
-			session := newSession(conn, sessStream, mux, nil)
+			session := newSession(conn, mux, nil)
 
 			// Pre-generate paths
 			paths := make([]BroadcastPath, size)
@@ -140,10 +138,8 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 				return mockBiStream, nil
 			}
 
-			sessStream := newSessionStream(mockStream)
-
 			mux := NewTrackMux()
-			session := newSession(conn, sessStream, mux, nil)
+			session := newSession(conn, mux, nil)
 
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -177,10 +173,8 @@ func BenchmarkSession_TrackReaderOperations(b *testing.B) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	sessStream := newSessionStream(mockStream)
-
 	mux := NewTrackMux()
-	session := newSession(conn, sessStream, mux, nil)
+	session := newSession(conn, mux, nil)
 
 	b.ReportAllocs()
 
@@ -224,10 +218,8 @@ func BenchmarkSession_TrackWriterOperations(b *testing.B) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	sessStream := newSessionStream(mockStream)
-
 	mux := NewTrackMux()
-	session := newSession(conn, sessStream, mux, nil)
+	session := newSession(conn, mux, nil)
 
 	b.ReportAllocs()
 
@@ -276,10 +268,8 @@ func BenchmarkSession_MapLookup(b *testing.B) {
 			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-			sessStream := newSessionStream(mockStream)
-
 			mux := NewTrackMux()
-			session := newSession(conn, sessStream, mux, nil)
+			session := newSession(conn, mux, nil)
 
 			// Pre-populate with track readers
 			for i := range size {
@@ -339,10 +329,8 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 				conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-				sessStream := newSessionStream(mockStream)
-
 				mux := NewTrackMux()
-				session := newSession(conn, sessStream, mux, nil)
+				session := newSession(conn, mux, nil)
 
 				// Create many track readers
 				for j := range size {
@@ -385,10 +373,8 @@ func BenchmarkSession_ContextCancellation(b *testing.B) {
 		conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 		conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-		sessStream := newSessionStream(mockStream)
-
 		mux := NewTrackMux()
-		session := newSession(conn, sessStream, mux, nil)
+		session := newSession(conn, mux, nil)
 
 		// Cancel context
 		cancel()
@@ -400,4 +386,3 @@ func BenchmarkSession_ContextCancellation(b *testing.B) {
 		time.Sleep(time.Millisecond)
 	}
 }
-

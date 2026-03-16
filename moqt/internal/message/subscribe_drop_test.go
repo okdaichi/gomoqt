@@ -12,7 +12,7 @@ func TestSubscribeDropMessage_EncodeDecode(t *testing.T) {
 	t.Run("valid_message", func(t *testing.T) {
 		original := SubscribeDropMessage{
 			SubscribeID: 42,
-			ReasonCode: 3,
+			ReasonCode:  3,
 		}
 
 		var buf bytes.Buffer
@@ -30,7 +30,7 @@ func TestSubscribeDropMessage_EncodeDecode(t *testing.T) {
 	t.Run("zero_subscribe_id", func(t *testing.T) {
 		original := SubscribeDropMessage{
 			SubscribeID: 0,
-			ReasonCode: 1,
+			ReasonCode:  1,
 		}
 
 		var buf bytes.Buffer
@@ -50,7 +50,7 @@ func TestSubscribeDropMessage_EncodeDecode(t *testing.T) {
 		maxVal := uint64(1<<62) - 1
 		original := SubscribeDropMessage{
 			SubscribeID: maxVal,
-			ReasonCode: maxVal,
+			ReasonCode:  maxVal,
 		}
 
 		var buf bytes.Buffer

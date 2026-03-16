@@ -14,7 +14,6 @@ import (
 
 func newSession(
 	conn quic.Connection,
-	sessStream *sessionStream,
 	mux *TrackMux,
 	onClose func(),
 ) *Session {
@@ -23,25 +22,24 @@ func newSession(
 	}
 
 	sess := &Session{
-		sessionStream: sessStream,
-		ctx:           conn.Context(),
-		conn:          conn,
-		mux:           mux,
-		trackReaders:  make(map[SubscribeID]*TrackReader),
-		trackWriters:  make(map[SubscribeID]*TrackWriter),
-		onClose:       onClose,
+		ctx:          conn.Context(),
+		conn:         conn,
+		mux:          mux,
+		trackReaders: make(map[SubscribeID]*TrackReader),
+		trackWriters: make(map[SubscribeID]*TrackWriter),
+		onClose:      onClose,
 	}
 
-	// Supervise the session stream closure
-	sessStreamCtx := sessStream.Context()
-	context.AfterFunc(sessStreamCtx, func() {
-		reason := sessStreamCtx.Err()
+	// Supervise the connection closure
+	connCtx := conn.Context()
+	context.AfterFunc(connCtx, func() {
+		reason := connCtx.Err()
 		var appErr *quic.ApplicationError
 		if errors.As(reason, &appErr) {
 			return // Normal closure
 		}
 
-		_ = sess.CloseWithError(ProtocolViolationErrorCode, "session stream closed unexpectedly")
+		_ = sess.CloseWithError(ProtocolViolationErrorCode, "connection closed unexpectedly")
 	})
 
 	// Listen bidirectional streams
@@ -60,9 +58,9 @@ func newSession(
 // Session represents an active MOQ session over a QUIC connection.
 // It manages bidirectional and unidirectional streams, subscriptions, and announcements for a single peer connection.
 type Session struct {
-	*sessionStream
-
 	ctx context.Context // Context for the session
+
+	path string
 
 	wg sync.WaitGroup // WaitGroup for session cleanup
 
@@ -85,6 +83,12 @@ type Session struct {
 
 	onClose func() // Function to call when the session is closed
 }
+
+func (s *Session) UpdateTrackMux(mux *TrackMux) {
+	s.mux = mux
+}
+
+func (s *Session) Path() string { return s.path }
 
 func (s *Session) terminating() bool {
 	return s.isTerminating.Load()

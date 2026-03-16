@@ -25,13 +25,9 @@ func main() {
 		Logger: slog.Default(),
 	}
 
-	moqt.HandleFunc("/nativequic", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
-		_, err := moqt.Accept(w, r, nil)
-		if err != nil {
-			slog.Error("failed to accept session", "error", err)
-			return
-		}
-	})
+	server.SessionHandler = func(sess *moqt.Session) {
+		// Accept session
+	}
 
 	server.ListenAndServe()
 }

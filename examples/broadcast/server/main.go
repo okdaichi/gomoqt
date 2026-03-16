@@ -28,13 +28,9 @@ func main() {
 		Logger: slog.Default(),
 	}
 
-	moqt.HandleFunc("/broadcast", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
-		_, err := moqt.Accept(w, r, nil)
-		if err != nil {
-			slog.Error("failed to accept session", "error", err)
-			return
-		}
-	})
+	server.SessionHandler = func(sess *moqt.Session) {
+		// Just accept the session
+	}
 
 	// Serve moq over webtransport
 	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {

@@ -197,12 +197,9 @@ func setupBroadcastServerWithFrameSize(b *testing.B, ctx context.Context, frameS
 	}
 
 	// Setup MoQT handler
-	HandleFunc("/broadcast", func(w SetupResponseWriter, r *SetupRequest) {
-		_, err := Accept(w, r, nil)
-		if err != nil {
-			b.Logf("failed to accept session: %v", err)
-		}
-	})
+	moqtServer.SessionHandler = func(sess *Session) {
+		// Just accept and keep session open
+	}
 
 	// Setup HTTP handler for WebTransport
 	mux := http.NewServeMux()
