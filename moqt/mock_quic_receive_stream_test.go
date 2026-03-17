@@ -3,19 +3,19 @@ package moqt
 import (
 	"time"
 
-	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/mock"
 )
 
-var _ quic.ReceiveStream = (*MockQUICReceiveStream)(nil)
+var _ transport.ReceiveStream = (*MockQUICReceiveStream)(nil)
 
-// MockQUICReceiveStream is a mock implementation of quic.ReceiveStream using testify/mock
+// MockQUICReceiveStream is a mock implementation of transport.ReceiveStream using testify/mock
 type MockQUICReceiveStream struct {
 	mock.Mock
 	ReadFunc func(p []byte) (n int, err error)
 }
 
-func (m *MockQUICReceiveStream) StreamID() quic.StreamID {
+func (m *MockQUICReceiveStream) StreamID() transport.StreamID {
 	// Prevent panic when no expectation was provided for StreamID() calls.
 	defer func() {
 		if r := recover(); r != nil {
@@ -24,9 +24,9 @@ func (m *MockQUICReceiveStream) StreamID() quic.StreamID {
 	}()
 	args := m.Called()
 	if len(args) == 0 || args.Get(0) == nil {
-		return quic.StreamID(0)
+		return transport.StreamID(0)
 	}
-	return args.Get(0).(quic.StreamID)
+	return args.Get(0).(transport.StreamID)
 }
 
 func (m *MockQUICReceiveStream) Read(p []byte) (n int, err error) {
@@ -37,7 +37,7 @@ func (m *MockQUICReceiveStream) Read(p []byte) (n int, err error) {
 	return args.Int(0), args.Error(1)
 }
 
-func (m *MockQUICReceiveStream) CancelRead(code quic.StreamErrorCode) {
+func (m *MockQUICReceiveStream) CancelRead(code transport.StreamErrorCode) {
 	m.Called(code)
 }
 

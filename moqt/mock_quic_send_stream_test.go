@@ -4,19 +4,19 @@ import (
 	"context"
 	"time"
 
-	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/mock"
 )
 
-var _ quic.SendStream = (*MockQUICSendStream)(nil)
+var _ transport.SendStream = (*MockQUICSendStream)(nil)
 
-// MockQUICSendStream is a mock implementation of quic.SendStream using testify/mock
+// MockQUICSendStream is a mock implementation of transport.SendStream using testify/mock
 type MockQUICSendStream struct {
 	mock.Mock
 	WriteFunc func(p []byte) (n int, err error)
 }
 
-func (m *MockQUICSendStream) StreamID() quic.StreamID {
+func (m *MockQUICSendStream) StreamID() transport.StreamID {
 	// Recover from testify/mock panic when no expectation is provided and
 	// default to zero StreamID which is safe for logging purposes.
 	defer func() {
@@ -26,9 +26,9 @@ func (m *MockQUICSendStream) StreamID() quic.StreamID {
 	}()
 	args := m.Called()
 	if len(args) == 0 || args.Get(0) == nil {
-		return quic.StreamID(0)
+		return transport.StreamID(0)
 	}
-	return args.Get(0).(quic.StreamID)
+	return args.Get(0).(transport.StreamID)
 }
 
 func (m *MockQUICSendStream) Write(p []byte) (n int, err error) {
@@ -39,7 +39,7 @@ func (m *MockQUICSendStream) Write(p []byte) (n int, err error) {
 	return args.Int(0), args.Error(1)
 }
 
-func (m *MockQUICSendStream) CancelWrite(code quic.StreamErrorCode) {
+func (m *MockQUICSendStream) CancelWrite(code transport.StreamErrorCode) {
 	m.Called(code)
 }
 

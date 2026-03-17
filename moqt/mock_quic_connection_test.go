@@ -2,26 +2,36 @@ package moqt
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 
-	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/mock"
 )
 
-var _ quic.Connection = (*MockQUICConnection)(nil)
+var _ transport.StreamConn = (*MockStreamConn)(nil)
 
-// MockQUICConnection is a mock implementation of quic.Connection using testify/mock
-type MockQUICConnection struct {
+// MockStreamConn is a mock implementation of transport.StreamConn using testify/mock
+type MockStreamConn struct {
 	mock.Mock
-	AcceptStreamFunc      func(ctx context.Context) (quic.Stream, error)
-	AcceptUniStreamFunc   func(ctx context.Context) (quic.ReceiveStream, error)
-	OpenStreamFunc        func() (quic.Stream, error)
-	OpenUniStreamFunc     func() (quic.SendStream, error)
-	OpenStreamSyncFunc    func(ctx context.Context) (quic.Stream, error)
-	OpenUniStreamSyncFunc func(ctx context.Context) (quic.SendStream, error)
+	AcceptStreamFunc      func(ctx context.Context) (transport.Stream, error)
+	AcceptUniStreamFunc   func(ctx context.Context) (transport.ReceiveStream, error)
+	OpenStreamFunc        func() (transport.Stream, error)
+	OpenUniStreamFunc     func() (transport.SendStream, error)
+	OpenStreamSyncFunc    func(ctx context.Context) (transport.Stream, error)
+	OpenUniStreamSyncFunc func(ctx context.Context) (transport.SendStream, error)
 }
 
-func (m *MockQUICConnection) AcceptStream(ctx context.Context) (quic.Stream, error) {
+// TLS implements [transport.StreamConn].
+func (m *MockStreamConn) TLS() *tls.ConnectionState {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(*tls.ConnectionState)
+}
+
+func (m *MockStreamConn) AcceptStream(ctx context.Context) (transport.Stream, error) {
 	if m.AcceptStreamFunc != nil {
 		return m.AcceptStreamFunc(ctx)
 	}
@@ -29,10 +39,10 @@ func (m *MockQUICConnection) AcceptStream(ctx context.Context) (quic.Stream, err
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(quic.Stream), args.Error(1)
+	return args.Get(0).(transport.Stream), args.Error(1)
 }
 
-func (m *MockQUICConnection) AcceptUniStream(ctx context.Context) (quic.ReceiveStream, error) {
+func (m *MockStreamConn) AcceptUniStream(ctx context.Context) (transport.ReceiveStream, error) {
 	if m.AcceptUniStreamFunc != nil {
 		return m.AcceptUniStreamFunc(ctx)
 	}
@@ -40,10 +50,10 @@ func (m *MockQUICConnection) AcceptUniStream(ctx context.Context) (quic.ReceiveS
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(quic.ReceiveStream), args.Error(1)
+	return args.Get(0).(transport.ReceiveStream), args.Error(1)
 }
 
-func (m *MockQUICConnection) OpenStream() (quic.Stream, error) {
+func (m *MockStreamConn) OpenStream() (transport.Stream, error) {
 	if m.OpenStreamFunc != nil {
 		return m.OpenStreamFunc()
 	}
@@ -51,10 +61,10 @@ func (m *MockQUICConnection) OpenStream() (quic.Stream, error) {
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(quic.Stream), args.Error(1)
+	return args.Get(0).(transport.Stream), args.Error(1)
 }
 
-func (m *MockQUICConnection) OpenUniStream() (quic.SendStream, error) {
+func (m *MockStreamConn) OpenUniStream() (transport.SendStream, error) {
 	if m.OpenUniStreamFunc != nil {
 		return m.OpenUniStreamFunc()
 	}
@@ -62,10 +72,10 @@ func (m *MockQUICConnection) OpenUniStream() (quic.SendStream, error) {
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(quic.SendStream), args.Error(1)
+	return args.Get(0).(transport.SendStream), args.Error(1)
 }
 
-func (m *MockQUICConnection) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
+func (m *MockStreamConn) OpenStreamSync(ctx context.Context) (transport.Stream, error) {
 	if m.OpenStreamSyncFunc != nil {
 		return m.OpenStreamSyncFunc(ctx)
 	}
@@ -73,10 +83,10 @@ func (m *MockQUICConnection) OpenStreamSync(ctx context.Context) (quic.Stream, e
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(quic.Stream), args.Error(1)
+	return args.Get(0).(transport.Stream), args.Error(1)
 }
 
-func (m *MockQUICConnection) OpenUniStreamSync(ctx context.Context) (quic.SendStream, error) {
+func (m *MockStreamConn) OpenUniStreamSync(ctx context.Context) (transport.SendStream, error) {
 	if m.OpenUniStreamSyncFunc != nil {
 		return m.OpenUniStreamSyncFunc(ctx)
 	}
@@ -84,30 +94,25 @@ func (m *MockQUICConnection) OpenUniStreamSync(ctx context.Context) (quic.SendSt
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(quic.SendStream), args.Error(1)
+	return args.Get(0).(transport.SendStream), args.Error(1)
 }
 
-func (m *MockQUICConnection) LocalAddr() net.Addr {
+func (m *MockStreamConn) LocalAddr() net.Addr {
 	args := m.Called()
 	return args.Get(0).(net.Addr)
 }
 
-func (m *MockQUICConnection) RemoteAddr() net.Addr {
+func (m *MockStreamConn) RemoteAddr() net.Addr {
 	args := m.Called()
 	return args.Get(0).(net.Addr)
 }
 
-func (m *MockQUICConnection) CloseWithError(code quic.ApplicationErrorCode, reason string) error {
+func (m *MockStreamConn) CloseWithError(code transport.ConnErrorCode, reason string) error {
 	args := m.Called(code, reason)
 	return args.Error(0)
 }
 
-func (m *MockQUICConnection) ConnectionState() quic.ConnectionState {
-	args := m.Called()
-	return args.Get(0).(quic.ConnectionState)
-}
-
-func (m *MockQUICConnection) Context() context.Context {
+func (m *MockStreamConn) Context() context.Context {
 	args := m.Called()
 	return args.Get(0).(context.Context)
 }

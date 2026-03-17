@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 // BenchmarkBroadcastServer_HighLoad benchmarks a realistic broadcast scenario
@@ -189,28 +189,18 @@ func setupBroadcastServerWithFrameSize(b *testing.B, ctx context.Context, frameS
 			Certificates:       []tls.Certificate{generateTestCert(b)},
 			InsecureSkipVerify: true,
 		},
-		QUICConfig: &quic.Config{
+		QUICConfig: &transport.QUICConfig{
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		},
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	// Setup MoQT handler
-	HandleFunc("/broadcast", func(w SetupResponseWriter, r *SetupRequest) {
-		_, err := Accept(w, r, nil)
-		if err != nil {
-			b.Logf("failed to accept session: %v", err)
-		}
-	})
-
 	// Setup HTTP handler for WebTransport
 	mux := http.NewServeMux()
+	upgrader := Upgrader{}
 	mux.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		err := moqtServer.HandleWebTransport(w, r)
-		if err != nil {
-			b.Logf("failed to handle webtransport: %v", err)
-		}
+		upgrader.Upgrade(w, r)
 	})
 
 	httpServer := &http.Server{

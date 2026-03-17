@@ -21,13 +21,6 @@ func Example() {
 	server := &moqt.Server{
 		Addr:      ":4433",
 		TLSConfig: tlsConfig,
-		SetupHandler: moqt.SetupHandlerFunc(func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
-			// Select a supported version from the client's request
-			if err := w.SelectVersion(moqt.DefaultServerVersion); err != nil {
-				w.Reject(moqt.UnsupportedVersionErrorCode)
-				return
-			}
-		}),
 	}
 
 	// Start serving (this blocks, so typically run in a goroutine)

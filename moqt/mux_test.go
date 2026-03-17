@@ -12,7 +12,7 @@ import (
 
 	"testing/synctest"
 
-	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -131,19 +131,19 @@ func TestMux_Announce_WithNilHandler_ClosesTrack(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
-	mockStream.On("CancelWrite", quic.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
-	mockStream.On("CancelRead", quic.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
+	mockStream.On("CancelRead", transport.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
 	mockStream.On("Close").Return(nil).Maybe()
 
-	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream { return mockStream }(), &TrackConfig{}), func() (quic.SendStream, error) {
+	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream { return mockStream }(), &TrackConfig{}), func() (transport.SendStream, error) {
 		return &MockQUICSendStream{}, nil
 	}, func() {})
 
 	// serveTrack will call CloseWithError
 	mux.serveTrack(tw)
 
-	mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(TrackNotFoundErrorCode))
-	mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(TrackNotFoundErrorCode))
+	mockStream.AssertCalled(t, "CancelWrite", transport.StreamErrorCode(TrackNotFoundErrorCode))
+	mockStream.AssertCalled(t, "CancelRead", transport.StreamErrorCode(TrackNotFoundErrorCode))
 	mockStream.AssertExpectations(t)
 }
 
@@ -155,18 +155,18 @@ func TestMux_ServeTrack_NotFound_ClosesWithError(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
-	mockStream.On("CancelWrite", quic.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
-	mockStream.On("CancelRead", quic.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
+	mockStream.On("CancelRead", transport.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
 	mockStream.On("Close").Return(nil).Maybe()
 
-	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream { return mockStream }(), &TrackConfig{}), func() (quic.SendStream, error) {
+	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream { return mockStream }(), &TrackConfig{}), func() (transport.SendStream, error) {
 		return &MockQUICSendStream{}, nil
 	}, func() {})
 
 	mux.serveTrack(tw)
 
-	mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(TrackNotFoundErrorCode))
-	mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(TrackNotFoundErrorCode))
+	mockStream.AssertCalled(t, "CancelWrite", transport.StreamErrorCode(TrackNotFoundErrorCode))
+	mockStream.AssertCalled(t, "CancelRead", transport.StreamErrorCode(TrackNotFoundErrorCode))
 	mockStream.AssertExpectations(t)
 }
 
@@ -675,7 +675,7 @@ func TestNotFound(t *testing.T) {
 		},
 		"track writer with mock TrackWriter": {
 			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"),
-				newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream {
+				newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream {
 					mockStream := &MockQUICStream{}
 					mockStream.On("Context").Return(context.Background())
 					mockStream.On("Read", mock.Anything).Return(0, io.EOF)
@@ -683,7 +683,7 @@ func TestNotFound(t *testing.T) {
 					mockStream.On("CancelRead", mock.Anything).Return()
 					return mockStream
 				}(), &TrackConfig{}),
-				func() (quic.SendStream, error) {
+				func() (transport.SendStream, error) {
 					return &MockQUICSendStream{}, nil
 				}, func() {}),
 			expectPanic: false,
@@ -713,7 +713,7 @@ func TestNotFoundHandler(t *testing.T) {
 		},
 		"track writer with mock TrackWriter": {
 			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"),
-				newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream {
+				newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream {
 					mockStream := &MockQUICStream{}
 					mockStream.On("Context").Return(context.Background())
 					mockStream.On("Read", mock.Anything).Return(0, io.EOF)
@@ -721,7 +721,7 @@ func TestNotFoundHandler(t *testing.T) {
 					mockStream.On("CancelRead", mock.Anything).Return()
 					return mockStream
 				}(), &TrackConfig{}),
-				func() (quic.SendStream, error) {
+				func() (transport.SendStream, error) {
 					return &MockQUICSendStream{}, nil
 				}, func() {}),
 			expectPanic: false,
@@ -749,13 +749,13 @@ func TestTrackHandlerFunc(t *testing.T) {
 
 	// Create a proper TrackWriter with a valid receiveSubscribeStream
 	testTrackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"),
-		newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream {
+		newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream {
 			mockStream := &MockQUICStream{}
 			mockStream.On("Context").Return(context.Background())
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 			return mockStream
 		}(), &TrackConfig{}),
-		func() (quic.SendStream, error) {
+		func() (transport.SendStream, error) {
 			return &MockQUICSendStream{}, nil
 		}, func() {})
 
@@ -774,13 +774,13 @@ func TestTrackHandlerFuncServeTrack(t *testing.T) {
 
 	// Create a proper TrackWriter with a valid receiveSubscribeStream
 	trackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"),
-		newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream {
+		newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream {
 			mockStream := &MockQUICStream{}
 			mockStream.On("Context").Return(context.Background())
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 			return mockStream
 		}(), &TrackConfig{}),
-		func() (quic.SendStream, error) {
+		func() (transport.SendStream, error) {
 			return &MockQUICSendStream{}, nil
 		}, func() {})
 
@@ -938,8 +938,8 @@ func TestMux_ServeAnnouncements_InitSendsExistingAnnouncements(t *testing.T) {
 				default:
 				}
 			})
-			mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
-			mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+			mockStream.On("CancelWrite", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+			mockStream.On("CancelRead", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
 			mockStream.On("Close").Return(nil).Maybe()
 
 			aw := newAnnouncementWriter(mockStream, tc.writerPrefix)
@@ -1082,8 +1082,8 @@ func TestMux_ServeAnnouncements_InvalidPrefix_ClosesWithError(t *testing.T) {
 		mockStream.On("Write", mock.Anything).Return(0, nil).Maybe()
 
 		// Expect CancelWrite and CancelRead with InvalidPrefixErrorCode
-		mockStream.On("CancelWrite", quic.StreamErrorCode(InvalidPrefixErrorCode)).Return().Once()
-		mockStream.On("CancelRead", quic.StreamErrorCode(InvalidPrefixErrorCode)).Return().Once()
+		mockStream.On("CancelWrite", transport.StreamErrorCode(InvalidPrefixErrorCode)).Return().Once()
+		mockStream.On("CancelRead", transport.StreamErrorCode(InvalidPrefixErrorCode)).Return().Once()
 
 		aw := newAnnouncementWriter(mockStream, "/test/")
 		// Force invalid prefix for this test case (no trailing slash)
@@ -1114,8 +1114,8 @@ func TestMux_ServeAnnouncements_InvalidPrefix_ClosesWithError(t *testing.T) {
 			t.Fatal("expected CancelWrite to be called on mockStream for invalid prefix")
 		}
 
-		mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(InvalidPrefixErrorCode))
-		mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(InvalidPrefixErrorCode))
+		mockStream.AssertCalled(t, "CancelWrite", transport.StreamErrorCode(InvalidPrefixErrorCode))
+		mockStream.AssertCalled(t, "CancelRead", transport.StreamErrorCode(InvalidPrefixErrorCode))
 
 		// ensure goroutine terminates
 		ch := make(chan struct{})
@@ -1133,7 +1133,7 @@ func TestMux_ServeAnnouncements_InvalidPrefix_ClosesWithError(t *testing.T) {
 	})
 }
 
-// Test serveAnnouncements: init returns a quic.StreamError and serveAnnouncements should close with InternalAnnounceErrorCode
+// Test serveAnnouncements: init returns a transport.StreamError and serveAnnouncements should close with InternalAnnounceErrorCode
 func TestMux_ServeAnnouncements_InitWriteError_ClosesWithInternalError(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		mux := NewTrackMux()
@@ -1149,17 +1149,17 @@ func TestMux_ServeAnnouncements_InitWriteError_ClosesWithInternalError(t *testin
 		mockStream.On("Close").Return(nil).Maybe()
 		mockStream.On("Close").Return(nil).Maybe()
 
-		streamError := &quic.StreamError{
-			StreamID:  quic.StreamID(1),
-			ErrorCode: quic.StreamErrorCode(42),
+		streamError := &transport.StreamError{
+			StreamID:  transport.StreamID(1),
+			ErrorCode: transport.StreamErrorCode(42),
 		}
 
-		// Make the first Write (in init) fail with a quic.StreamError
+		// Make the first Write (in init) fail with a transport.StreamError
 		mockStream.On("Write", mock.Anything).Return(0, streamError).Once()
 
 		// Expect CloseWithError -> CancelWrite/CancelRead with InternalAnnounceErrorCode
-		mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
-		mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
+		mockStream.On("CancelWrite", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
+		mockStream.On("CancelRead", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
 
 		aw := newAnnouncementWriter(mockStream, "/test/")
 
@@ -1188,8 +1188,8 @@ func TestMux_ServeAnnouncements_InitWriteError_ClosesWithInternalError(t *testin
 			t.Fatal("expected CancelWrite to be called on mockStream when init write fails")
 		}
 
-		mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode))
-		mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode))
+		mockStream.AssertCalled(t, "CancelWrite", transport.StreamErrorCode(InternalAnnounceErrorCode))
+		mockStream.AssertCalled(t, "CancelRead", transport.StreamErrorCode(InternalAnnounceErrorCode))
 
 		ch := make(chan struct{})
 		go func() {
@@ -1221,7 +1221,7 @@ func TestMux_ServeAnnouncements_SendAnnouncementWriteError_ClosesWithInternalErr
 		mockStream.On("Close").Return(nil).Maybe()
 
 		// Make the first Write (SendAnnouncement) fail with StreamError
-		streamErr := &quic.StreamError{StreamID: quic.StreamID(2), ErrorCode: quic.StreamErrorCode(99)}
+		streamErr := &transport.StreamError{StreamID: transport.StreamID(2), ErrorCode: transport.StreamErrorCode(99)}
 		writeCh := make(chan struct{}, 1)
 		mockStream.On("Write", mock.Anything).Return(0, streamErr).Once().Run(func(args mock.Arguments) {
 			select {
@@ -1231,8 +1231,8 @@ func TestMux_ServeAnnouncements_SendAnnouncementWriteError_ClosesWithInternalErr
 		})
 
 		// Expect cancel calls for internal error
-		mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
-		mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
+		mockStream.On("CancelWrite", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
+		mockStream.On("CancelRead", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
 
 		aw := newAnnouncementWriter(mockStream, "/test/")
 
@@ -1270,8 +1270,8 @@ func TestMux_ServeAnnouncements_SendAnnouncementWriteError_ClosesWithInternalErr
 			t.Fatal("expected CancelWrite to be called on mockStream after SendAnnouncement write error")
 		}
 
-		mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode))
-		mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode))
+		mockStream.AssertCalled(t, "CancelWrite", transport.StreamErrorCode(InternalAnnounceErrorCode))
+		mockStream.AssertCalled(t, "CancelRead", transport.StreamErrorCode(InternalAnnounceErrorCode))
 
 		ch := make(chan struct{})
 		go func() {
@@ -1597,11 +1597,11 @@ func TestMux_Publish_InitSendsExistingAnnouncements(t *testing.T) {
 		default:
 		}
 	})
-	mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
-	mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+	mockStream.On("CancelRead", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
 	mockStream.On("Close").Return(nil).Maybe()
-	mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
-	mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+	mockStream.On("CancelRead", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
@@ -1660,8 +1660,8 @@ func TestMux_Publish_AfterServeAnnouncements_SendsAnnouncement(t *testing.T) {
 	})
 	mockStream.On("Close").Return(nil).Maybe()
 	// Allow CancelWrite/CancelRead called during cleanup or internal errors
-	mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
-	mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+	mockStream.On("CancelRead", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
 
 	aw := newAnnouncementWriter(mockStream, "/pubafter/")
 
@@ -1726,8 +1726,8 @@ func TestMux_PublishFunc_InitSendsExistingAnnouncements(t *testing.T) {
 		}
 	})
 	mockStream.On("Close").Return(nil).Maybe()
-	mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
-	mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+	mockStream.On("CancelRead", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
 
 	aw := newAnnouncementWriter(mockStream, "/pubfuncinit/")
 
@@ -1794,8 +1794,8 @@ func TestMux_PublishFunc_AfterServeAnnouncements_SendsAnnouncement(t *testing.T)
 		}
 	})
 	mockStream.On("Close").Return(nil).Maybe()
-	mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
-	mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+	mockStream.On("CancelRead", transport.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
 
 	aw := newAnnouncementWriter(mockStream, "/pubfuncafter/")
 
@@ -2018,7 +2018,7 @@ func TestMux_ServeTrack_ClosesWhenAnnouncementEnds(t *testing.T) {
 	// Close should cancel read (and maybe write) with an error code; we accept any code here
 	mockStream.On("CancelRead", mock.Anything).Return().Once()
 
-	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream { return mockStream }(), &TrackConfig{}), func() (quic.SendStream, error) {
+	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream { return mockStream }(), &TrackConfig{}), func() (transport.SendStream, error) {
 		return &MockQUICSendStream{}, nil
 	}, func() {})
 
@@ -2336,18 +2336,18 @@ func TestMux_Publish_WithNilHandler_ClosesTrack(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
-	mockStream.On("CancelWrite", quic.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
-	mockStream.On("CancelRead", quic.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
+	mockStream.On("CancelRead", transport.StreamErrorCode(TrackNotFoundErrorCode)).Return().Once()
 	mockStream.On("Close").Return(nil).Maybe()
 
-	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream { return mockStream }(), &TrackConfig{}), func() (quic.SendStream, error) {
+	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream { return mockStream }(), &TrackConfig{}), func() (transport.SendStream, error) {
 		return &MockQUICSendStream{}, nil
 	}, func() {})
 
 	mux.serveTrack(tw)
 
-	mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(TrackNotFoundErrorCode))
-	mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(TrackNotFoundErrorCode))
+	mockStream.AssertCalled(t, "CancelWrite", transport.StreamErrorCode(TrackNotFoundErrorCode))
+	mockStream.AssertCalled(t, "CancelRead", transport.StreamErrorCode(TrackNotFoundErrorCode))
 	mockStream.AssertExpectations(t)
 }
 

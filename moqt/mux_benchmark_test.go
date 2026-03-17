@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -89,10 +89,10 @@ func BenchmarkTrackMux_ServeTrack(b *testing.B) {
 	}))
 
 	// Create a test track writer
-	openUniStreamFunc := func() (quic.SendStream, error) {
+	openUniStreamFunc := func() (transport.SendStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("StreamID").Return(transport.StreamID(1))
 		mockSendStream.On("Close").Return(nil)
 		mockSendStream.On("Write", mock.Anything).Return(0, nil)
 		return mockSendStream, nil
@@ -130,7 +130,7 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 			for b.Loop() {
 				mockStream := &MockQUICStream{}
 				mockStream.On("Context").Return(ctx)
-				mockStream.On("StreamID").Return(quic.StreamID(1))
+				mockStream.On("StreamID").Return(transport.StreamID(1))
 				mockStream.On("Write", mock.Anything).Return(0, nil)
 				mockStream.On("Close").Return(nil)
 				_ = newAnnouncementWriter(mockStream, "/room/")
@@ -590,10 +590,10 @@ func BenchmarkTrackMux_CPUProfileOptimization(b *testing.B) {
 
 				// Operations that will consume CPU cycles
 				mux.TrackHandler(path) // Map lookup
-				trackWriter := newTrackWriter(path, TrackName(fmt.Sprintf("track-%d", i)), nil, func() (quic.SendStream, error) {
+				trackWriter := newTrackWriter(path, TrackName(fmt.Sprintf("track-%d", i)), nil, func() (transport.SendStream, error) {
 					mockSendStream := &MockQUICSendStream{}
 					mockSendStream.On("CancelWrite", mock.Anything).Return()
-					mockSendStream.On("StreamID").Return(quic.StreamID(1))
+					mockSendStream.On("StreamID").Return(transport.StreamID(1))
 					mockSendStream.On("Close").Return(nil)
 					mockSendStream.On("Write", mock.Anything).Return(0, nil)
 					return mockSendStream, nil
