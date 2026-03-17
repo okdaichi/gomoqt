@@ -199,20 +199,25 @@ func (s *Server) ServeQUICConn(conn transport.StreamConn) error {
 }
 
 type Upgrader struct {
-	CheckOrigin       func(r *http.Request) bool
-	ReorderingTimeout time.Duration
-	TrackMux          *TrackMux
-	UpgradeFunc       func(w http.ResponseWriter, r *http.Request) (transport.StreamConn, error)
+	CheckOrigin          func(r *http.Request) bool
+	ApplicationProtocols []string
+	ReorderingTimeout    time.Duration
+	TrackMux             *TrackMux
+	UpgradeFunc          func(w http.ResponseWriter, r *http.Request) (transport.StreamConn, error)
 }
 
 func (u *Upgrader) upgradeWebTransport(w http.ResponseWriter, r *http.Request) (transport.StreamConn, error) {
 	if u.UpgradeFunc != nil {
 		return u.UpgradeFunc(w, r)
 	}
+	protocols := u.ApplicationProtocols
+	if len(protocols) == 0 {
+		protocols = []string{NextProtoMOQ}
+	}
 	// Fallback to default upgrader if custom upgrader is not set
 	defaultUpgrader := webtransportgo.Upgrader{
 		CheckOrigin:          u.CheckOrigin,
-		ApplicationProtocols: []string{"moq-lite-03"},
+		ApplicationProtocols: protocols,
 		ReorderingTimeout:    u.ReorderingTimeout,
 	}
 	return defaultUpgrader.Upgrade(w, r)
