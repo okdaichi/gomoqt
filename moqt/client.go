@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -100,9 +101,9 @@ func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (*Sessi
 	// Dial based on the scheme
 	switch parsedURL.Scheme {
 	case "https":
-		return c.DialWebTransport(ctx, parsedURL.Hostname()+":"+parsedURL.Port(), parsedURL.Path, mux)
+		return c.DialWebTransport(ctx, parsedURL.Host, parsedURL.Path, mux)
 	case "moqt":
-		return c.DialQUIC(ctx, parsedURL.Hostname()+":"+parsedURL.Port(), parsedURL.Path, mux)
+		return c.DialQUIC(ctx, parsedURL.Host, parsedURL.Path, mux)
 	default:
 		return nil, ErrInvalidScheme
 	}
@@ -145,7 +146,15 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 		}
 		dialer = d.Dial
 	}
-	_, conn, err := dialer(dialCtx, host, nil, c.TLSConfig)
+	target := host
+	if !strings.Contains(target, "://") {
+		if path == "" {
+			path = "/"
+		}
+		target = "https://" + host + path
+	}
+
+	_, conn, err := dialer(dialCtx, target, nil, c.TLSConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -205,14 +214,6 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 	c.addSession(sess)
 
 	return sess, nil
-}
-
-func extensionsWithPath(path string) *Extension {
-	params := NewExtension()
-
-	params.SetString(param_type_path, path)
-
-	return params
 }
 
 func (c *Client) addSession(sess *Session) {
