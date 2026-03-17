@@ -123,6 +123,66 @@ func TestServer_ServeQUICConn_NativeQUICHandler(t *testing.T) {
 	assert.True(t, called)
 }
 
+func TestServer_ServeQUICConn_NativeQUICWithoutHandler(t *testing.T) {
+	s := &Server{}
+	conn := &MockStreamConn{}
+	conn.On("TLS").Return(&tls.ConnectionState{NegotiatedProtocol: NextProtoMOQ})
+
+	err := s.ServeQUICConn(conn)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "native QUIC is not supported")
+}
+
+func TestServer_ListenAndServe_RequiresTLSConfig(t *testing.T) {
+	s := &Server{}
+	err := s.ListenAndServe()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "configuration for TLS is required")
+}
+
+func TestServer_ListenAndServe_ConfiguresDefaultsBeforeListen(t *testing.T) {
+	called := false
+	var gotTLS *tls.Config
+	var gotQUIC *transport.QUICConfig
+
+	s := &Server{
+		Addr:      "localhost:0",
+		TLSConfig: &tls.Config{},
+		ListenFunc: func(addr string, tlsConfig *tls.Config, quicConfig *transport.QUICConfig) (transport.QUICListener, error) {
+			called = true
+			gotTLS = tlsConfig
+			gotQUIC = quicConfig
+			return nil, errors.New("listen failed")
+		},
+	}
+
+	err := s.ListenAndServe()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to start QUIC listener")
+	assert.True(t, called)
+	assert.NotNil(t, gotTLS)
+	assert.Equal(t, []string{NextProtoH3, NextProtoMOQ}, gotTLS.NextProtos)
+	assert.NotNil(t, gotQUIC)
+	assert.True(t, gotQUIC.EnableDatagrams)
+	assert.True(t, gotQUIC.EnableStreamResetPartialDelivery)
+	// Ensure original server TLS config was not modified in place.
+	assert.Len(t, s.TLSConfig.NextProtos, 0)
+}
+
+func TestServer_ListenAndServeTLS_ShuttingDown(t *testing.T) {
+	s := &Server{}
+	s.inShutdown.Store(true)
+	err := s.ListenAndServeTLS("cert.pem", "key.pem")
+	assert.Equal(t, ErrServerClosed, err)
+}
+
+func TestServer_ListenAndServeTLS_InvalidKeyPair(t *testing.T) {
+	s := &Server{Addr: "localhost:0"}
+	err := s.ListenAndServeTLS("missing-cert.pem", "missing-key.pem")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load X509 key pair")
+}
+
 func TestServer_Close_ClosesListenersAndWTServer(t *testing.T) {
 	s := &Server{WebTransportServer: &stubWTServer{}}
 	s.init()
