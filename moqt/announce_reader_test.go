@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
-	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -239,14 +239,14 @@ func TestAnnouncementReader_CloseWithError(t *testing.T) {
 	// Add the stream type to the context like newAnnouncementReader does
 	ctx = context.WithValue(ctx, &biStreamTypeCtxKey, message.StreamTypeAnnounce)
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(quic.StreamID(123))
+	mockStream.On("StreamID").Return(transport.StreamID(123))
 	mockStream.On("Context").Return(ctx)
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Run(func(args mock.Arguments) {
-		cancel(&quic.StreamError{
+		cancel(&transport.StreamError{
 			StreamID:  mockStream.StreamID(),
-			ErrorCode: args[0].(quic.StreamErrorCode),
+			ErrorCode: args[0].(transport.StreamErrorCode),
 		})
 	}).Return()
 
@@ -269,13 +269,13 @@ func TestAnnouncementReader_CloseWithError(t *testing.T) {
 func TestAnnouncementReader_CloseWithError_MultipleClose(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(quic.StreamID(123))
+	mockStream.On("StreamID").Return(transport.StreamID(123))
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Run(func(args mock.Arguments) {
-		cancel(&quic.StreamError{
+		cancel(&transport.StreamError{
 			StreamID:  mockStream.StreamID(),
-			ErrorCode: args[0].(quic.StreamErrorCode),
+			ErrorCode: args[0].(transport.StreamErrorCode),
 		})
 	}).Return()
 	mockStream.On("Context").Return(ctx)
@@ -921,9 +921,9 @@ func TestAnnouncementReader_StreamErrors(t *testing.T) {
 	}{
 		"quic_stream_error": {
 			setupError: func() error {
-				return &quic.StreamError{
-					StreamID:  quic.StreamID(123),
-					ErrorCode: quic.StreamErrorCode(42),
+				return &transport.StreamError{
+					StreamID:  transport.StreamID(123),
+					ErrorCode: transport.StreamErrorCode(42),
 				}
 			},
 			expectedType: &AnnounceError{},

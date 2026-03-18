@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
-	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -293,15 +293,15 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 					select {}
 				},
 			}
-			mockStream.On("StreamID").Return(quic.StreamID(123))
+			mockStream.On("StreamID").Return(transport.StreamID(123))
 			mockStream.On("Context").Return(ctx)
-			mockStream.On("CancelWrite", quic.StreamErrorCode(tt.errorCode)).Run(func(args mock.Arguments) {
-				cancel(&quic.StreamError{
+			mockStream.On("CancelWrite", transport.StreamErrorCode(tt.errorCode)).Run(func(args mock.Arguments) {
+				cancel(&transport.StreamError{
 					StreamID:  mockStream.StreamID(),
-					ErrorCode: args[0].(quic.StreamErrorCode),
+					ErrorCode: args[0].(transport.StreamErrorCode),
 				})
 			}).Return()
-			mockStream.On("CancelRead", quic.StreamErrorCode(tt.errorCode)).Return()
+			mockStream.On("CancelRead", transport.StreamErrorCode(tt.errorCode)).Return()
 
 			config := &TrackConfig{
 				TrackPriority: TrackPriority(1),
@@ -328,13 +328,13 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 func TestReceiveSubscribeStream_CloseWithError_MultipleClose(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(quic.StreamID(123))
+	mockStream.On("StreamID").Return(transport.StreamID(123))
 	mockStream.On("Context").Return(ctx)
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("CancelWrite", mock.Anything).Run(func(args mock.Arguments) {
-		cancel(&quic.StreamError{
+		cancel(&transport.StreamError{
 			StreamID:  mockStream.StreamID(),
-			ErrorCode: args[0].(quic.StreamErrorCode),
+			ErrorCode: args[0].(transport.StreamErrorCode),
 		})
 	}).Return()
 	mockStream.On("CancelRead", mock.Anything).Return()

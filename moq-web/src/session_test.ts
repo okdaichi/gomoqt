@@ -1,12 +1,10 @@
 import { assertEquals, assertExists, assertInstanceOf } from "@std/assert";
 import { spy } from "@std/testing/mock";
 import { Session } from "./session.ts";
-import { DEFAULT_CLIENT_VERSIONS } from "./version.ts";
 import {
 	AnnounceInitMessage,
 	AnnouncePleaseMessage,
 	GroupMessage,
-	SessionServerMessage,
 	SubscribeMessage,
 	SubscribeOkMessage,
 	writeVarint,
@@ -249,14 +247,7 @@ Deno.test({
 	sanitizeResources: false,
 	fn: async (t) => {
 		await t.step("constructor and ready sends client message", async () => {
-			const rsp = new SessionServerMessage({
-				version: [...DEFAULT_CLIENT_VERSIONS][0],
-			});
-			const serverBytes = await encodeMessageToUint8Array(async (w) => rsp.encode(w));
-
-			const mock = new MockWebTransportSession({
-				openStreamResponses: [serverBytes],
-			});
+			const mock = new MockWebTransportSession({});
 
 			const session = new Session({ webtransport: mock });
 			await session.ready;
@@ -266,13 +257,9 @@ Deno.test({
 		});
 
 		await t.step(
-			"constructor throws when SESSION_SERVER decode fails",
+			"constructor starts without session setup handshake",
 			async () => {
-				const serverBytes = new Uint8Array([0x80]);
-
-				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
-				});
+				const mock = new MockWebTransportSession({});
 
 				let threw = false;
 				let session: Session | undefined;
@@ -290,20 +277,14 @@ Deno.test({
 						}
 					}
 				}
-				assertEquals(threw, true);
+				assertEquals(threw, false);
 			},
 		);
 
 		await t.step(
-			"constructor throws when SESSION_SERVER version is incompatible",
+			"constructor is ready without version negotiation",
 			async () => {
-				const incompatibleVersion = 0x12345678;
-				const rsp = new SessionServerMessage({ version: incompatibleVersion });
-				const serverBytes = await encodeMessageToUint8Array(async (w) => rsp.encode(w));
-
-				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
-				});
+				const mock = new MockWebTransportSession({});
 
 				let threw = false;
 				let session: Session | undefined;
@@ -321,23 +302,17 @@ Deno.test({
 						}
 					}
 				}
-				assertEquals(threw, true);
+				assertEquals(threw, false);
 			},
 		);
 
 		await t.step(
 			"acceptAnnounce returns error when ANNOUNCE_INIT decode fails",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
 				const truncatedBytes = new Uint8Array([0x80]);
 
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes, truncatedBytes],
+					openStreamResponses: [truncatedBytes],
 				});
 
 				const session = new Session({ webtransport: mock });
@@ -355,16 +330,10 @@ Deno.test({
 		await t.step(
 			"subscribe returns error when SUBSCRIBE_OK decode fails",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
 				const truncatedBytes = new Uint8Array([0x80]);
 
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes, truncatedBytes],
+					openStreamResponses: [truncatedBytes],
 				});
 
 				const session = new Session({ webtransport: mock });
@@ -401,15 +370,8 @@ Deno.test({
 					return await req.encode(w);
 				});
 
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
+					openStreamResponses: [],
 					acceptStreamData: [{
 						type: BiStreamTypes.SubscribeStreamType,
 						data: buf,
@@ -429,15 +391,8 @@ Deno.test({
 			const init = new AnnounceInitMessage({ suffixes: ["suffix"] });
 			const initBytes = await encodeMessageToUint8Array(async (w) => init.encode(w));
 
-			const serverBytes = await encodeMessageToUint8Array(async (w) => {
-				const s = new SessionServerMessage({
-					version: [...DEFAULT_CLIENT_VERSIONS][0],
-				});
-				return await s.encode(w);
-			});
-
 			const mock = new MockWebTransportSession({
-				openStreamResponses: [serverBytes, initBytes],
+				openStreamResponses: [initBytes],
 			});
 
 			const session = new Session({ webtransport: mock });
@@ -456,15 +411,8 @@ Deno.test({
 			const ok = new SubscribeOkMessage({});
 			const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
 
-			const serverBytes = await encodeMessageToUint8Array(async (w) => {
-				const s = new SessionServerMessage({
-					version: [...DEFAULT_CLIENT_VERSIONS][0],
-				});
-				return await s.encode(w);
-			});
-
 			const mock = new MockWebTransportSession({
-				openStreamResponses: [serverBytes, okBytes],
+				openStreamResponses: [okBytes],
 			});
 
 			const session = new Session({ webtransport: mock });
@@ -497,15 +445,8 @@ Deno.test({
 					return await req.encode(w);
 				});
 
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
+					openStreamResponses: [],
 					acceptStreamData: [{
 						type: BiStreamTypes.AnnounceStreamType,
 						data: buf,
@@ -523,13 +464,6 @@ Deno.test({
 		);
 
 		await t.step("listening for group stream enqueues to track", async () => {
-			const serverBytes = await encodeMessageToUint8Array(async (w) => {
-				const s = new SessionServerMessage({
-					version: [...DEFAULT_CLIENT_VERSIONS][0],
-				});
-				return await s.encode(w);
-			});
-
 			const ok = new SubscribeOkMessage({});
 			const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
 
@@ -543,7 +477,7 @@ Deno.test({
 			});
 
 			const mock = new MockWebTransportSession({
-				openStreamResponses: [serverBytes, okBytes],
+				openStreamResponses: [okBytes],
 				acceptUniStreamData: [{
 					type: UniStreamTypes.GroupStreamType,
 					data: groupBuf,
@@ -566,16 +500,9 @@ Deno.test({
 		});
 
 		await t.step("close calls webtransport.close", async () => {
-			const serverBytes = await encodeMessageToUint8Array(async (w) => {
-				const s = new SessionServerMessage({
-					version: [...DEFAULT_CLIENT_VERSIONS][0],
-				});
-				return await s.encode(w);
-			});
-
 			let closeCalled = false;
 			const mock = new MockWebTransportSession({
-				openStreamResponses: [serverBytes],
+				openStreamResponses: [],
 			});
 			const originalClose = mock.close.bind(mock);
 			mock.close = (_closeInfo?: WebTransportCloseInfo) => {
@@ -593,16 +520,9 @@ Deno.test({
 		await t.step(
 			"closeWithError calls webtransport.close with code and reason",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				let closeInfo: WebTransportCloseInfo | undefined;
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
+					openStreamResponses: [],
 				});
 				const originalClose = mock.close.bind(mock);
 				mock.close = (info?: WebTransportCloseInfo) => {
@@ -623,16 +543,9 @@ Deno.test({
 		await t.step(
 			"closeWithError does nothing when context already has error",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				let closeCallCount = 0;
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
+					openStreamResponses: [],
 				});
 				const originalClose = mock.close.bind(mock);
 				mock.close = (info?: WebTransportCloseInfo) => {
@@ -654,18 +567,11 @@ Deno.test({
 		await t.step(
 			"multiple subscribes get different subscribe IDs",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				const ok = new SubscribeOkMessage({});
 				const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
 
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes, okBytes, okBytes, okBytes],
+					openStreamResponses: [okBytes, okBytes, okBytes],
 				});
 
 				const session = new Session({ webtransport: mock });
@@ -689,15 +595,8 @@ Deno.test({
 		await t.step(
 			"acceptAnnounce returns error when openStream fails",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
+					openStreamResponses: [],
 				});
 
 				const session = new Session({ webtransport: mock });
@@ -717,15 +616,8 @@ Deno.test({
 		await t.step(
 			"subscribe returns error when openStream fails",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
+					openStreamResponses: [],
 				});
 
 				const session = new Session({ webtransport: mock });
@@ -746,18 +638,11 @@ Deno.test({
 		await t.step(
 			"subscribe with trackConfig passes config values",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				const ok = new SubscribeOkMessage({});
 				const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
 
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes, okBytes],
+					openStreamResponses: [okBytes],
 				});
 
 				const session = new Session({ webtransport: mock });
@@ -782,16 +667,9 @@ Deno.test({
 		await t.step(
 			"close does nothing when context already has error",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				let closeCallCount = 0;
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
+					openStreamResponses: [],
 				});
 				const originalClose = mock.close.bind(mock);
 				mock.close = (info?: WebTransportCloseInfo) => {
@@ -814,18 +692,11 @@ Deno.test({
 		await t.step(
 			"listening for unknown bidirectional stream type logs warning",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				// Create a buffer with unknown stream type (0xFF)
 				const unknownStreamBuf = new Uint8Array([0xFF]);
 
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
+					openStreamResponses: [],
 					acceptStreamData: [{
 						type: 0xFF, // Unknown type
 						data: unknownStreamBuf,
@@ -843,18 +714,11 @@ Deno.test({
 		await t.step(
 			"listening for unknown unidirectional stream type logs warning",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				// Create a buffer with unknown stream type (0xFF)
 				const unknownStreamBuf = new Uint8Array([0xFF]);
 
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
+					openStreamResponses: [],
 					acceptUniStreamData: [{
 						type: 0xFF, // Unknown type
 						data: unknownStreamBuf,
@@ -872,13 +736,6 @@ Deno.test({
 		await t.step(
 			"group stream for unknown subscribe ID is ignored",
 			async () => {
-				const serverBytes = await encodeMessageToUint8Array(async (w) => {
-					const s = new SessionServerMessage({
-						version: [...DEFAULT_CLIENT_VERSIONS][0],
-					});
-					return await s.encode(w);
-				});
-
 				// Create group message with subscribeId that doesn't exist
 				const groupMsg = new GroupMessage({
 					subscribeId: 999, // Non-existent subscribe ID
@@ -890,7 +747,7 @@ Deno.test({
 				});
 
 				const mock = new MockWebTransportSession({
-					openStreamResponses: [serverBytes],
+					openStreamResponses: [],
 					acceptUniStreamData: [{
 						type: UniStreamTypes.GroupStreamType,
 						data: groupBuf,
