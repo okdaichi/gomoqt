@@ -13,7 +13,6 @@ import (
 
 	"github.com/okdaichi/gomoqt/moqt/internal/quicgo"
 	"github.com/okdaichi/gomoqt/moqt/internal/webtransportgo"
-	"github.com/okdaichi/gomoqt/transport"
 	"github.com/quic-go/quic-go"
 )
 
@@ -27,10 +26,10 @@ func ListenAndServe(addr string, tlsConfig *tls.Config) error {
 	return server.ListenAndServe()
 }
 
-type QUICListenFunc func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (transport.QUICListener, error)
+type QUICListenFunc func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (QUICListener, error)
 
 type WebTransportServer interface {
-	ServeQUICConn(conn transport.StreamConn) error
+	ServeQUICConn(conn StreamConn) error
 	Close() error
 }
 
@@ -80,10 +79,10 @@ type Server struct {
 	 */
 	Logger *slog.Logger
 
-	ConnContext func(ctx context.Context, conn transport.StreamConn) context.Context
+	ConnContext func(ctx context.Context, conn StreamConn) context.Context
 
 	listenerMu    sync.RWMutex
-	listeners     map[transport.QUICListener]struct{}
+	listeners     map[QUICListener]struct{}
 	listenerGroup sync.WaitGroup
 
 	sessMu     sync.RWMutex
@@ -100,7 +99,7 @@ type Server struct {
 
 func (s *Server) init() {
 	s.initOnce.Do(func() {
-		s.listeners = make(map[transport.QUICListener]struct{})
+		s.listeners = make(map[QUICListener]struct{})
 		s.doneChan = make(chan struct{})
 		s.activeSess = make(map[*Session]struct{})
 		if s.WebTransportServer == nil {
@@ -117,7 +116,7 @@ type serverContextKeyType struct{}
 
 var moqServerContextKey = serverContextKeyType{}
 
-func (s *Server) connContext(ctx context.Context, conn transport.StreamConn) context.Context {
+func (s *Server) connContext(ctx context.Context, conn StreamConn) context.Context {
 	if s.ConnContext != nil {
 		ctx = s.ConnContext(ctx, conn)
 		if ctx == nil {
@@ -140,7 +139,7 @@ func (s *Server) log() *slog.Logger {
 
 // ServeQUICListener accepts connections on the provided QUIC listener and handles them using the Server's configuration.
 // This runs until the listener is closed or the server shuts down.
-func (s *Server) ServeQUICListener(ln transport.QUICListener) error {
+func (s *Server) ServeQUICListener(ln QUICListener) error {
 	if s.shuttingDown() {
 		return ErrServerClosed
 	}
@@ -179,7 +178,7 @@ func (s *Server) ServeQUICListener(ln transport.QUICListener) error {
 		}
 
 		// Handle connection in a goroutine
-		go func(conn transport.StreamConn) {
+		go func(conn StreamConn) {
 			_ = s.ServeQUICConn(conn)
 		}(conn)
 	}
@@ -187,7 +186,7 @@ func (s *Server) ServeQUICListener(ln transport.QUICListener) error {
 
 // ServeQUICConn serves a single QUIC connection.
 // It detects whether the connection uses WebTransport or the native MOQ ALPN and dispatches to the appropriate handling logic for the session.
-func (s *Server) ServeQUICConn(conn transport.StreamConn) error {
+func (s *Server) ServeQUICConn(conn StreamConn) error {
 	if s.shuttingDown() {
 		return ErrServerClosed
 	}
@@ -216,10 +215,10 @@ type Upgrader struct {
 	ApplicationProtocols []string
 	ReorderingTimeout    time.Duration
 	TrackMux             *TrackMux
-	UpgradeFunc          func(w http.ResponseWriter, r *http.Request) (transport.StreamConn, error)
+	UpgradeFunc          func(w http.ResponseWriter, r *http.Request) (StreamConn, error)
 }
 
-func (u *Upgrader) upgradeWebTransport(w http.ResponseWriter, r *http.Request) (transport.StreamConn, error) {
+func (u *Upgrader) upgradeWebTransport(w http.ResponseWriter, r *http.Request) (StreamConn, error) {
 	if u.UpgradeFunc != nil {
 		return u.UpgradeFunc(w, r)
 	}
@@ -271,7 +270,7 @@ type NativeQUICHandler struct {
 	SessionHandler func(sess *Session) error
 }
 
-func (h *NativeQUICHandler) handleNativeQUIC(conn transport.StreamConn) error {
+func (h *NativeQUICHandler) handleNativeQUIC(conn StreamConn) error {
 	if h.SessionHandler != nil {
 		return h.SessionHandler(newSession(conn, h.TrackMux, func() {})) // TODO: implement proper session cleanup callback
 	}
@@ -512,18 +511,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) addListener(ln transport.QUICListener) {
+func (s *Server) addListener(ln QUICListener) {
 	s.listenerMu.Lock()
 	defer s.listenerMu.Unlock()
 
 	if s.listeners == nil {
-		s.listeners = make(map[transport.QUICListener]struct{})
+		s.listeners = make(map[QUICListener]struct{})
 	}
 	s.listeners[ln] = struct{}{}
 	s.listenerGroup.Add(1)
 }
 
-func (s *Server) removeListener(ln transport.QUICListener) {
+func (s *Server) removeListener(ln QUICListener) {
 	s.listenerMu.Lock()
 
 	_, ok := s.listeners[ln]

@@ -14,13 +14,12 @@ import (
 
 	"github.com/okdaichi/gomoqt/moqt/internal/quicgo"
 	"github.com/okdaichi/gomoqt/moqt/internal/webtransportgo"
-	"github.com/okdaichi/gomoqt/transport"
 	"github.com/quic-go/quic-go"
 )
 
-type DialQUICFunc func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (transport.StreamConn, error)
+type DialQUICFunc func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (StreamConn, error)
 
-type DialWebTransportFunc func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, transport.StreamConn, error)
+type DialWebTransportFunc func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, StreamConn, error)
 
 // Client is a MOQ client that can establish sessions with MOQ servers.
 // It supports both WebTransport (for browser compatibility) and raw QUIC connections.

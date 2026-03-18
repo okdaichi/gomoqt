@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -16,16 +15,16 @@ type MockWebTransportServer struct {
 }
 
 // Upgrade mocks the Upgrade method
-func (m *MockWebTransportServer) Upgrade(w http.ResponseWriter, r *http.Request) (transport.StreamConn, error) {
+func (m *MockWebTransportServer) Upgrade(w http.ResponseWriter, r *http.Request) (StreamConn, error) {
 	args := m.Called(w, r)
-	if conn, ok := args.Get(0).(transport.StreamConn); ok {
+	if conn, ok := args.Get(0).(StreamConn); ok {
 		return conn, args.Error(1)
 	}
 	return nil, args.Error(1)
 }
 
 // ServeQUICConn mocks the ServeQUICConn method
-func (m *MockWebTransportServer) ServeQUICConn(conn transport.StreamConn) error {
+func (m *MockWebTransportServer) ServeQUICConn(conn StreamConn) error {
 	args := m.Called(conn)
 	return args.Error(0)
 }

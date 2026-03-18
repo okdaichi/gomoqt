@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - **moqt core:** migrated client/session/server and internal QUIC/WebTransport wrappers to the shared `transport` package APIs.
+- **moqt API:** added top-level transport type aliases (e.g. `moqt.StreamConn`, `moqt.QUICListener`) to reduce `transport.` prefix leakage while keeping the dedicated transport abstraction package.
 - **moqt/upgrader:** added support for customizable WebTransport application protocols via `Upgrader.ApplicationProtocols`.
 - **interop:** updated Dockerized interop flow and Go interop client/server URL handling for more robust address/scheme behavior.
 - **interop/Dockerfile:** aligned containerized interop environment with updated Go toolchain/runtime settings.

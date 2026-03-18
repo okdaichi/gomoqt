@@ -7,14 +7,13 @@ import (
 	"sync/atomic"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
-	"github.com/okdaichi/gomoqt/transport"
 )
 
 func newTrackWriter(
 	broadcastPath BroadcastPath,
 	trackName TrackName,
 	subscribeStream *receiveSubscribeStream,
-	openUniStreamFunc func() (transport.SendStream, error),
+	openUniStreamFunc func() (SendStream, error),
 	onCloseTrackFunc func(),
 ) *TrackWriter {
 	track := &TrackWriter{
@@ -51,7 +50,7 @@ type TrackWriter struct {
 	// groupSequence is atomically incremented for each OpenGroup call
 	groupSequence atomic.Uint64
 
-	openUniStreamFunc func() (transport.SendStream, error)
+	openUniStreamFunc func() (SendStream, error)
 
 	onCloseTrackFunc func()
 }
@@ -212,7 +211,7 @@ func (s *TrackWriter) openGroupWithSequence(seq GroupSequence) (*GroupWriter, er
 
 	stream, err := s.openUniStreamFunc()
 	if err != nil {
-		var appErr *transport.ApplicationError
+		var appErr *ApplicationError
 		if errors.As(err, &appErr) {
 			sessErr := &SessionError{
 				ApplicationError: appErr,
@@ -224,12 +223,12 @@ func (s *TrackWriter) openGroupWithSequence(seq GroupSequence) (*GroupWriter, er
 
 	err = message.StreamTypeGroup.Encode(stream)
 	if err != nil {
-		var strErr *transport.StreamError
+		var strErr *StreamError
 		if errors.As(err, &strErr) {
 			return nil, &GroupError{StreamError: strErr}
 		}
 
-		strErrCode := transport.StreamErrorCode(InternalGroupErrorCode)
+		strErrCode := StreamErrorCode(InternalGroupErrorCode)
 		stream.CancelWrite(strErrCode)
 
 		return nil, err
@@ -240,12 +239,12 @@ func (s *TrackWriter) openGroupWithSequence(seq GroupSequence) (*GroupWriter, er
 		GroupSequence: uint64(seq),
 	}.Encode(stream)
 	if err != nil {
-		var strErr *transport.StreamError
+		var strErr *StreamError
 		if errors.As(err, &strErr) {
 			return nil, &GroupError{StreamError: strErr}
 		}
 
-		strErrCode := transport.StreamErrorCode(InternalGroupErrorCode)
+		strErrCode := StreamErrorCode(InternalGroupErrorCode)
 		stream.CancelWrite(strErrCode)
 
 		return nil, err

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-
-	"github.com/okdaichi/gomoqt/transport"
 )
 
 func newTrackReader(broadcastPath BroadcastPath, trackName TrackName, subscribeStream *sendSubscribeStream, onCloseTrackFunc func()) *TrackReader {
@@ -16,7 +14,7 @@ func newTrackReader(broadcastPath BroadcastPath, trackName TrackName, subscribeS
 		queuedCh:            make(chan struct{}, 1),
 		queueing: make([]struct {
 			sequence GroupSequence
-			stream   transport.ReceiveStream
+			stream   ReceiveStream
 		}, 0, 1<<3),
 		dequeued:         make(map[*GroupReader]struct{}),
 		onCloseTrackFunc: onCloseTrackFunc,
@@ -36,7 +34,7 @@ type TrackReader struct {
 
 	queueing []struct {
 		sequence GroupSequence
-		stream   transport.ReceiveStream
+		stream   ReceiveStream
 	}
 	queuedCh chan struct{}
 	trackMu  sync.Mutex
@@ -111,7 +109,7 @@ func (r *TrackReader) Close() error {
 	defer r.trackMu.Unlock()
 
 	// Cancel all pending groups first
-	errCode := transport.StreamErrorCode(SubscribeCanceledErrorCode)
+	errCode := StreamErrorCode(SubscribeCanceledErrorCode)
 	for _, entry := range r.queueing {
 		entry.stream.CancelRead(errCode)
 	}
@@ -139,7 +137,7 @@ func (r *TrackReader) CloseWithError(code SubscribeErrorCode) error {
 	defer r.trackMu.Unlock()
 
 	// Cancel all pending groups first
-	errCode := transport.StreamErrorCode(code)
+	errCode := StreamErrorCode(code)
 	for _, entry := range r.queueing {
 		entry.stream.CancelRead(errCode)
 	}
@@ -170,7 +168,7 @@ func (r *TrackReader) Update(config *TrackConfig) error {
 	return r.sendSubscribeStream.updateSubscribe(config)
 }
 
-func (r *TrackReader) enqueueGroup(sequence GroupSequence, stream transport.ReceiveStream) {
+func (r *TrackReader) enqueueGroup(sequence GroupSequence, stream ReceiveStream) {
 	if stream == nil {
 		return
 	}
@@ -179,13 +177,13 @@ func (r *TrackReader) enqueueGroup(sequence GroupSequence, stream transport.Rece
 	defer r.trackMu.Unlock()
 
 	if r.Context().Err() != nil || r.queueing == nil {
-		stream.CancelRead(transport.StreamErrorCode(SubscribeCanceledErrorCode))
+		stream.CancelRead(StreamErrorCode(SubscribeCanceledErrorCode))
 		return
 	}
 
 	entry := struct {
 		sequence GroupSequence
-		stream   transport.ReceiveStream
+		stream   ReceiveStream
 	}{
 		sequence: sequence,
 		stream:   stream,

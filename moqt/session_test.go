@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
-	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -121,7 +120,7 @@ func TestNewSession_SessionStreamClosure(t *testing.T) {
 	conn.On("Context").Return(ctx)
 	// Signal when CloseWithError is called so tests can wait deterministically
 	closeCh := make(chan struct{}, 1)
-	conn.On("CloseWithError", transport.ApplicationErrorCode(ProtocolViolationErrorCode), "session stream closed unexpectedly").Return(nil).Once().Run(func(mock.Arguments) {
+	conn.On("CloseWithError", ApplicationErrorCode(ProtocolViolationErrorCode), "session stream closed unexpectedly").Return(nil).Once().Run(func(mock.Arguments) {
 		select {
 		case closeCh <- struct{}{}:
 		default:
@@ -213,7 +212,7 @@ func TestSession_Subscribe(t *testing.T) {
 			mockStream.On("Close").Return(nil)
 			mockStream.On("Context").Return(context.Background()) // Create a separate mock for the track stream that responds to the SUBSCRIBE protocol
 			mockTrackStream := &MockQUICStream{}
-			mockTrackStream.On("StreamID").Return(transport.StreamID(2))
+			mockTrackStream.On("StreamID").Return(StreamID(2))
 			// Create a SubscribeOkMessage response
 			subok := message.SubscribeOkMessage{}
 			var buf bytes.Buffer
@@ -290,8 +289,8 @@ func TestSession_Subscribe_OpenStreamApplicationError(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("Context").Return(context.Background())
 
-	appErr := &transport.ApplicationError{
-		ErrorCode:    transport.ApplicationErrorCode(InternalSessionErrorCode),
+	appErr := &ApplicationError{
+		ErrorCode:    ApplicationErrorCode(InternalSessionErrorCode),
 		ErrorMessage: "application error",
 	}
 
@@ -323,7 +322,7 @@ func TestSession_Subscribe_EncodeStreamTypeError(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 
 	mockTrackStream := &MockQUICStream{}
-	mockTrackStream.On("StreamID").Return(transport.StreamID(2))
+	mockTrackStream.On("StreamID").Return(StreamID(2))
 	mockTrackStream.On("Context").Return(context.Background())
 	mockTrackStream.On("CancelRead", mock.Anything).Return()
 	mockTrackStream.On("CancelWrite", mock.Anything).Return()
@@ -357,13 +356,13 @@ func TestSession_Subscribe_EncodeStreamTypeStreamError(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 
 	mockTrackStream := &MockQUICStream{}
-	mockTrackStream.On("StreamID").Return(transport.StreamID(2))
+	mockTrackStream.On("StreamID").Return(StreamID(2))
 	mockTrackStream.On("Context").Return(context.Background())
 	mockTrackStream.On("CancelRead", mock.Anything).Return()
 
 	// Make Write fail with StreamError
-	strErr := &transport.StreamError{
-		ErrorCode: transport.StreamErrorCode(InternalSubscribeErrorCode),
+	strErr := &StreamError{
+		ErrorCode: StreamErrorCode(InternalSubscribeErrorCode),
 		Remote:    true,
 	}
 	mockTrackStream.On("Write", mock.Anything).Return(0, strErr)
@@ -403,7 +402,7 @@ func TestSession_Subscribe_NilConfig(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 
 	mockTrackStream := &MockQUICStream{}
-	mockTrackStream.On("StreamID").Return(transport.StreamID(2))
+	mockTrackStream.On("StreamID").Return(StreamID(2))
 	mockTrackStream.On("Context").Return(context.Background())
 
 	// Create a SubscribeOkMessage response
@@ -441,7 +440,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageStreamError(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 
 	mockTrackStream := &MockQUICStream{}
-	mockTrackStream.On("StreamID").Return(transport.StreamID(2))
+	mockTrackStream.On("StreamID").Return(StreamID(2))
 	mockTrackStream.On("Context").Return(context.Background())
 	mockTrackStream.On("CancelRead", mock.Anything).Return()
 	mockTrackStream.On("CancelWrite", mock.Anything).Return()
@@ -484,14 +483,14 @@ func TestSession_Subscribe_EncodeSubscribeMessageRemoteStreamError(t *testing.T)
 	mockStream.On("Context").Return(context.Background())
 
 	mockTrackStream := &MockQUICStream{}
-	mockTrackStream.On("StreamID").Return(transport.StreamID(2))
+	mockTrackStream.On("StreamID").Return(StreamID(2))
 	mockTrackStream.On("Context").Return(context.Background())
 	mockTrackStream.On("CancelRead", mock.Anything).Return()
 
 	// Use WriteFunc for direct control
 	writeCallCount := 0
-	strErr := &transport.StreamError{
-		ErrorCode: transport.StreamErrorCode(InternalSubscribeErrorCode),
+	strErr := &StreamError{
+		ErrorCode: StreamErrorCode(InternalSubscribeErrorCode),
 		Remote:    true,
 	}
 	mockTrackStream.WriteFunc = func(p []byte) (int, error) {
@@ -532,14 +531,14 @@ func TestSession_Subscribe_DecodeSubscribeOkStreamError(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 
 	mockTrackStream := &MockQUICStream{}
-	mockTrackStream.On("StreamID").Return(transport.StreamID(2))
+	mockTrackStream.On("StreamID").Return(StreamID(2))
 	mockTrackStream.On("Context").Return(context.Background())
 	mockTrackStream.On("Write", mock.Anything).Return(0, nil)
 	mockTrackStream.On("CancelWrite", mock.Anything).Return()
 
 	// Make Read fail with StreamError
-	strErr := &transport.StreamError{
-		ErrorCode: transport.StreamErrorCode(InternalSubscribeErrorCode),
+	strErr := &StreamError{
+		ErrorCode: StreamErrorCode(InternalSubscribeErrorCode),
 		Remote:    false,
 	}
 	mockTrackStream.On("Read", mock.Anything).Return(0, strErr)
@@ -572,7 +571,7 @@ func TestSession_Subscribe_DecodeSubscribeOkError(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 
 	mockTrackStream := &MockQUICStream{}
-	mockTrackStream.On("StreamID").Return(transport.StreamID(2))
+	mockTrackStream.On("StreamID").Return(StreamID(2))
 	mockTrackStream.On("Context").Return(context.Background())
 	mockTrackStream.On("Write", mock.Anything).Return(0, nil)
 	mockTrackStream.On("CancelWrite", mock.Anything).Return()
@@ -860,7 +859,7 @@ func TestSession_AcceptAnnounce(t *testing.T) {
 				mockConn.On("OpenStream").Return(mockStream, nil).Once()
 				stream := mockStream.(*MockQUICStream)
 				stream.On("Context").Return(context.Background()).Once()
-				stream.On("StreamID").Return(transport.StreamID(1)).Once()
+				stream.On("StreamID").Return(StreamID(1)).Once()
 				// Mock writes for StreamType and AnnouncePlease
 				stream.On("Write", mock.AnythingOfType("[]uint8")).Return(0, nil).Times(2)
 				// Mock read for AnnounceInitMessage
@@ -1018,10 +1017,10 @@ func TestSession_RemoveTrackReader(t *testing.T) {
 
 func TestCancelStreamWithError(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	mockStream.On("CancelRead", transport.StreamErrorCode(1)).Return()
-	mockStream.On("CancelWrite", transport.StreamErrorCode(1)).Return()
+	mockStream.On("CancelRead", StreamErrorCode(1)).Return()
+	mockStream.On("CancelWrite", StreamErrorCode(1)).Return()
 
-	cancelStreamWithError(mockStream, transport.StreamErrorCode(1))
+	cancelStreamWithError(mockStream, StreamErrorCode(1))
 
 	mockStream.AssertExpectations(t)
 }
@@ -1065,7 +1064,7 @@ func TestSession_ProcessBiStream_Announce(t *testing.T) {
 
 	// Create a mock stream for ANNOUNCE
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(1))
+	mockStream.On("StreamID").Return(StreamID(1))
 	mockStream.On("Context").Return(context.Background())
 	// Expect write/close operations for announcement writer init and close
 	mockStream.On("Write", mock.AnythingOfType("[]uint8")).Return(0, nil).Maybe()
@@ -1136,7 +1135,7 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 
 	// Create a mock stream for SUBSCRIBE
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(2))
+	mockStream.On("StreamID").Return(StreamID(2))
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
@@ -1222,7 +1221,7 @@ func TestSession_ProcessBiStream_InvalidStreamType(t *testing.T) {
 
 	// Create a mock stream with invalid stream type
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(3))
+	mockStream.On("StreamID").Return(StreamID(3))
 
 	// Prepare invalid StreamType (255)
 	var buf bytes.Buffer
@@ -1269,7 +1268,7 @@ func TestSession_ProcessBiStream_DecodeStreamTypeError(t *testing.T) {
 	session := newSession(conn, NewTrackMux(), nil)
 
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(5))
+	mockStream.On("StreamID").Return(StreamID(5))
 	mockStream.ReadFunc = func(p []byte) (int, error) {
 		return 0, io.ErrUnexpectedEOF
 	}
@@ -1304,7 +1303,7 @@ func TestSession_ProcessBiStream_DecodeAnnounceMessageError(t *testing.T) {
 	session := newSession(conn, NewTrackMux(), nil)
 
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(7)).Maybe()
+	mockStream.On("StreamID").Return(StreamID(7)).Maybe()
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 
@@ -1342,7 +1341,7 @@ func TestSession_ProcessBiStream_DecodeSubscribeMessageError(t *testing.T) {
 	session := newSession(conn, NewTrackMux(), nil)
 
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(9)).Maybe()
+	mockStream.On("StreamID").Return(StreamID(9)).Maybe()
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 
@@ -1391,7 +1390,7 @@ func TestSession_ProcessUniStream_Group(t *testing.T) {
 
 	// Create a mock receive stream for GROUP
 	mockRecvStream := &MockQUICReceiveStream{}
-	mockRecvStream.On("StreamID").Return(transport.StreamID(4))
+	mockRecvStream.On("StreamID").Return(StreamID(4))
 	mockRecvStream.On("CancelRead", mock.Anything).Return().Maybe()
 
 	// Prepare StreamType + GroupMessage
@@ -1440,8 +1439,8 @@ func TestSession_ProcessUniStream_UnknownSubscribeID(t *testing.T) {
 
 	// Create a mock receive stream for GROUP with unknown subscribe ID
 	mockRecvStream := &MockQUICReceiveStream{}
-	mockRecvStream.On("StreamID").Return(transport.StreamID(5)).Maybe()
-	mockRecvStream.On("CancelRead", transport.StreamErrorCode(InvalidSubscribeIDErrorCode)).Return()
+	mockRecvStream.On("StreamID").Return(StreamID(5)).Maybe()
+	mockRecvStream.On("CancelRead", StreamErrorCode(InvalidSubscribeIDErrorCode)).Return()
 
 	// Prepare StreamType + GroupMessage with unknown subscribe ID
 	var buf bytes.Buffer
@@ -1487,7 +1486,7 @@ func TestSession_ProcessUniStream_InvalidStreamType(t *testing.T) {
 
 	// Create a mock receive stream with invalid stream type
 	mockRecvStream := &MockQUICReceiveStream{}
-	mockRecvStream.On("StreamID").Return(transport.StreamID(6))
+	mockRecvStream.On("StreamID").Return(StreamID(6))
 
 	// Prepare invalid StreamType (254)
 	var buf bytes.Buffer
@@ -1534,7 +1533,7 @@ func TestSession_ProcessUniStream_DecodeStreamTypeError(t *testing.T) {
 	session := newSession(conn, NewTrackMux(), nil)
 
 	mockRecvStream := &MockQUICReceiveStream{}
-	mockRecvStream.On("StreamID").Return(transport.StreamID(11)).Maybe()
+	mockRecvStream.On("StreamID").Return(StreamID(11)).Maybe()
 	mockRecvStream.ReadFunc = func(p []byte) (int, error) {
 		return 0, io.ErrUnexpectedEOF
 	}
@@ -1559,7 +1558,7 @@ func TestSession_ProcessUniStream_DecodeGroupMessageError(t *testing.T) {
 	session := newSession(conn, NewTrackMux(), nil)
 
 	mockRecvStream := &MockQUICReceiveStream{}
-	mockRecvStream.On("StreamID").Return(transport.StreamID(13)).Maybe()
+	mockRecvStream.On("StreamID").Return(StreamID(13)).Maybe()
 
 	var buf bytes.Buffer
 	err := message.StreamTypeGroup.Encode(&buf)
@@ -1651,8 +1650,8 @@ func TestSession_AcceptAnnounce_OpenStreamApplicationError(t *testing.T) {
 	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 
-	appErr := &transport.ApplicationError{
-		ErrorCode:    transport.ApplicationErrorCode(InternalSessionErrorCode),
+	appErr := &ApplicationError{
+		ErrorCode:    ApplicationErrorCode(InternalSessionErrorCode),
 		ErrorMessage: "application error",
 	}
 	conn.On("OpenStream").Return(nil, appErr)
@@ -1682,7 +1681,7 @@ func TestSession_AcceptAnnounce_EncodeStreamTypeError(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 
 	mockAnnStream := &MockQUICStream{}
-	mockAnnStream.On("StreamID").Return(transport.StreamID(3))
+	mockAnnStream.On("StreamID").Return(StreamID(3))
 	mockAnnStream.On("Context").Return(context.Background())
 	mockAnnStream.On("Write", mock.Anything).Return(0, errors.New("write error"))
 
@@ -1711,12 +1710,12 @@ func TestSession_AcceptAnnounce_EncodeStreamTypeStreamError(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 
 	mockAnnStream := &MockQUICStream{}
-	mockAnnStream.On("StreamID").Return(transport.StreamID(3))
+	mockAnnStream.On("StreamID").Return(StreamID(3))
 	mockAnnStream.On("Context").Return(context.Background())
 	mockAnnStream.On("CancelRead", mock.Anything).Return()
 
-	strErr := &transport.StreamError{
-		ErrorCode: transport.StreamErrorCode(InternalAnnounceErrorCode),
+	strErr := &StreamError{
+		ErrorCode: StreamErrorCode(InternalAnnounceErrorCode),
 		Remote:    false,
 	}
 	mockAnnStream.On("Write", mock.Anything).Return(0, strErr)
@@ -1748,14 +1747,14 @@ func TestSession_AcceptAnnounce_EncodePleaseMessageStreamError(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 
 	mockAnnStream := &MockQUICStream{}
-	mockAnnStream.On("StreamID").Return(transport.StreamID(3))
+	mockAnnStream.On("StreamID").Return(StreamID(3))
 	mockAnnStream.On("Context").Return(context.Background())
 	mockAnnStream.On("CancelRead", mock.Anything).Return()
 
 	// Use WriteFunc for direct control
 	writeCallCount := 0
-	strErr := &transport.StreamError{
-		ErrorCode: transport.StreamErrorCode(InternalAnnounceErrorCode),
+	strErr := &StreamError{
+		ErrorCode: StreamErrorCode(InternalAnnounceErrorCode),
 		Remote:    false,
 	}
 	mockAnnStream.WriteFunc = func(p []byte) (int, error) {
@@ -1795,14 +1794,14 @@ func TestSession_AcceptAnnounce_DecodeInitMessageStreamError(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 
 	mockAnnStream := &MockQUICStream{}
-	mockAnnStream.On("StreamID").Return(transport.StreamID(3))
+	mockAnnStream.On("StreamID").Return(StreamID(3))
 	mockAnnStream.On("Context").Return(context.Background())
 	mockAnnStream.On("Write", mock.Anything).Return(0, nil)
 	mockAnnStream.On("CancelRead", mock.Anything).Return()
 
 	// Make Read fail with StreamError
-	strErr := &transport.StreamError{
-		ErrorCode: transport.StreamErrorCode(InternalAnnounceErrorCode),
+	strErr := &StreamError{
+		ErrorCode: StreamErrorCode(InternalAnnounceErrorCode),
 		Remote:    false,
 	}
 	mockAnnStream.On("Read", mock.Anything).Return(0, strErr)
@@ -1834,7 +1833,7 @@ func TestSession_AcceptAnnounce_DecodeInitMessageError(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 
 	mockAnnStream := &MockQUICStream{}
-	mockAnnStream.On("StreamID").Return(transport.StreamID(3))
+	mockAnnStream.On("StreamID").Return(StreamID(3))
 	mockAnnStream.On("Context").Return(context.Background())
 	mockAnnStream.On("Write", mock.Anything).Return(0, nil)
 
@@ -1887,8 +1886,8 @@ func TestSession_CloseWithError_AlreadyTerminating(t *testing.T) {
 func TestSession_Terminate_WithApplicationError(t *testing.T) {
 	conn := &MockStreamConn{}
 	conn.On("Context").Return(context.Background())
-	appErr := &transport.ApplicationError{
-		ErrorCode:    transport.ApplicationErrorCode(InternalSessionErrorCode),
+	appErr := &ApplicationError{
+		ErrorCode:    ApplicationErrorCode(InternalSessionErrorCode),
 		ErrorMessage: "application error",
 	}
 	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(appErr)

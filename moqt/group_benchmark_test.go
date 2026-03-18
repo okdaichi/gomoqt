@@ -8,8 +8,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/okdaichi/gomoqt/transport"
 )
 
 // BenchmarkGroupReader_ReadFrame benchmarks reading frames from a group
@@ -309,18 +307,18 @@ type mockReceiveStream struct {
 	*bytes.Reader
 }
 
-func (m *mockReceiveStream) CancelRead(transport.StreamErrorCode) {}
+func (m *mockReceiveStream) CancelRead(StreamErrorCode) {}
 func (m *mockReceiveStream) SetReadDeadline(t time.Time) error {
 	return nil
 }
-func (m *mockReceiveStream) StreamID() transport.StreamID { return 0 }
+func (m *mockReceiveStream) StreamID() StreamID { return 0 }
 
 type mockSendStream struct {
 	io.Writer
 }
 
-func (m *mockSendStream) CancelWrite(transport.StreamErrorCode) {}
-func (m *mockSendStream) Close() error                          { return nil }
-func (m *mockSendStream) Context() context.Context              { return context.Background() }
-func (m *mockSendStream) StreamID() transport.StreamID          { return 0 }
-func (m *mockSendStream) SetWriteDeadline(t time.Time) error    { return nil }
+func (m *mockSendStream) CancelWrite(StreamErrorCode)        {}
+func (m *mockSendStream) Close() error                       { return nil }
+func (m *mockSendStream) Context() context.Context           { return context.Background() }
+func (m *mockSendStream) StreamID() StreamID                 { return 0 }
+func (m *mockSendStream) SetWriteDeadline(t time.Time) error { return nil }

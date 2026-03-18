@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okdaichi/gomoqt/transport"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -78,7 +77,7 @@ func TestClient_DialWebTransport_And_DialQUIC_Shutdown(t *testing.T) {
 func TestClient_DialWebTransport_CustomDialError(t *testing.T) {
 	c := &Client{}
 	wantErr := errors.New("webtransport dial failed")
-	c.DialWebTransportFunc = func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, transport.StreamConn, error) {
+	c.DialWebTransportFunc = func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, StreamConn, error) {
 		return nil, nil, wantErr
 	}
 
@@ -90,7 +89,7 @@ func TestClient_DialWebTransport_CustomDialError(t *testing.T) {
 func TestClient_DialQUIC_CustomDialError(t *testing.T) {
 	c := &Client{}
 	wantErr := errors.New("quic dial failed")
-	c.DialQUICFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (transport.StreamConn, error) {
+	c.DialQUICFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (StreamConn, error) {
 		return nil, wantErr
 	}
 
@@ -104,7 +103,7 @@ func TestClient_DialQUIC_DefaultALPN(t *testing.T) {
 	wantErr := errors.New("stop")
 	var captured []string
 
-	c.DialQUICFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (transport.StreamConn, error) {
+	c.DialQUICFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (StreamConn, error) {
 		captured = append([]string(nil), tlsConfig.NextProtos...)
 		return nil, wantErr
 	}

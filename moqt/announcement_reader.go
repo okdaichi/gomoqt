@@ -6,10 +6,9 @@ import (
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
-	"github.com/okdaichi/gomoqt/transport"
 )
 
-func newAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes []suffix) *AnnouncementReader {
+func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) *AnnouncementReader {
 	if !isValidPrefix(prefix) {
 		panic("invalid prefix for AnnouncementReader")
 	}
@@ -107,7 +106,7 @@ func newAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes 
 // It maintains a list of active announcements and notifies when new announcements
 // are received or existing ones are canceled.
 type AnnouncementReader struct {
-	stream transport.Stream
+	stream Stream
 	prefix prefix
 
 	ctx context.Context
@@ -203,7 +202,7 @@ func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 		ras.announcedCh = nil
 	}
 
-	strErrCode := transport.StreamErrorCode(code)
+	strErrCode := StreamErrorCode(code)
 	ras.stream.CancelRead(strErrCode)
 	ras.stream.CancelWrite(strErrCode)
 

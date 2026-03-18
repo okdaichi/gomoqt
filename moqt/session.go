@@ -9,10 +9,9 @@ import (
 	"sync/atomic"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
-	"github.com/okdaichi/gomoqt/transport"
 )
 
-func newSession(conn transport.StreamConn, args ...any) *Session {
+func newSession(conn StreamConn, args ...any) *Session {
 	var mux *TrackMux
 	var onClose func()
 
@@ -54,7 +53,7 @@ func newSession(conn transport.StreamConn, args ...any) *Session {
 	// Supervise the session stream closure
 	context.AfterFunc(connCtx, func() {
 		reason := connCtx.Err()
-		var appErr *transport.ApplicationError
+		var appErr *ApplicationError
 		if errors.As(reason, &appErr) {
 			return // Normal closure
 		}
@@ -82,7 +81,7 @@ type Session struct {
 
 	wg sync.WaitGroup // WaitGroup for session cleanup
 
-	conn transport.StreamConn
+	conn StreamConn
 
 	transport string // "quic" or "webtransport"
 
@@ -147,9 +146,9 @@ func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 		s.onClose()
 	}
 
-	err := s.conn.CloseWithError(transport.ConnErrorCode(code), msg)
+	err := s.conn.CloseWithError(ConnErrorCode(code), msg)
 	if err != nil {
-		var appErr *transport.ApplicationError
+		var appErr *ApplicationError
 		if errors.As(err, &appErr) {
 			reason := &SessionError{
 				ApplicationError: appErr,
@@ -183,7 +182,7 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 
 	stream, err := s.conn.OpenStream()
 	if err != nil {
-		var appErr *transport.ApplicationError
+		var appErr *ApplicationError
 		if errors.As(err, &appErr) {
 			return nil, &SessionError{
 				ApplicationError: appErr,
@@ -194,14 +193,14 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 
 	err = message.StreamTypeSubscribe.Encode(stream)
 	if err != nil {
-		var strErr *transport.StreamError
+		var strErr *StreamError
 		if errors.As(err, &strErr) && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
 			return nil, &SubscribeError{
 				StreamError: strErr,
 			}
 		}
-		strErrCode := transport.StreamErrorCode(InternalSubscribeErrorCode)
+		strErrCode := StreamErrorCode(InternalSubscribeErrorCode)
 		stream.CancelWrite(strErrCode)
 		stream.CancelRead(strErrCode)
 		return nil, fmt.Errorf("failed to encode stream type message: %w", err)
@@ -219,7 +218,7 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 		// Message sent successfully
 	}
 	if err != nil {
-		var strErr *transport.StreamError
+		var strErr *StreamError
 		if errors.As(err, &strErr) && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
 			return nil, &SubscribeError{
@@ -227,7 +226,7 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 			}
 		}
 
-		strErrCode := transport.StreamErrorCode(InternalSubscribeErrorCode)
+		strErrCode := StreamErrorCode(InternalSubscribeErrorCode)
 		stream.CancelWrite(strErrCode)
 		stream.CancelRead(strErrCode)
 
@@ -255,9 +254,9 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 	err = subok.Decode(stream)
 	if err != nil {
 		cleanup()
-		var strErr *transport.StreamError
+		var strErr *StreamError
 		if errors.As(err, &strErr) {
-			strErrCode := transport.StreamErrorCode(strErr.ErrorCode)
+			strErrCode := StreamErrorCode(strErr.ErrorCode)
 			stream.CancelWrite(strErrCode)
 
 			return nil, &SubscribeError{
@@ -297,7 +296,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
-		var appErr *transport.ApplicationError
+		var appErr *ApplicationError
 		if errors.As(err, &appErr) {
 
 			return nil, &SessionError{
@@ -310,9 +309,9 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	err = message.StreamTypeAnnounce.Encode(stream)
 	if err != nil {
-		var strErr *transport.StreamError
+		var strErr *StreamError
 		if errors.As(err, &strErr) {
-			strErrCode := transport.StreamErrorCode(InternalAnnounceErrorCode)
+			strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
 			stream.CancelRead(strErrCode)
 
 			return nil, &AnnounceError{
@@ -327,9 +326,9 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		TrackPrefix: prefix,
 	}.Encode(stream)
 	if err != nil {
-		var strErr *transport.StreamError
+		var strErr *StreamError
 		if errors.As(err, &strErr) {
-			strErrCode := transport.StreamErrorCode(InternalAnnounceErrorCode)
+			strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
 			stream.CancelRead(strErrCode)
 
 			return nil, &AnnounceError{
@@ -337,7 +336,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 			}
 		}
 
-		strErrCode := transport.StreamErrorCode(InternalAnnounceErrorCode)
+		strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
 		stream.CancelWrite(strErrCode)
 		stream.CancelRead(strErrCode)
 
@@ -347,10 +346,10 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 	var aim message.AnnounceInitMessage
 	err = aim.Decode(stream)
 	if err != nil {
-		var strErr *transport.StreamError
+		var strErr *StreamError
 		if errors.As(err, &strErr) {
 			// Helpful debug logging for interop investigation: show exact stream error details
-			strErrCode := transport.StreamErrorCode(InternalAnnounceErrorCode)
+			strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
 			stream.CancelRead(strErrCode)
 
 			return nil, &AnnounceError{
@@ -391,7 +390,7 @@ func (sess *Session) handleBiStreams() {
 	}
 }
 
-func (sess *Session) processBiStream(stream transport.Stream) {
+func (sess *Session) processBiStream(stream Stream) {
 	var streamType message.StreamType
 	err := streamType.Decode(stream)
 	if err != nil {
@@ -404,7 +403,7 @@ func (sess *Session) processBiStream(stream transport.Stream) {
 		var apm message.AnnouncePleaseMessage
 		err := apm.Decode(stream)
 		if err != nil {
-			cancelStreamWithError(stream, transport.StreamErrorCode(InternalAnnounceErrorCode))
+			cancelStreamWithError(stream, StreamErrorCode(InternalAnnounceErrorCode))
 			return
 		}
 
@@ -420,7 +419,7 @@ func (sess *Session) processBiStream(stream transport.Stream) {
 		var sm message.SubscribeMessage
 		err := sm.Decode(stream)
 		if err != nil {
-			cancelStreamWithError(stream, transport.StreamErrorCode(InternalSubscribeErrorCode))
+			cancelStreamWithError(stream, StreamErrorCode(InternalSubscribeErrorCode))
 			return
 		}
 
@@ -465,7 +464,7 @@ func (sess *Session) handleUniStreams() {
 	}
 }
 
-func (sess *Session) processUniStream(stream transport.ReceiveStream) {
+func (sess *Session) processUniStream(stream ReceiveStream) {
 	/*
 	 * Get a Stream Type ID
 	 */
@@ -486,7 +485,7 @@ func (sess *Session) processUniStream(stream transport.ReceiveStream) {
 
 		track, ok := sess.trackReaders[SubscribeID(gm.SubscribeID)]
 		if !ok {
-			stream.CancelRead(transport.StreamErrorCode(InvalidSubscribeIDErrorCode))
+			stream.CancelRead(StreamErrorCode(InvalidSubscribeIDErrorCode))
 			return
 		}
 
@@ -527,7 +526,7 @@ func (s *Session) removeTrackReader(id SubscribeID) {
 	delete(s.trackReaders, id)
 }
 
-func cancelStreamWithError(stream transport.Stream, code transport.StreamErrorCode) {
+func cancelStreamWithError(stream Stream, code StreamErrorCode) {
 	stream.CancelRead(code)
 	stream.CancelWrite(code)
 }

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	internalwt "github.com/okdaichi/gomoqt/moqt/internal/webtransportgo"
-	"github.com/okdaichi/gomoqt/transport"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -21,7 +20,7 @@ type stubWTServer struct {
 	closed   bool
 }
 
-func (s *stubWTServer) ServeQUICConn(conn transport.StreamConn) error { return s.serveErr }
+func (s *stubWTServer) ServeQUICConn(conn StreamConn) error { return s.serveErr }
 func (s *stubWTServer) Close() error {
 	s.closed = true
 	return nil
@@ -49,7 +48,7 @@ func TestServer_connContext_AppliesCustomAndInjectsServer(t *testing.T) {
 	type customKey struct{}
 
 	s := &Server{
-		ConnContext: func(ctx context.Context, conn transport.StreamConn) context.Context {
+		ConnContext: func(ctx context.Context, conn StreamConn) context.Context {
 			return context.WithValue(ctx, customKey{}, "ok")
 		},
 	}
@@ -64,7 +63,7 @@ func TestServer_connContext_AppliesCustomAndInjectsServer(t *testing.T) {
 
 func TestServer_connContext_PanicsOnNilCustomContext(t *testing.T) {
 	s := &Server{
-		ConnContext: func(ctx context.Context, conn transport.StreamConn) context.Context {
+		ConnContext: func(ctx context.Context, conn StreamConn) context.Context {
 			return nil
 		},
 	}
@@ -149,7 +148,7 @@ func TestServer_ListenAndServe_ConfiguresDefaultsBeforeListen(t *testing.T) {
 	s := &Server{
 		Addr:      "localhost:0",
 		TLSConfig: &tls.Config{},
-		ListenFunc: func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (transport.QUICListener, error) {
+		ListenFunc: func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (QUICListener, error) {
 			called = true
 			gotTLS = tlsConfig
 			gotQUIC = quicConfig
@@ -238,7 +237,7 @@ func TestServer_addRemoveSession_ShutdownCompletes(t *testing.T) {
 
 func TestUpgrader_Upgrade_WithoutServerContext(t *testing.T) {
 	u := &Upgrader{
-		UpgradeFunc: func(w http.ResponseWriter, r *http.Request) (transport.StreamConn, error) {
+		UpgradeFunc: func(w http.ResponseWriter, r *http.Request) (StreamConn, error) {
 			conn := &MockStreamConn{}
 			conn.On("Context").Return(context.Background())
 			conn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled)
@@ -279,7 +278,7 @@ func TestUpgrader_Upgrade_Success(t *testing.T) {
 
 	u := &Upgrader{
 		TrackMux: NewTrackMux(),
-		UpgradeFunc: func(w http.ResponseWriter, r *http.Request) (transport.StreamConn, error) {
+		UpgradeFunc: func(w http.ResponseWriter, r *http.Request) (StreamConn, error) {
 			conn := &MockStreamConn{}
 			conn.On("Context").Return(context.Background())
 			conn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled)
