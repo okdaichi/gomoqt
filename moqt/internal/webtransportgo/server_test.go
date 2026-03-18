@@ -2,9 +2,6 @@ package webtransportgo
 
 import (
 	"context"
-	"crypto/tls"
-	"errors"
-	"net"
 	"testing"
 	"time"
 
@@ -62,29 +59,9 @@ func TestServer_Init_PanicsOnNilConnContextResult(t *testing.T) {
 	})
 }
 
-type dummyStreamConn struct{}
-
-func (dummyStreamConn) AcceptStream(context.Context) (transport.Stream, error) { return nil, errors.New("not implemented") }
-func (dummyStreamConn) AcceptUniStream(context.Context) (transport.ReceiveStream, error) {
-	return nil, errors.New("not implemented")
-}
-func (dummyStreamConn) CloseWithError(code transport.ConnErrorCode, msg string) error { return nil }
-func (dummyStreamConn) Context() context.Context                                { return context.Background() }
-func (dummyStreamConn) LocalAddr() net.Addr                                     { return &net.TCPAddr{} }
-func (dummyStreamConn) OpenStream() (transport.Stream, error)                   { return nil, errors.New("not implemented") }
-func (dummyStreamConn) OpenStreamSync(context.Context) (transport.Stream, error) {
-	return nil, errors.New("not implemented")
-}
-func (dummyStreamConn) OpenUniStream() (transport.SendStream, error) { return nil, errors.New("not implemented") }
-func (dummyStreamConn) OpenUniStreamSync(context.Context) (transport.SendStream, error) {
-	return nil, errors.New("not implemented")
-}
-func (dummyStreamConn) RemoteAddr() net.Addr  { return &net.TCPAddr{} }
-func (dummyStreamConn) TLS() *tls.ConnectionState { return &tls.ConnectionState{} }
-
 func TestServer_ServeQUICConn_InvalidConnType(t *testing.T) {
 	srv := &Server{}
-	err := srv.ServeQUICConn(dummyStreamConn{})
+	err := srv.ServeQUICConn(&MockStreamConn{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid connection type")
 }
