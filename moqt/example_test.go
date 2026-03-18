@@ -55,34 +55,6 @@ func ExampleClient() {
 	fmt.Println("Connected to MOQ server")
 }
 
-// ExampleExtension demonstrates how to work with MOQ protocol parameters.
-func ExampleExtension() {
-	// Create new parameters
-	params := moqt.NewExtension()
-
-	// Set various parameter types
-	params.SetUint(1, 42)
-	params.SetString(2, "example")
-	params.SetBool(3, true)
-
-	// Retrieve parameters
-	if value, err := params.GetUint(1); err == nil {
-		fmt.Printf("Parameter 1: %d\n", value)
-	}
-
-	if value, err := params.GetString(2); err == nil {
-		fmt.Printf("Parameter 2: %s\n", value)
-	}
-
-	if value, err := params.GetBool(3); err == nil {
-		fmt.Printf("Parameter 3: %t\n", value)
-	}
-
-	// Clone parameters
-	clonedParams := params.Clone()
-	fmt.Printf("Cloned parameters: %s\n", clonedParams.String())
-}
-
 // ExampleTrackMux demonstrates how to use the track multiplexer for publishing tracks.
 func ExampleTrackMux() {
 	// Create a new multiplexer

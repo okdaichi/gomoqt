@@ -2958,34 +2958,6 @@
           "members": [
             {
               "kind": "PropertySignature",
-              "canonicalReference": "@okutanidaichi/moqt!MOQOptions#extensions:member",
-              "docComment": "",
-              "excerptTokens": [
-                {
-                  "kind": "Content",
-                  "text": "extensions?: "
-                },
-                {
-                  "kind": "Reference",
-                  "text": "Extensions",
-                  "canonicalReference": "@okutanidaichi/moqt!~Extensions:class"
-                },
-                {
-                  "kind": "Content",
-                  "text": ";"
-                }
-              ],
-              "isReadonly": false,
-              "isOptional": true,
-              "releaseTag": "Public",
-              "name": "extensions",
-              "propertyTypeTokenRange": {
-                "startIndex": 1,
-                "endIndex": 2
-              }
-            },
-            {
-              "kind": "PropertySignature",
               "canonicalReference": "@okutanidaichi/moqt!MOQOptions#reconnect:member",
               "docComment": "",
               "excerptTokens": [
@@ -3037,38 +3009,6 @@
               "propertyTypeTokenRange": {
                 "startIndex": 1,
                 "endIndex": 2
-              }
-            },
-            {
-              "kind": "PropertySignature",
-              "canonicalReference": "@okutanidaichi/moqt!MOQOptions#versions:member",
-              "docComment": "",
-              "excerptTokens": [
-                {
-                  "kind": "Content",
-                  "text": "versions?: "
-                },
-                {
-                  "kind": "Reference",
-                  "text": "Set",
-                  "canonicalReference": "!Set:interface"
-                },
-                {
-                  "kind": "Content",
-                  "text": "<bigint>"
-                },
-                {
-                  "kind": "Content",
-                  "text": ";"
-                }
-              ],
-              "isReadonly": false,
-              "isOptional": true,
-              "releaseTag": "Public",
-              "name": "versions",
-              "propertyTypeTokenRange": {
-                "startIndex": 1,
-                "endIndex": 3
               }
             }
           ],
@@ -4370,34 +4310,6 @@
             },
             {
               "kind": "PropertySignature",
-              "canonicalReference": "@okutanidaichi/moqt!SessionInit#extensions:member",
-              "docComment": "",
-              "excerptTokens": [
-                {
-                  "kind": "Content",
-                  "text": "extensions?: "
-                },
-                {
-                  "kind": "Reference",
-                  "text": "Extensions",
-                  "canonicalReference": "@okutanidaichi/moqt!~Extensions:class"
-                },
-                {
-                  "kind": "Content",
-                  "text": ";"
-                }
-              ],
-              "isReadonly": false,
-              "isOptional": true,
-              "releaseTag": "Public",
-              "name": "extensions",
-              "propertyTypeTokenRange": {
-                "startIndex": 1,
-                "endIndex": 2
-              }
-            },
-            {
-              "kind": "PropertySignature",
               "canonicalReference": "@okutanidaichi/moqt!SessionInit#mux:member",
               "docComment": "",
               "excerptTokens": [
@@ -4422,47 +4334,6 @@
               "propertyTypeTokenRange": {
                 "startIndex": 1,
                 "endIndex": 2
-              }
-            },
-            {
-              "kind": "PropertySignature",
-              "canonicalReference": "@okutanidaichi/moqt!SessionInit#versions:member",
-              "docComment": "",
-              "excerptTokens": [
-                {
-                  "kind": "Content",
-                  "text": "versions?: "
-                },
-                {
-                  "kind": "Reference",
-                  "text": "Set",
-                  "canonicalReference": "!Set:interface"
-                },
-                {
-                  "kind": "Content",
-                  "text": "<"
-                },
-                {
-                  "kind": "Reference",
-                  "text": "Version",
-                  "canonicalReference": "@okutanidaichi/moqt!~Version:type"
-                },
-                {
-                  "kind": "Content",
-                  "text": ">"
-                },
-                {
-                  "kind": "Content",
-                  "text": ";"
-                }
-              ],
-              "isReadonly": false,
-              "isOptional": true,
-              "releaseTag": "Public",
-              "name": "versions",
-              "propertyTypeTokenRange": {
-                "startIndex": 1,
-                "endIndex": 5
               }
             }
           ],

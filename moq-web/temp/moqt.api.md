@@ -191,16 +191,10 @@ export const MOQ: typeof Client;
 
 // @public (undocumented)
 export interface MOQOptions {
-    // Warning: (ae-forgotten-export) The symbol "Extensions" needs to be exported by the entry point index.d.ts
-    //
-    // (undocumented)
-    extensions?: Extensions;
     // (undocumented)
     reconnect?: boolean;
     // (undocumented)
     transportOptions?: WebTransportOptions;
-    // (undocumented)
-    versions?: Set<bigint>;
 }
 
 // @public (undocumented)
@@ -272,13 +266,7 @@ export interface SessionOptions {
     // (undocumented)
     webtransport: WebTransportSession;
     // (undocumented)
-    extensions?: Extensions;
-    // (undocumented)
     mux?: TrackMux;
-    // Warning: (ae-forgotten-export) The symbol "Version" needs to be exported by the entry point index.d.ts
-    //
-    // (undocumented)
-    versions?: Set<Version>;
 }
 
 // @public (undocumented)

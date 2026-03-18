@@ -26,11 +26,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **moqt/server:** wire server `connContext` into the default internal WebTransport server (`http3.Server.ConnContext`) so request contexts include MOQ server metadata during WebTransport upgrades.
 - **moqt/server:** fix `connContext` variable shadowing so custom `Server.ConnContext` return values are correctly propagated.
+- **moqt/server:** fixed `Server.ListenAndServe()` and `Server.ListenAndServeTLS()` to correctly use custom `Server.ListenFunc` when provided (prevents nil function call panic in tests/custom listeners).
 
 ### Removed
 
 - **moqt:** removed unused router/session-stream related code paths as part of the transport-layer refactor.
 - **moq-web:** removed `SessionStream` and related legacy session-stream wiring to simplify session management.
+- **moqt:** removed legacy `Version` API (`Version` type, draft constants, and default client/server version variables) in favor of ALPN/subprotocol-based negotiation.
+- **moqt:** removed obsolete `Extension` API (`parameters.go`, `NewExtension`, `ExtensionKey`, and related helpers/tests/examples) that was no longer used by current session setup.
+- **moq-web:** removed obsolete version negotiation surface (`src/version.ts`, `MOQOptions.versions`, `SessionOptions.versions`) and aligned API report artifacts.
+- **moq-web:** removed obsolete `Extensions` negotiation surface (`src/extensions.ts`, `MOQOptions.extensions`, `SessionOptions.extensions`) and aligned API report artifacts.
 - **examples:** cleaned up outdated relay/native_quic example code paths.
 
 ### Tests

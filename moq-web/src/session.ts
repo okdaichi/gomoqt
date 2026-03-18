@@ -1,4 +1,3 @@
-import type { Version } from "./version.ts";
 import {
 	AnnounceInitMessage,
 	AnnouncePleaseMessage,
@@ -15,7 +14,6 @@ import {
 	WebTransportSessionError,
 	WebTransportSessionErrorInfo,
 } from "./internal/webtransport/mod.ts";
-import { Extensions } from "./extensions.ts";
 import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import type { CancelCauseFunc, Context } from "@okdaichi/golikejs/context";
 import { AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
@@ -34,8 +32,6 @@ import type { SubscribeID, TrackName } from "./alias.ts";
 export interface SessionOptions {
 	webtransport: WebTransportSession;
 
-	versions?: Set<Version>;
-	extensions?: Extensions;
 	mux?: TrackMux;
 }
 

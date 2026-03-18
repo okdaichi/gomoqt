@@ -71,8 +71,6 @@ Deno.test("Client - Constructor with Default Options", () => {
 	const client = new Client();
 
 	assertExists(client.options);
-	assertExists(client.options.versions);
-	assertEquals(client.options.versions instanceof Set, true);
 	assertEquals(client.options.transportOptions?.allowPooling, false);
 	assertEquals(
 		client.options.transportOptions?.congestionControl,
@@ -83,7 +81,6 @@ Deno.test("Client - Constructor with Default Options", () => {
 
 Deno.test("Client - Constructor with Custom Options", () => {
 	const customOptions: MOQOptions = {
-		versions: new Set([1]) as any, // Using number since Version type is number
 		transportOptions: {
 			allowPooling: true,
 			congestionControl: "throughput",
@@ -93,7 +90,6 @@ Deno.test("Client - Constructor with Custom Options", () => {
 
 	const client = new Client(customOptions);
 
-	assertEquals(client.options.versions, new Set([1]));
 	assertEquals(client.options.transportOptions?.allowPooling, true);
 	assertEquals(
 		client.options.transportOptions?.congestionControl,
@@ -260,7 +256,6 @@ Deno.test("Client - MOQ alias instantiation", () => {
 	// Should be instance of Client
 	assertEquals(moqClient instanceof Client, true);
 	assertExists(moqClient.options);
-	assertExists(moqClient.options.versions);
 });
 
 // Restore original WebTransport after all tests

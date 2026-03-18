@@ -282,7 +282,7 @@ Deno.test({
 		);
 
 		await t.step(
-			"constructor is ready without version negotiation",
+			"constructor is ready without session version negotiation",
 			async () => {
 				const mock = new MockWebTransportSession({});
 

@@ -306,8 +306,8 @@ func (s *Server) ListenAndServe() error {
 	quicConf.EnableDatagrams = true
 	quicConf.EnableStreamResetPartialDelivery = true
 
-	var listenFunc QUICListenFunc
-	if s.ListenFunc == nil {
+	listenFunc := s.ListenFunc
+	if listenFunc == nil {
 		listenFunc = quicgo.ListenAddrEarly
 	}
 	ln, err := listenFunc(s.Addr, tlsConfig, quicConf)
@@ -351,8 +351,8 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 	quicConf.EnableDatagrams = true
 	quicConf.EnableStreamResetPartialDelivery = true
 
-	var listenFunc QUICListenFunc
-	if s.ListenFunc == nil {
+	listenFunc := s.ListenFunc
+	if listenFunc == nil {
 		listenFunc = quicgo.ListenAddrEarly
 	}
 
