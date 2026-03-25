@@ -27,9 +27,9 @@ func Cause(ctx context.Context) error {
 				// WebTransport) limit the stream error to 32 bits and may
 				// map the value on the QUIC wire in a way that would make
 				// casting it to an ApplicationErrorCode invalid or out of
-				// range. To avoid this, translate a session stream reset to
-				// a generic session-level application error instead of
-				// reusing the stream's numeric value.
+				// range. To avoid this, translate the reset to a generic
+				// session-level application error instead of reusing the
+				// stream's numeric value.
 				return &SessionError{
 					ApplicationError: &ApplicationError{
 						Remote:       strErr.Remote,

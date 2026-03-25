@@ -117,7 +117,7 @@ func generateSessionID() string {
 }
 
 // DialWebTransport establishes a new session over WebTransport (HTTP/3).
-// It performs the WebTransport handshake and initializes a MOQ session stream.
+// It performs the WebTransport handshake and initializes a MOQ session.
 // `host` should be host:port and `path` is the path used for session setup.
 func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *TrackMux) (*Session, error) {
 	if c.shuttingDown() {
@@ -175,8 +175,8 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 
 // TODO: Expose this method if QUIC is supported
 // DialQUIC establishes a new session over native QUIC by dialing the provided
-// address and negotiating a session stream. This uses the QUIC dial function
-// configured on the Client (DialQUICFunc) if present.
+// address and negotiating the transport protocol. This uses the QUIC dial
+// function configured on the Client (DialQUICFunc) if present.
 func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux) (*Session, error) {
 	if c.shuttingDown() {
 		return nil, ErrClientClosed

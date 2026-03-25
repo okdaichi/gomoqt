@@ -11,30 +11,7 @@ import (
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 )
 
-func newSession(conn StreamConn, args ...any) *Session {
-	var mux *TrackMux
-	var onClose func()
-
-	switch len(args) {
-	case 2:
-		if m, ok := args[0].(*TrackMux); ok {
-			mux = m
-		}
-		if f, ok := args[1].(func()); ok {
-			onClose = f
-		}
-	case 3:
-		// Backward compatibility for old test signatures:
-		// newSession(conn, sessStream, mux, onClose)
-		if m, ok := args[1].(*TrackMux); ok {
-			mux = m
-		}
-		if f, ok := args[2].(func()); ok {
-			onClose = f
-		}
-	default:
-		panic("newSession: invalid arguments")
-	}
+func newSession(conn StreamConn, mux *TrackMux, onClose func()) *Session {
 
 	if mux == nil {
 		mux = DefaultMux
@@ -50,11 +27,10 @@ func newSession(conn StreamConn, args ...any) *Session {
 		onClose:      onClose,
 	}
 
-	// Supervise the session stream closure
+	// Supervise session closure
 	context.AfterFunc(connCtx, func() {
 		reason := connCtx.Err()
-		var appErr *ApplicationError
-		if errors.As(reason, &appErr) {
+		if _, ok := errors.AsType[*ApplicationError](reason); ok {
 			return // Normal closure
 		}
 
@@ -376,8 +352,8 @@ func (sess *Session) goAway(_ string) error {
 
 // listenBiStreams accepts bidirectional streams and handles them based on their type.
 // It listens for incoming streams and processes them in separate goroutines.
-// The function handles session streams, announce streams, subscribe streams, and info streams.
-// It also handles errors and terminates the session if an unknown stream type is encountered.
+// The function handles announce, subscribe, and info streams, and terminates the session
+// if an unknown stream type is encountered.
 func (sess *Session) handleBiStreams() {
 	for { // Accept a bidirectional stream
 		stream, err := sess.conn.AcceptStream(sess.ctx)

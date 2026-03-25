@@ -113,12 +113,11 @@ func TestNewSession_WithNilLogger(t *testing.T) {
 	_ = session.CloseWithError(NoError, "")
 }
 
-func TestNewSession_SessionStreamClosure(t *testing.T) {
+func TestNewSession_ClosureOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	conn := &MockStreamConn{}
 	conn.On("Context").Return(ctx)
-	// Signal when CloseWithError is called so tests can wait deterministically
 	closeCh := make(chan struct{}, 1)
 	conn.On("CloseWithError", ApplicationErrorCode(ProtocolViolationErrorCode), "session stream closed unexpectedly").Return(nil).Once().Run(func(mock.Arguments) {
 		select {
@@ -200,7 +199,6 @@ func TestSession_Subscribe(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := &MockQUICStream{}
-			// Set up expectations needed for sessionStream
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 			writeCh := make(chan struct{}, 1)
 			mockStream.On("Write", mock.Anything).Return(0, nil).Run(func(mock.Arguments) {

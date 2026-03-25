@@ -37,7 +37,7 @@ func TestCause(t *testing.T) {
 			},
 			expected: &StreamError{StreamID: 1, ErrorCode: 1, Remote: true},
 		},
-		"with stream error and session stream type": {
+		"with stream error and session type": {
 			setupCtx: func() context.Context {
 				ctx, cancel := context.WithCancelCause(context.Background())
 				streamErr := &StreamError{StreamID: 1, ErrorCode: 1, Remote: true}
