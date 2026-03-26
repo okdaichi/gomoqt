@@ -2,10 +2,7 @@
 // Session Error Codes
 // =============================================================================
 
-import {
-	StreamConnError,
-	WebTransportStreamError,
-} from "./internal/webtransport/error.ts";
+import { StreamConnError, WebTransportStreamError } from "./internal/webtransport/error.ts";
 
 export const SessionErrorCode = {
 	/** No error occurred */

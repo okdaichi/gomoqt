@@ -14,12 +14,7 @@ import { TrackMux } from "./track_mux.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { Writer } from "@okdaichi/golikejs/io";
 import { EOFError } from "@okdaichi/golikejs/io";
-import {
-	ReceiveStream,
-	SendStream,
-	Stream,
-	StreamConn,
-} from "./internal/webtransport/mod.ts";
+import { ReceiveStream, SendStream, Stream, StreamConn } from "./internal/webtransport/mod.ts";
 
 // Utility class to implement Writer for encoding messages
 class Uint8ArrayWriter implements Writer {

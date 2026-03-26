@@ -3,43 +3,6 @@ import { Stream } from "./stream.ts";
 import { SendStream } from "./send_stream.ts";
 import { StreamConnError, StreamConnErrorInfo } from "./error.ts";
 
-/**
- * streamIDCounter manages Stream IDs for WebTransport (QUIC) streams.
- * Stream IDs increment by 4 to maintain the initiator and directionality bits.
- */
-class streamIDCounter {
-	clientBiStreamCounter: bigint = 0n; // client bidirectional
-	serverBiStreamCounter: bigint = 1n; // server bidirectional
-	clientUniStreamCounter: bigint = 2n; // client unidirectional
-	serverUniStreamCounter: bigint = 3n; // server unidirectional
-
-	constructor() {}
-
-	countClientBiStream(): bigint {
-		const id = this.clientBiStreamCounter;
-		this.clientBiStreamCounter += 4n;
-		return id;
-	}
-
-	countServerBiStream(): bigint {
-		const id = this.serverBiStreamCounter;
-		this.serverBiStreamCounter += 4n;
-		return id;
-	}
-
-	countClientUniStream(): bigint {
-		const id = this.clientUniStreamCounter;
-		this.clientUniStreamCounter += 4n;
-		return id;
-	}
-
-	countServerUniStream(): bigint {
-		const id = this.serverUniStreamCounter;
-		this.serverUniStreamCounter += 4n;
-		return id;
-	}
-}
-
 export interface StreamConn {
 	openStream(): Promise<[Stream, undefined] | [undefined, Error]>;
 	openUniStream(): Promise<[SendStream, undefined] | [undefined, Error]>;
@@ -54,7 +17,6 @@ type WebTransportUnidirectionalStream = ReadableStream<Uint8Array>;
 // TODO: Use proper WebTransport types when available
 
 class WebTransportSessionClass implements StreamConn {
-	#counter: streamIDCounter;
 	#webtransport: WebTransport;
 
 	#uniStreams: ReadableStreamDefaultReader<WebTransportUnidirectionalStream>;
@@ -69,7 +31,6 @@ class WebTransportSessionClass implements StreamConn {
 		} else {
 			webtransport = arg1;
 		}
-		this.#counter = new streamIDCounter();
 		this.#webtransport = webtransport;
 		this.#biStreams = this.#webtransport.incomingBidirectionalStreams
 			.getReader();
@@ -81,7 +42,6 @@ class WebTransportSessionClass implements StreamConn {
 		try {
 			const wtStream = await this.#webtransport.createBidirectionalStream();
 			const stream = new Stream({
-				streamId: this.#counter.countClientBiStream(),
 				stream: wtStream,
 			});
 			return [stream, undefined];
@@ -110,7 +70,6 @@ class WebTransportSessionClass implements StreamConn {
 		try {
 			const wtStream = await this.#webtransport.createUnidirectionalStream();
 			const stream = new SendStream({
-				streamId: this.#counter.countClientUniStream(),
 				stream: wtStream,
 			});
 			return [stream, undefined];
@@ -125,7 +84,6 @@ class WebTransportSessionClass implements StreamConn {
 			return [undefined, new Error("Failed to accept stream")];
 		}
 		const stream = new Stream({
-			streamId: this.#counter.countServerBiStream(),
 			stream: wtStream,
 		});
 		return [stream, undefined];
@@ -139,7 +97,6 @@ class WebTransportSessionClass implements StreamConn {
 			return [undefined, new Error("Failed to accept unidirectional stream")];
 		}
 		const stream = new ReceiveStream({
-			streamId: this.#counter.countServerUniStream(),
 			stream: wtStream,
 		});
 		return [stream, undefined];
