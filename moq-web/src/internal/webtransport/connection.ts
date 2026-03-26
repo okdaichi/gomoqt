@@ -1,7 +1,7 @@
 import { ReceiveStream } from "./receive_stream.ts";
 import { Stream } from "./stream.ts";
 import { SendStream } from "./send_stream.ts";
-import { WebTransportSessionError, WebTransportSessionErrorInfo } from "./error.ts";
+import { StreamConnError, StreamConnErrorInfo } from "./error.ts";
 
 /**
  * streamIDCounter manages Stream IDs for WebTransport (QUIC) streams.
@@ -40,7 +40,7 @@ class streamIDCounter {
 	}
 }
 
-export interface WebTransportSession {
+export interface StreamConn {
 	openStream(): Promise<[Stream, undefined] | [undefined, Error]>;
 	openUniStream(): Promise<[SendStream, undefined] | [undefined, Error]>;
 	acceptStream(): Promise<[Stream, undefined] | [undefined, Error]>;
@@ -53,7 +53,7 @@ export interface WebTransportSession {
 type WebTransportUnidirectionalStream = ReadableStream<Uint8Array>;
 // TODO: Use proper WebTransport types when available
 
-class WebTransportSessionClass implements WebTransportSession {
+class WebTransportSessionClass implements StreamConn {
 	#counter: streamIDCounter;
 	#webtransport: WebTransport;
 
@@ -95,8 +95,8 @@ class WebTransportSessionClass implements WebTransportSession {
 				if (info.closeCode !== undefined && info.reason !== undefined) {
 					return [
 						undefined,
-						new WebTransportSessionError(
-							info as WebTransportSessionErrorInfo,
+						new StreamConnError(
+							info as StreamConnErrorInfo,
 							true,
 						),
 					];
@@ -161,6 +161,6 @@ class WebTransportSessionClass implements WebTransportSession {
 	}
 }
 
-export const WebTransportSession: {
-	new (url: string | URL, options?: WebTransportOptions): WebTransportSession;
+export const StreamConn: {
+	new (url: string | URL, options?: WebTransportOptions): StreamConn;
 } = WebTransportSessionClass;

@@ -18,7 +18,7 @@ import {
 	ReceiveStream,
 	SendStream,
 	Stream,
-	WebTransportSession,
+	StreamConn,
 } from "./internal/webtransport/mod.ts";
 
 // Utility class to implement Writer for encoding messages
@@ -54,7 +54,7 @@ interface MockWebTransportSessionOptions {
 	closedPromise?: Promise<WebTransportCloseInfo>;
 }
 
-class MockWebTransportSession implements WebTransportSession {
+class MockWebTransportSession implements StreamConn {
 	#streamIdCounter = 0n;
 	#openStreamResponses: Uint8Array[];
 	#openStreamIndex = 0;

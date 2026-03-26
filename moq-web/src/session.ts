@@ -10,9 +10,9 @@ import {
 import {
 	ReceiveStream,
 	Stream,
-	WebTransportSession,
-	WebTransportSessionError,
-	WebTransportSessionErrorInfo,
+	StreamConn,
+	StreamConnError,
+	StreamConnErrorInfo,
 } from "./internal/webtransport/mod.ts";
 import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import type { CancelCauseFunc, Context } from "@okdaichi/golikejs/context";
@@ -30,14 +30,14 @@ import { Queue } from "./internal/queue.ts";
 import type { SubscribeID, TrackName } from "./alias.ts";
 
 export interface SessionOptions {
-	webtransport: WebTransportSession;
+	webtransport: StreamConn;
 
 	mux?: TrackMux;
 }
 
 export class Session {
 	readonly ready: Promise<void>;
-	#webtransport: WebTransportSession;
+	#webtransport: StreamConn;
 	#ctx: Context;
 	#cancelFunc: CancelCauseFunc;
 
@@ -68,8 +68,8 @@ export class Session {
 			}
 
 			cancel(
-				new WebTransportSessionError(
-					info as WebTransportSessionErrorInfo,
+				new StreamConnError(
+					info as StreamConnErrorInfo,
 					true,
 				),
 			);
