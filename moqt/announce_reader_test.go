@@ -666,7 +666,7 @@ func TestAnnouncementReader_DuplicateActiveError(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 	// Expect CloseWithError calls for duplicate announcement error
 	mockStream.On("CancelRead", mock.Anything).Return()
-	mockStream.On("CancelWrite", mock.Anything).Return()
+	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{})
 
@@ -717,7 +717,7 @@ func TestAnnouncementReader_EndNonExistentStreamError(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 	// Expect CloseWithError calls for ending non-existent stream error
 	mockStream.On("CancelRead", mock.Anything).Return()
-	mockStream.On("CancelWrite", mock.Anything).Return()
+	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{})
 
