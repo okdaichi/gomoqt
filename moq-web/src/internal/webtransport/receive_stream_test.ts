@@ -130,6 +130,18 @@ Deno.test("ReceiveStream", async (t) => {
 		}
 	});
 
+	await t.step("closed() proxies the underlying reader closed promise", async () => {
+		const readableStream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({ stream: readableStream });
+
+		await reader.closed();
+		assertEquals(true, true);
+	});
+
 	await t.step("read - should handle large buffer request", async () => {
 		const { reader } = setupReader([new Uint8Array([1, 2, 3])]);
 

@@ -82,6 +82,25 @@ Deno.test("SendStream", async (t) => {
 		assertEquals(state.streamClosed, true);
 	});
 
+	await t.step("closed() proxies the underlying stream closed promise", async () => {
+		let resolveClosed!: () => void;
+		const closed = new Promise<void>((resolve) => {
+			resolveClosed = resolve;
+		});
+		const writableStream = new WritableStream<Uint8Array>({
+			close() {
+				resolveClosed();
+			},
+		});
+		const writer = new SendStream({ stream: writableStream });
+
+		const closedPromise = writer.closed();
+		await writer.close();
+		await closedPromise;
+		await closed;
+		assertEquals(true, true);
+	});
+
 	await t.step("cancel - should abort the stream with error", async () => {
 		const writtenData: Uint8Array[] = [];
 		let abortReason: unknown = undefined;
