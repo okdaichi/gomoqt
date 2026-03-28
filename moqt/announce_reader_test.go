@@ -52,8 +52,8 @@ func TestAnnouncementReader_ReceiveAnnouncement(t *testing.T) {
 			receiveAnnounceStream: func() *AnnouncementReader {
 				buf := bytes.NewBuffer(nil)
 				err := message.AnnounceMessage{
-					TrackSuffix:    "valid_announcement",
-					AnnounceStatus: message.ACTIVE,
+					BroadcastPathSuffix: "valid_announcement",
+					AnnounceStatus:      message.ACTIVE,
 				}.Encode(buf)
 				require.NoError(t, err)
 
@@ -343,8 +343,8 @@ func TestAnnouncementReader_ConcurrentAccess(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	for i := range 5 {
 		err := message.AnnounceMessage{
-			TrackSuffix:    fmt.Sprintf("/stream%d", i),
-			AnnounceStatus: message.ACTIVE,
+			BroadcastPathSuffix: fmt.Sprintf("/stream%d", i),
+			AnnounceStatus:      message.ACTIVE,
 		}.Encode(buf)
 		require.NoError(t, err)
 	}
@@ -510,8 +510,8 @@ func TestAnnouncementReader_ActiveThenEnded(t *testing.T) {
 	// Test scenario: stream becomes active then ended
 	buf := bytes.NewBuffer(nil)
 	messages := []message.AnnounceMessage{
-		{TrackSuffix: "stream1", AnnounceStatus: message.ACTIVE},
-		{TrackSuffix: "stream1", AnnounceStatus: message.ENDED},
+		{BroadcastPathSuffix: "stream1", AnnounceStatus: message.ACTIVE},
+		{BroadcastPathSuffix: "stream1", AnnounceStatus: message.ENDED},
 	}
 	for _, msg := range messages {
 		err := msg.Encode(buf)
@@ -573,8 +573,8 @@ func TestAnnouncementReader_MultipleActiveStreams(t *testing.T) {
 	// Test scenario: multiple streams become active
 	buf := bytes.NewBuffer(nil)
 	messages := []message.AnnounceMessage{
-		{TrackSuffix: "stream1", AnnounceStatus: message.ACTIVE},
-		{TrackSuffix: "stream2", AnnounceStatus: message.ACTIVE},
+		{BroadcastPathSuffix: "stream1", AnnounceStatus: message.ACTIVE},
+		{BroadcastPathSuffix: "stream2", AnnounceStatus: message.ACTIVE},
 	}
 	for _, msg := range messages {
 		err := msg.Encode(buf)
@@ -645,8 +645,8 @@ func TestAnnouncementReader_DuplicateActiveError(t *testing.T) {
 	// Test scenario: duplicate ACTIVE message should cause error
 	buf := bytes.NewBuffer(nil)
 	messages := []message.AnnounceMessage{
-		{TrackSuffix: "stream1", AnnounceStatus: message.ACTIVE},
-		{TrackSuffix: "stream1", AnnounceStatus: message.ACTIVE}, // Duplicate
+		{BroadcastPathSuffix: "stream1", AnnounceStatus: message.ACTIVE},
+		{BroadcastPathSuffix: "stream1", AnnounceStatus: message.ACTIVE}, // Duplicate
 	}
 	for _, msg := range messages {
 		err := msg.Encode(buf)
@@ -697,7 +697,7 @@ func TestAnnouncementReader_EndNonExistentStreamError(t *testing.T) {
 	// Test scenario: ENDED message for non-existent stream should cause error
 	buf := bytes.NewBuffer(nil)
 	messages := []message.AnnounceMessage{
-		{TrackSuffix: "stream1", AnnounceStatus: message.ENDED}, // End without ACTIVE
+		{BroadcastPathSuffix: "stream1", AnnounceStatus: message.ENDED}, // End without ACTIVE
 	}
 	for _, msg := range messages {
 		err := msg.Encode(buf)
@@ -748,8 +748,8 @@ func TestAnnouncementReader_NotifyChannel(t *testing.T) {
 	// Create a message
 	buf := bytes.NewBuffer(nil)
 	err := message.AnnounceMessage{
-		TrackSuffix:    "test_stream",
-		AnnounceStatus: message.ACTIVE}.Encode(buf)
+		BroadcastPathSuffix: "test_stream",
+		AnnounceStatus:      message.ACTIVE}.Encode(buf)
 	require.NoError(t, err)
 
 	mockStream := &MockQUICStream{
@@ -857,8 +857,8 @@ func TestAnnouncementReader_BoundaryValues(t *testing.T) {
 			// Create message with the test suffix
 			buf := bytes.NewBuffer(nil)
 			err := message.AnnounceMessage{
-				TrackSuffix:    tt.suffix,
-				AnnounceStatus: message.ACTIVE}.Encode(buf)
+				BroadcastPathSuffix: tt.suffix,
+				AnnounceStatus:      message.ACTIVE}.Encode(buf)
 			require.NoError(t, err)
 
 			mockStream := &MockQUICStream{

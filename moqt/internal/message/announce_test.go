@@ -16,23 +16,23 @@ func TestAnnounceMessage_EncodeDecode(t *testing.T) {
 	}{
 		"valid message": {
 			input: message.AnnounceMessage{
-				AnnounceStatus: message.AnnounceStatus(1),
-				TrackSuffix:    "path/to/track",
-				Hops:           0,
+				AnnounceStatus:      message.AnnounceStatus(1),
+				BroadcastPathSuffix: "path/to/track",
+				Hops:                0,
 			},
 		},
 		"empty wildcard parameters": {
 			input: message.AnnounceMessage{
-				AnnounceStatus: message.AnnounceStatus(1),
-				TrackSuffix:    "",
-				Hops:           0,
+				AnnounceStatus:      message.AnnounceStatus(1),
+				BroadcastPathSuffix: "",
+				Hops:                0,
 			},
 		},
 		"max values": {
 			input: message.AnnounceMessage{
-				AnnounceStatus: message.AnnounceStatus(^byte(0)),
-				TrackSuffix:    "very/long/path",
-				Hops:           1024,
+				AnnounceStatus:      message.AnnounceStatus(^byte(0)),
+				BroadcastPathSuffix: "very/long/path",
+				Hops:                1024,
 			},
 		},
 	}

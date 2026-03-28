@@ -113,8 +113,8 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 		if exists && current.announcement == ann {
 			delete(aw.actives, sfx)
 			if err := (message.AnnounceMessage{
-				AnnounceStatus: message.ENDED,
-				TrackSuffix:    sfx,
+				AnnounceStatus:      message.ENDED,
+				BroadcastPathSuffix: sfx,
 			}).Encode(aw.stream); err != nil {
 				// Silently ignore encode errors
 			}
@@ -129,8 +129,8 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 		defer aw.mu.Unlock()
 		delete(aw.actives, sfx)
 		if err := (message.AnnounceMessage{
-			AnnounceStatus: message.ENDED,
-			TrackSuffix:    sfx,
+			AnnounceStatus:      message.ENDED,
+			BroadcastPathSuffix: sfx,
 		}).Encode(aw.stream); err != nil {
 			// Silently ignore encode errors
 		}
@@ -190,8 +190,8 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 
 	// Encode and send ACTIVE announcement
 	err := message.AnnounceMessage{
-		AnnounceStatus: message.ACTIVE,
-		TrackSuffix:    suffix,
+		AnnounceStatus:      message.ACTIVE,
+		BroadcastPathSuffix: suffix,
 	}.Encode(aw.stream)
 	if err != nil {
 		var strErr *StreamError

@@ -13,16 +13,16 @@ const (
 type AnnounceStatus byte
 
 type AnnounceMessage struct {
-	AnnounceStatus AnnounceStatus
-	TrackSuffix    string
-	Hops           uint64
+	AnnounceStatus      AnnounceStatus
+	BroadcastPathSuffix string
+	Hops                uint64
 }
 
 func (am AnnounceMessage) Len() int {
 	var l int
 
 	l += VarintLen(uint64(am.AnnounceStatus))
-	l += StringLen(am.TrackSuffix)
+	l += StringLen(am.BroadcastPathSuffix)
 	l += VarintLen(am.Hops)
 
 	return l
@@ -35,7 +35,7 @@ func (am AnnounceMessage) Encode(w io.Writer) error {
 
 	b, _ = WriteMessageLength(b, uint64(msgLen))
 	b, _ = WriteVarint(b, uint64(am.AnnounceStatus))
-	b, _ = WriteString(b, am.TrackSuffix)
+	b, _ = WriteString(b, am.BroadcastPathSuffix)
 	b, _ = WriteVarint(b, am.Hops)
 
 	_, err := w.Write(b)
@@ -67,7 +67,7 @@ func (am *AnnounceMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
-	am.TrackSuffix = str
+	am.BroadcastPathSuffix = str
 	b = b[n:]
 
 	num, n, err = ReadVarint(b)
