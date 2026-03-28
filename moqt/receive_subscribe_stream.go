@@ -19,7 +19,7 @@ func newReceiveSubscribeStream(id SubscribeID, stream Stream, config *TrackConfi
 		stream:      stream,
 		updatedCh:   make(chan struct{}, 1),
 		closeOnce:   make(chan struct{}, 1),
-		ctx:         context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSubscribe),
+		ctx:         context.WithValue(stream.Context(), biStreamTypeCtxKey, message.StreamTypeSubscribe),
 	}
 
 	// Listen for updates in a separate goroutine

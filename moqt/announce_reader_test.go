@@ -236,7 +236,7 @@ func TestAnnouncementReader_Close(t *testing.T) {
 func TestAnnouncementReader_CloseWithError(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	// Add the stream type to the context like newAnnouncementReader does
-	ctx = context.WithValue(ctx, &biStreamTypeCtxKey, message.StreamTypeAnnounce)
+	ctx = context.WithValue(ctx, biStreamTypeCtxKey, message.StreamTypeAnnounce)
 	mockStream := &MockQUICStream{}
 	mockStream.On("StreamID").Return(StreamID(123))
 	mockStream.On("Context").Return(ctx)

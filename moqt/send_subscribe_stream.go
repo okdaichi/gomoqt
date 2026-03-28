@@ -10,7 +10,7 @@ import (
 
 func newSendSubscribeStream(id SubscribeID, stream Stream, initConfig *TrackConfig, info Info) *sendSubscribeStream {
 	substr := &sendSubscribeStream{
-		ctx:    context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSubscribe),
+		ctx:    context.WithValue(stream.Context(), biStreamTypeCtxKey, message.StreamTypeSubscribe),
 		id:     id,
 		config: initConfig,
 		stream: stream,

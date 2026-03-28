@@ -1,7 +1,7 @@
 import { Session } from "./session.ts";
 import type { MOQOptions } from "./options.ts";
 import { DefaultTrackMux, TrackMux } from "./track_mux.ts";
-import { StreamConn } from "./internal/webtransport/mod.ts";
+import { WebTransportSession } from "./internal/webtransport/mod.ts";
 
 const DefaultWebTransportOptions: WebTransportOptions = {
 	allowPooling: false,
@@ -11,7 +11,6 @@ const DefaultWebTransportOptions: WebTransportOptions = {
 
 const DefaultMOQOptions: MOQOptions = {
 	reconnect: false, // TODO: Implement reconnect logic
-	// migrate: (url: URL) => false,
 	transportOptions: DefaultWebTransportOptions,
 };
 
@@ -46,7 +45,7 @@ export class Client {
 		// const endpoint = typeof url === "string" ? url : String(url);
 
 		try {
-			const webtransport = new StreamConn(
+			const webtransport = new WebTransportSession(
 				url,
 				this.options.transportOptions,
 			);

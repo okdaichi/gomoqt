@@ -14,7 +14,7 @@ func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) 
 	}
 
 	ar := &AnnouncementReader{
-		ctx:         context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeAnnounce),
+		ctx:         context.WithValue(stream.Context(), biStreamTypeCtxKey, message.StreamTypeAnnounce),
 		stream:      stream,
 		prefix:      prefix,
 		actives:     make(map[suffix]*Announcement),

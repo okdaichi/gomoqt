@@ -235,7 +235,7 @@ func TestGroupWriter_Context(t *testing.T) {
 
 	ctx := sgs.Context()
 	assert.NotNil(t, ctx)
-	assert.Equal(t, message.StreamTypeGroup, ctx.Value(&uniStreamTypeCtxKey))
+	assert.Equal(t, message.StreamTypeGroup, ctx.Value(uniStreamTypeCtxKey))
 	mockStream.AssertExpectations(t)
 }
 

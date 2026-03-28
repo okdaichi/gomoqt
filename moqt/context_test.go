@@ -41,7 +41,7 @@ func TestCause(t *testing.T) {
 			setupCtx: func() context.Context {
 				ctx, cancel := context.WithCancelCause(context.Background())
 				streamErr := &StreamError{StreamID: 1, ErrorCode: 1, Remote: true}
-				ctx = context.WithValue(ctx, &biStreamTypeCtxKey, message.StreamTypeSession)
+				ctx = context.WithValue(ctx, biStreamTypeCtxKey, message.StreamTypeSession)
 				cancel(streamErr)
 				return ctx
 			},
@@ -57,7 +57,7 @@ func TestCause(t *testing.T) {
 			setupCtx: func() context.Context {
 				ctx, cancel := context.WithCancelCause(context.Background())
 				streamErr := &StreamError{StreamID: 1, ErrorCode: 2, Remote: true}
-				ctx = context.WithValue(ctx, &biStreamTypeCtxKey, message.StreamTypeAnnounce)
+				ctx = context.WithValue(ctx, biStreamTypeCtxKey, message.StreamTypeAnnounce)
 				cancel(streamErr)
 				return ctx
 			},
@@ -69,7 +69,7 @@ func TestCause(t *testing.T) {
 			setupCtx: func() context.Context {
 				ctx, cancel := context.WithCancelCause(context.Background())
 				streamErr := &StreamError{StreamID: 1, ErrorCode: 3, Remote: true}
-				ctx = context.WithValue(ctx, &biStreamTypeCtxKey, message.StreamTypeSubscribe)
+				ctx = context.WithValue(ctx, biStreamTypeCtxKey, message.StreamTypeSubscribe)
 				cancel(streamErr)
 				return ctx
 			},
@@ -81,7 +81,7 @@ func TestCause(t *testing.T) {
 			setupCtx: func() context.Context {
 				ctx, cancel := context.WithCancelCause(context.Background())
 				streamErr := &StreamError{StreamID: 1, ErrorCode: 4, Remote: true}
-				ctx = context.WithValue(ctx, &uniStreamTypeCtxKey, message.StreamTypeGroup)
+				ctx = context.WithValue(ctx, uniStreamTypeCtxKey, message.StreamTypeGroup)
 				cancel(streamErr)
 				return ctx
 			},

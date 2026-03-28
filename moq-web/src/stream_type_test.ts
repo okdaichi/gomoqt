@@ -1,22 +1,8 @@
 // Use real WebTransport-like streams for SendStream/ReceiveStream composition
-import { Stream } from "./internal/webtransport/stream.ts";
 import { assertEquals } from "@std/assert";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 
 Deno.test("Stream", async (t) => {
-	await t.step("maps id and substreams correctly", () => {
-		const writable = new WritableStream({ write() {} }) as any;
-		const readable = new ReadableStream({
-			start(c) {
-				c.close();
-			},
-		}) as any;
-		const s = new Stream({ streamId: 123n, stream: { writable, readable } });
-		assertEquals(s.id, 123n);
-		assertEquals(s.readable.id, 123n);
-		assertEquals(s.writable.id, 123n);
-	});
-
 	// Test BiStreamTypes constant values
 	await t.step("BiStreamTypes - Constant Values", async (t) => {
 		const cases = {

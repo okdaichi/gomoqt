@@ -14,7 +14,7 @@ func newGroupWriter(stream SendStream, sequence GroupSequence,
 		sequence: sequence,
 		onClose:  onClose,
 		stream:   stream,
-		ctx:      context.WithValue(stream.Context(), &uniStreamTypeCtxKey, message.StreamTypeGroup),
+		ctx:      context.WithValue(stream.Context(), uniStreamTypeCtxKey, message.StreamTypeGroup),
 	}
 }
 

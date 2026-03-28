@@ -1,7 +1,6 @@
 package webtransportgo
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,8 +9,7 @@ import (
 
 func TestDialer_Dial_InvalidAddress(t *testing.T) {
 	d := &Dialer{}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	rsp, conn, err := d.Dial(ctx, "://bad-url", nil, nil)
 

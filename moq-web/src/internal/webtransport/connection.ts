@@ -11,12 +11,13 @@ export interface StreamConn {
 	close(closeInfo?: WebTransportCloseInfo): void;
 	ready: Promise<void>;
 	closed: Promise<WebTransportCloseInfo>;
+	protocol: string;
 }
 
 type WebTransportUnidirectionalStream = ReadableStream<Uint8Array>;
 // TODO: Use proper WebTransport types when available
 
-class WebTransportSessionClass implements StreamConn {
+export class WebTransportSession implements StreamConn {
 	#webtransport: WebTransport;
 
 	#uniStreams: ReadableStreamDefaultReader<WebTransportUnidirectionalStream>;
@@ -36,6 +37,11 @@ class WebTransportSessionClass implements StreamConn {
 			.getReader();
 		this.#uniStreams = this.#webtransport.incomingUnidirectionalStreams
 			.getReader();
+	}
+
+	get protocol(): string {
+		// @ts-expect-error WebTransport.protocol is not yet in TypeScript lib, but is supported in browsers
+		return this.#webtransport.protocol || "";
 	}
 
 	async openStream(): Promise<[Stream, undefined] | [undefined, Error]> {
@@ -117,7 +123,3 @@ class WebTransportSessionClass implements StreamConn {
 		return this.#webtransport.closed;
 	}
 }
-
-export const StreamConn: {
-	new (url: string | URL, options?: WebTransportOptions): StreamConn;
-} = WebTransportSessionClass;

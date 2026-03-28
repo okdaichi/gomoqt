@@ -7,6 +7,12 @@ import (
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 )
 
+type biStreamTypeCtxKeyType struct{}
+type uniStreamTypeCtxKeyType struct{}
+
+var biStreamTypeCtxKey biStreamTypeCtxKeyType = biStreamTypeCtxKeyType{}
+var uniStreamTypeCtxKey uniStreamTypeCtxKeyType = uniStreamTypeCtxKeyType{}
+
 // Cause translates a Go context cancellation reason into a package-specific error type.
 // When the provided context was canceled because of a QUIC stream error or application error,
 // Cause converts that into the corresponding moqt error (e.g., SessionError, AnnounceError,
@@ -15,9 +21,8 @@ import (
 func Cause(ctx context.Context) error {
 	reason := context.Cause(ctx)
 
-	var strErr *StreamError
-	if errors.As(reason, &strErr) {
-		st, ok := ctx.Value(&biStreamTypeCtxKey).(message.StreamType)
+	if strErr, ok := errors.AsType[*StreamError](reason); ok {
+		st, ok := ctx.Value(biStreamTypeCtxKey).(message.StreamType)
 		if ok {
 			switch st {
 			case message.StreamTypeSession:
@@ -50,7 +55,7 @@ func Cause(ctx context.Context) error {
 			return reason
 		}
 
-		st, ok = ctx.Value(&uniStreamTypeCtxKey).(message.StreamType)
+		st, ok = ctx.Value(uniStreamTypeCtxKey).(message.StreamType)
 		if ok {
 			switch st {
 			case message.StreamTypeGroup:
@@ -63,8 +68,7 @@ func Cause(ctx context.Context) error {
 		return reason
 	}
 
-	var appErr *ApplicationError
-	if errors.As(reason, &appErr) {
+	if appErr, ok := errors.AsType[*ApplicationError](reason); ok {
 		return &SessionError{
 			ApplicationError: appErr,
 		}
@@ -72,6 +76,3 @@ func Cause(ctx context.Context) error {
 
 	return reason
 }
-
-var biStreamTypeCtxKey int
-var uniStreamTypeCtxKey int

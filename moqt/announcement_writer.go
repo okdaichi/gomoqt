@@ -17,7 +17,7 @@ func newAnnouncementWriter(stream Stream, prefix prefix) *AnnouncementWriter {
 	sas := &AnnouncementWriter{
 		prefix:  prefix,
 		stream:  stream,
-		ctx:     context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeAnnounce),
+		ctx:     context.WithValue(stream.Context(), biStreamTypeCtxKey, message.StreamTypeAnnounce),
 		actives: make(map[suffix]*activeAnnouncement),
 		initCh:  make(chan struct{}),
 	}
