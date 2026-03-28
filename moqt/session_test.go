@@ -1146,7 +1146,6 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 		SubscribeID:   1,
 		BroadcastPath: "/test/path",
 		TrackName:     "video",
-		TrackPriority: 1,
 	}
 	err = sm.Encode(&buf)
 	assert.NoError(t, err)
