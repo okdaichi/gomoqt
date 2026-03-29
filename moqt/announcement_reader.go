@@ -43,7 +43,7 @@ func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) 
 			switch am.AnnounceStatus {
 			case message.ACTIVE:
 				{
-					suffix := am.TrackSuffix
+					suffix := am.BroadcastPathSuffix
 					var shouldClose bool
 					// Mutate maps under lock
 					func() {
@@ -72,7 +72,7 @@ func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) 
 				}
 			case message.ENDED:
 				{
-					suffix := am.TrackSuffix
+					suffix := am.BroadcastPathSuffix
 					var handled bool
 					func() {
 						ar.announcementsMu.Lock()

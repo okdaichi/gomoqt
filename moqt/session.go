@@ -9,10 +9,10 @@ import (
 	"sync/atomic"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/quic-go/quic-go"
 )
 
-func newSession(conn StreamConn, mux *TrackMux, onClose func()) *Session {
-
+func newSession(conn StreamConn, mux *TrackMux, _ func()) *Session {
 	if mux == nil {
 		mux = DefaultMux
 	}
@@ -24,7 +24,6 @@ func newSession(conn StreamConn, mux *TrackMux, onClose func()) *Session {
 		mux:          mux,
 		trackReaders: make(map[SubscribeID]*TrackReader),
 		trackWriters: make(map[SubscribeID]*TrackWriter),
-		onClose:      onClose,
 	}
 
 	// Supervise session closure
@@ -34,7 +33,7 @@ func newSession(conn StreamConn, mux *TrackMux, onClose func()) *Session {
 			return // Normal closure
 		}
 
-		_ = sess.CloseWithError(ProtocolViolationErrorCode, "session stream closed unexpectedly")
+		_ = sess.CloseWithError(ProtocolViolationErrorCode, "connection closed unexpectedly")
 	})
 
 	// Listen bidirectional streams
@@ -55,6 +54,8 @@ func newSession(conn StreamConn, mux *TrackMux, onClose func()) *Session {
 type Session struct {
 	ctx context.Context // Context for the session
 
+	path string
+
 	wg sync.WaitGroup // WaitGroup for session cleanup
 
 	conn StreamConn
@@ -73,9 +74,13 @@ type Session struct {
 
 	isTerminating atomic.Bool
 	sessErr       error
-
-	onClose func() // Function to call when the session is closed
 }
+
+func (s *Session) UpdateTrackMux(mux *TrackMux) {
+	s.mux = mux
+}
+
+func (s *Session) Path() string { return s.path }
 
 func (s *Session) terminating() bool {
 	return s.isTerminating.Load()
@@ -117,10 +122,6 @@ func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 		return s.sessErr
 	}
 	s.isTerminating.Store(true)
-
-	if s.onClose != nil {
-		s.onClose()
-	}
 
 	err := s.conn.CloseWithError(ConnErrorCode(code), msg)
 	if err != nil {
@@ -183,11 +184,30 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 	}
 
 	// Send a SUBSCRIBE message
+	ordered := uint8(0)
+	if config.Ordered {
+		ordered = 1
+	}
+
+	startGroup := uint64(0)
+	if config.StartGroup != 0 {
+		startGroup = uint64(config.StartGroup) + 1
+	}
+
+	endGroup := uint64(0)
+	if config.EndGroup != 0 {
+		endGroup = uint64(config.EndGroup) + 1
+	}
+
 	sm := message.SubscribeMessage{
-		SubscribeID:   uint64(id),
-		BroadcastPath: string(path),
-		TrackName:     string(name),
-		TrackPriority: uint8(config.TrackPriority),
+		SubscribeID:          uint64(id),
+		BroadcastPath:        string(path),
+		TrackName:            string(name),
+		SubscriberPriority:   uint8(config.TrackPriority),
+		SubscriberOrdered:    ordered,
+		SubscriberMaxLatency: config.MaxLatencyMs,
+		StartGroup:           startGroup,
+		EndGroup:             endGroup,
 	}
 	err = sm.Encode(stream)
 	if err == nil {
@@ -399,9 +419,19 @@ func (sess *Session) processBiStream(stream Stream) {
 			return
 		}
 
-		// Create a receiveSubscribeStream
+		// Create a receiveSubscribeStream with draft3 fields decoded from SUBSCRIBE message
 		config := &TrackConfig{
-			TrackPriority: TrackPriority(sm.TrackPriority),
+			TrackPriority: TrackPriority(sm.SubscriberPriority),
+			Ordered:       sm.SubscriberOrdered != 0,
+			MaxLatencyMs:  sm.SubscriberMaxLatency,
+		}
+
+		// Decode 0-sentinel / +1-encoded fields (matching SUBSCRIBE_UPDATE logic)
+		if sm.StartGroup > 0 {
+			config.StartGroup = GroupSequence(sm.StartGroup - 1)
+		}
+		if sm.EndGroup > 0 {
+			config.EndGroup = GroupSequence(sm.EndGroup - 1)
 		}
 
 		substr := newReceiveSubscribeStream(SubscribeID(sm.SubscribeID), stream, config)
@@ -420,7 +450,7 @@ func (sess *Session) processBiStream(stream Stream) {
 		// Ensure the track writer is closed when done
 		w.Close()
 	default:
-		_ = sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown bidirectional stream type: %v", streamType))
+		cancelStreamWithError(stream, quic.StreamErrorCode(InternalSessionErrorCode))
 		return
 	}
 }
@@ -468,8 +498,8 @@ func (sess *Session) processUniStream(stream ReceiveStream) {
 		// Enqueue the receiver
 		track.enqueueGroup(GroupSequence(gm.GroupSequence), stream)
 	default:
-		// Terminate the session
-		_ = sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown unidirectional stream type: %v", streamType))
+		// Unknown stream types are stream-local and non-fatal for extension probing.
+		stream.CancelRead(quic.StreamErrorCode(InternalSessionErrorCode))
 		return
 	}
 }

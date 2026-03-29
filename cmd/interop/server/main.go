@@ -47,13 +47,10 @@ func main() {
 	serverDone := make(chan struct{}, 1)
 
 	nativeMux := moqt.NewTrackMux()
-	server.NativeQUICHandler = &moqt.NativeQUICHandler{
-		TrackMux: nativeMux,
-		SessionHandler: func(sess *moqt.Session) error {
-			runInteropSession(sess, nativeMux, serverDone)
-			return nil
-		},
-	}
+	server.SessionHandler = moqt.SessionHandleFunc(func(sess *moqt.Session) error {
+		runInteropSession(sess, nativeMux, serverDone)
+		return nil
+	})
 
 	go func() {
 		<-serverDone
@@ -68,7 +65,7 @@ func main() {
 
 	// Serve MOQ over WebTransport
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		upgrader := moqt.Upgrader{
+		upgrader := moqt.WebTransportUpgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 			TrackMux:    moqt.NewTrackMux(),
 		}
@@ -79,7 +76,7 @@ func main() {
 			return
 		}
 
-		go runInteropSession(sess, upgrader.TrackMux, serverDone)
+		runInteropSession(sess, upgrader.TrackMux, serverDone)
 	})
 
 	fmt.Println("Listening...")

@@ -71,8 +71,10 @@ type Server struct {
 	 */
 	WebTransportServer WebTransportServer
 
+	TrackMux *TrackMux
+
 	//
-	NativeQUICHandler *NativeQUICHandler
+	SessionHandler SessionHandleFunc
 
 	/*
 	 * Logger
@@ -103,31 +105,26 @@ func (s *Server) init() {
 		s.doneChan = make(chan struct{})
 		s.activeSess = make(map[*Session]struct{})
 		if s.WebTransportServer == nil {
-			s.WebTransportServer = &webtransportgo.Server{ConnContext: s.connContext}
+			s.WebTransportServer = &webtransportgo.Server{}
 			return
-		}
-		if wtServer, ok := s.WebTransportServer.(*webtransportgo.Server); ok && wtServer.ConnContext == nil {
-			wtServer.ConnContext = s.connContext
 		}
 	})
 }
 
-type serverContextKeyType struct{}
+// type serverContextKeyType struct{}
 
-var moqServerContextKey = serverContextKeyType{}
+// var moqServerContextKey = serverContextKeyType{}
 
-func (s *Server) connContext(ctx context.Context, conn StreamConn) context.Context {
-	if s.ConnContext != nil {
-		ctx = s.ConnContext(ctx, conn)
-		if ctx == nil {
-			panic("nil context returned by ConnContext")
-		}
-	}
+// func (s *Server) connContext(ctx context.Context, conn StreamConn) context.Context {
+// 	if s.ConnContext != nil {
+// 		ctx = s.ConnContext(ctx, conn)
+// 		if ctx == nil {
+// 			panic("nil context returned by ConnContext")
+// 		}
+// 	}
 
-	ctx = context.WithValue(ctx, moqServerContextKey, s)
-
-	return ctx
-}
+// 	return ctx
+// }
 
 // log returns Server.Logger if set, otherwise a discard logger.
 func (s *Server) log() *slog.Logger {
@@ -201,24 +198,20 @@ func (s *Server) ServeQUICConn(conn StreamConn) error {
 	case NextProtoH3:
 		return s.WebTransportServer.ServeQUICConn(conn)
 	case NextProtoMOQ:
-		if s.NativeQUICHandler != nil {
-			return s.NativeQUICHandler.handleNativeQUIC(conn)
-		}
-		return fmt.Errorf("native QUIC is not supported for protocol: %s", protocol)
+		return s.handleNativeQUIC(conn)
 	default:
 		return fmt.Errorf("unsupported protocol: %s", protocol)
 	}
 }
 
-type Upgrader struct {
+type WebTransportUpgrader struct {
 	CheckOrigin          func(r *http.Request) bool
 	ApplicationProtocols []string
 	ReorderingTimeout    time.Duration
-	TrackMux             *TrackMux
 	UpgradeFunc          func(w http.ResponseWriter, r *http.Request) (StreamConn, error)
 }
 
-func (u *Upgrader) upgradeWebTransport(w http.ResponseWriter, r *http.Request) (StreamConn, error) {
+func (u *WebTransportUpgrader) upgradeWebTransport(w http.ResponseWriter, r *http.Request) (StreamConn, error) {
 	if u.UpgradeFunc != nil {
 		return u.UpgradeFunc(w, r)
 	}
@@ -237,7 +230,7 @@ func (u *Upgrader) upgradeWebTransport(w http.ResponseWriter, r *http.Request) (
 
 // Upgrade upgrades an incoming HTTP request to a WebTransport session and registers it with the server's session management.
 // It returns the established session or an error if the upgrade fails.
-func (u *Upgrader) Upgrade(w http.ResponseWriter, r *http.Request) (*Session, error) {
+func (u *WebTransportUpgrader) Upgrade(w http.ResponseWriter, r *http.Request) (*Session, error) {
 	s, _ := r.Context().Value(moqServerContextKey).(*Server)
 
 	if r.TLS == nil {
@@ -255,26 +248,24 @@ func (u *Upgrader) Upgrade(w http.ResponseWriter, r *http.Request) (*Session, er
 		return nil, fmt.Errorf("failed to upgrade connection: %w", err)
 	}
 	if s == nil {
-		return newSession(conn, u.TrackMux, func() {}), nil
+		return newSession(conn, u.TrackMux, nil), nil
 	}
 
 	var sess *Session
-	sess = newSession(conn, u.TrackMux, func() { s.removeSession(sess) })
+	sess = newSession(conn, u.TrackMux, nil)
 	s.addSession(sess)
+	context.AfterFunc(sess.Context(), func() { s.removeSession(sess) })
 
 	return sess, nil
 }
 
-type NativeQUICHandler struct {
-	TrackMux       *TrackMux
-	SessionHandler func(sess *Session) error
-}
+type SessionHandleFunc func(sess *Session) error
 
-func (h *NativeQUICHandler) handleNativeQUIC(conn StreamConn) error {
-	if h.SessionHandler != nil {
-		return h.SessionHandler(newSession(conn, h.TrackMux, func() {})) // TODO: implement proper session cleanup callback
+func (s *Server) handleNativeQUIC(conn StreamConn) error {
+	if s.SessionHandler != nil {
+		return s.SessionHandler(newSession(conn, s.TrackMux, nil))
 	}
-	return fmt.Errorf("no session handler configured for native QUIC handler")
+	return fmt.Errorf("no native QUIC handler configured")
 }
 
 // ListenAndServe starts the server by listening on the server's Address and serving QUIC connections.

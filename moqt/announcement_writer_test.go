@@ -48,7 +48,6 @@ func TestAnnouncementWriter_Init(t *testing.T) {
 			setupMocks: func(mockStream *MockQUICStream) {
 				ctx := context.Background()
 				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
 			},
 		},
 		"single active announcement": {
@@ -77,7 +76,7 @@ func TestAnnouncementWriter_Init(t *testing.T) {
 			setupMocks: func(mockStream *MockQUICStream) {
 				ctx := context.Background()
 				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
+				mockStream.On("Write", mock.Anything).Return(0, nil).Twice()
 			},
 		},
 		"inactive announcement": {
@@ -92,12 +91,12 @@ func TestAnnouncementWriter_Init(t *testing.T) {
 			setupMocks: func(mockStream *MockQUICStream) {
 				ctx := context.Background()
 				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
 			},
 		},
 		"write error": {
 			setupAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
-				return make(map[*Announcement]struct{})
+				ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+				return map[*Announcement]struct{}{ann: {}}
 			},
 			expectError:     true,
 			expectedActives: 0,
@@ -118,7 +117,6 @@ func TestAnnouncementWriter_Init(t *testing.T) {
 			setupMocks: func(mockStream *MockQUICStream) {
 				ctx := context.Background()
 				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
 			},
 		},
 	}
@@ -144,19 +142,50 @@ func TestAnnouncementWriter_Init(t *testing.T) {
 				for _, suffix := range tt.expectedSuffixes {
 					assert.Contains(t, sas.actives, suffix)
 				}
+			}
 
-				// Verify initCh is closed after successful initialization
-				select {
-				case <-sas.initCh:
-					// Channel is closed, this is expected
-				default:
-					t.Error("initCh should be closed")
-				}
+			// Verify initDone is closed after init completes (including error paths)
+			select {
+			case <-sas.initDone:
+				// Channel is closed, this is expected
+			default:
+				t.Error("initDone should be closed")
 			}
 
 			mockStream.AssertExpectations(t)
 		})
 	}
+}
+
+func TestAnnouncementWriter_SendAnnouncement_AfterInitError(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	ctx := context.Background()
+
+	mockStream.On("Context").Return(ctx)
+	mockStream.On("Write", mock.Anything).Return(0, errors.New("write error")).Once()
+
+	sas := newAnnouncementWriter(mockStream, "/test/")
+	ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+
+	// Force init to fail
+	err := sas.init(map[*Announcement]struct{}{ann: {}})
+	require.Error(t, err)
+
+	// SendAnnouncement must return promptly with init error (must not block)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- sas.SendAnnouncement(ann)
+	}()
+
+	select {
+	case gotErr := <-errCh:
+		require.Error(t, gotErr)
+		assert.ErrorContains(t, gotErr, "write error")
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("SendAnnouncement blocked after init error")
+	}
+
+	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_Init_OnlyOnce(t *testing.T) {
@@ -196,7 +225,8 @@ func TestAnnouncementWriter_Init_StreamError(t *testing.T) {
 
 	sas := newAnnouncementWriter(mockStream, "/test/")
 
-	err := sas.init(map[*Announcement]struct{}{})
+	ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+	err := sas.init(map[*Announcement]struct{}{ann: {}})
 
 	require.Error(t, err)
 	var announceErr *AnnounceError
@@ -360,9 +390,9 @@ func TestAnnouncementWriter_SendAnnouncement(t *testing.T) {
 
 			mockStream.On("Context").Return(ctx)
 			if !tt.expectError {
-				mockStream.On("Write", mock.Anything).Return(0, nil).Times(2) // One for init, one for SendAnnouncement
+				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
 			} else {
-				mockStream.On("Write", mock.Anything).Return(0, nil).Times(1) // Only for init
+				// invalid path is rejected before writing
 			}
 
 			sas := newAnnouncementWriter(mockStream, tt.prefix)
@@ -411,13 +441,11 @@ func TestAnnouncementWriter_SendAnnouncement_WriteError(t *testing.T) {
 			ctx := context.Background()
 
 			mockStream.On("Context").Return(ctx)
-			mockStream.On("Write", mock.Anything).Return(0, nil).Once()           // For init
-			mockStream.On("Write", mock.Anything).Return(0, tt.writeError).Once() // For SendAnnouncement
+			mockStream.On("Write", mock.Anything).Return(0, tt.writeError).Once()
 
 			sas := newAnnouncementWriter(mockStream, "/test/")
 			ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
 
-			// Initialize the AnnouncementWriter first
 			err := sas.init(map[*Announcement]struct{}{})
 			require.NoError(t, err)
 
@@ -449,7 +477,7 @@ func TestAnnouncementWriter_Close(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Nil(t, sas.actives)
-		assert.NotNil(t, sas.initCh)
+		assert.NotNil(t, sas.initDone)
 
 		mockStream.AssertExpectations(t)
 	})
@@ -502,7 +530,7 @@ func TestAnnouncementWriter_Close(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, expectedErr, err)
 		assert.Nil(t, sas.actives)
-		assert.NotNil(t, sas.initCh)
+		assert.NotNil(t, sas.initDone)
 
 		mockStream.AssertExpectations(t)
 	})
@@ -536,7 +564,7 @@ func TestAnnouncementWriter_CloseWithError(t *testing.T) {
 
 				assert.NoError(t, err)
 				assert.Nil(t, sas.actives)
-				assert.NotNil(t, sas.initCh)
+				assert.NotNil(t, sas.initDone)
 
 				mockStream.AssertExpectations(t)
 			})
@@ -582,7 +610,7 @@ func TestAnnouncementWriter_SendAnnouncement_MultipleAnnouncements(t *testing.T)
 	ctx := context.Background()
 
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil).Times(3) // One for init, two for SendAnnouncement
+	mockStream.On("Write", mock.Anything).Return(0, nil).Times(2)
 
 	sas := newAnnouncementWriter(mockStream, "/test/")
 
@@ -646,7 +674,7 @@ func TestAnnouncementWriter_SendAnnouncement_SameInstance(t *testing.T) {
 	ctx := context.Background()
 
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil).Times(2) // One for init, one for SendAnnouncement
+	mockStream.On("Write", mock.Anything).Return(0, nil).Once()
 
 	sas := newAnnouncementWriter(mockStream, "/test/")
 	ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -671,7 +699,7 @@ func TestAnnouncementWriter_AnnouncementEnd_BackgroundProcessing(t *testing.T) {
 	ctx := context.Background()
 
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil).Times(3) // init, ACTIVE, and ENDED messages
+	mockStream.On("Write", mock.Anything).Return(0, nil).Times(2)
 
 	sas := newAnnouncementWriter(mockStream, "/test/")
 	ann, end := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -747,9 +775,9 @@ func TestAnnouncementWriter_BoundaryValues(t *testing.T) {
 
 			mockStream.On("Context").Return(ctx)
 			if !tt.expectError {
-				mockStream.On("Write", mock.Anything).Return(0, nil).Times(2) // One for init, one for SendAnnouncement
+				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
 			} else {
-				mockStream.On("Write", mock.Anything).Return(0, nil).Times(1) // Only for init
+				// invalid path is rejected before writing
 			}
 
 			sas := newAnnouncementWriter(mockStream, tt.prefix)

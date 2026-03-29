@@ -223,7 +223,7 @@ func TestReceiveSubscribeStream_ListenUpdates_WithSubscribeUpdateMessage(t *test
 
 	// Create a valid SubscribeUpdateMessage
 	updateMsg := message.SubscribeUpdateMessage{
-		TrackPriority: 5,
+		SubscriberPriority: 5,
 	}
 
 	// Encode the message
@@ -482,10 +482,10 @@ func TestReceiveSubscribeStream_UpdateChannelBehavior(t *testing.T) {
 		// Create multiple update messages
 		updates := []message.SubscribeUpdateMessage{
 			{
-				TrackPriority: 1,
+				SubscriberPriority: 1,
 			},
 			{
-				TrackPriority: 2,
+				SubscriberPriority: 2,
 			},
 		}
 

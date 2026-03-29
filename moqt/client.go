@@ -167,8 +167,9 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 	connLogger.Info("connection established")
 
 	var sess *Session
-	sess = newSession(conn, mux, func() { c.removeSession(sess) })
+	sess = newSession(conn, mux, nil)
 	c.addSession(sess)
+	context.AfterFunc(sess.Context(), func() { c.removeSession(sess) })
 
 	return sess, nil
 }
@@ -210,8 +211,9 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 	}
 
 	var sess *Session
-	sess = newSession(conn, mux, func() { c.removeSession(sess) })
+	sess = newSession(conn, mux, nil)
 	c.addSession(sess)
+	context.AfterFunc(sess.Context(), func() { c.removeSession(sess) })
 
 	return sess, nil
 }

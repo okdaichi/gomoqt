@@ -6,17 +6,29 @@ import (
 
 /*
 * SUBSCRIBE Message {
-*   Subscribe ID (varint),
-*   Broadcast Path (string),
-*   Track Name (string),
-*   Track Priority (varint),
+*   Message Length (varint)
+*   Subscribe ID (varint)
+*   Broadcast Path (string)
+*   Track Name (string)
+*   Subscriber Priority (varint)
+*   Subscriber Ordered (varint)
+*   Subscriber Max Latency (varint)
+*   Start Group (varint)
+*   End Group (varint)
 * }
+*
+* Broadcast Path and Track Name are length-prefixed UTF-8 strings.
+* Start Group and End Group use 0 for the default/latest and unbounded values.
  */
 type SubscribeMessage struct {
-	SubscribeID   uint64
-	BroadcastPath string
-	TrackName     string
-	TrackPriority uint8
+	SubscribeID          uint64
+	BroadcastPath        string
+	TrackName            string
+	SubscriberPriority   uint8
+	SubscriberOrdered    uint8
+	SubscriberMaxLatency uint64
+	StartGroup           uint64
+	EndGroup             uint64
 }
 
 func (s SubscribeMessage) Len() int {
@@ -25,7 +37,11 @@ func (s SubscribeMessage) Len() int {
 	l += VarintLen(uint64(s.SubscribeID))
 	l += StringLen(s.BroadcastPath)
 	l += StringLen(s.TrackName)
-	l += VarintLen(uint64(s.TrackPriority))
+	l += VarintLen(uint64(s.SubscriberPriority))
+	l += VarintLen(uint64(s.SubscriberOrdered))
+	l += VarintLen(s.SubscriberMaxLatency)
+	l += VarintLen(s.StartGroup)
+	l += VarintLen(s.EndGroup)
 
 	return l
 }
@@ -40,7 +56,11 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	b = append(b, s.BroadcastPath...)
 	b, _ = WriteVarint(b, uint64(len(s.TrackName)))
 	b = append(b, s.TrackName...)
-	b, _ = WriteVarint(b, uint64(s.TrackPriority))
+	b, _ = WriteVarint(b, uint64(s.SubscriberPriority))
+	b, _ = WriteVarint(b, uint64(s.SubscriberOrdered))
+	b, _ = WriteVarint(b, s.SubscriberMaxLatency)
+	b, _ = WriteVarint(b, s.StartGroup)
+	b, _ = WriteVarint(b, s.EndGroup)
 
 	_, err := w.Write(b)
 	return err
@@ -84,7 +104,35 @@ func (s *SubscribeMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.TrackPriority = uint8(num)
+	s.SubscriberPriority = uint8(num)
+	b = b[n:]
+
+	num, n, err = ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	s.SubscriberOrdered = uint8(num)
+	b = b[n:]
+
+	num, n, err = ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	s.SubscriberMaxLatency = num
+	b = b[n:]
+
+	num, n, err = ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	s.StartGroup = num
+	b = b[n:]
+
+	num, n, err = ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	s.EndGroup = num
 	b = b[n:]
 
 	if len(b) != 0 {

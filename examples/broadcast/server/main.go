@@ -29,7 +29,7 @@ func main() {
 	}
 
 	// Serve moq over webtransport
-	upgrader := moqt.Upgrader{}
+	upgrader := moqt.WebTransportUpgrader{}
 	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
 		_, err := upgrader.Upgrade(w, r)
 		if err != nil {
