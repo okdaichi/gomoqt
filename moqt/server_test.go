@@ -103,7 +103,7 @@ func TestServer_ServeQUICConn_WebTransport(t *testing.T) {
 func TestServer_ServeQUICConn_NativeQUICHandler(t *testing.T) {
 	called := false
 	s := &Server{
-		NativeQUICHandler: &NativeQUICHandler{
+		SessionHandler: &SessionHandleFunc{
 			SessionHandler: func(sess *Session) error {
 				called = true
 				return nil
@@ -236,7 +236,7 @@ func TestServer_addRemoveSession_ShutdownCompletes(t *testing.T) {
 }
 
 func TestUpgrader_Upgrade_WithoutServerContext(t *testing.T) {
-	u := &Upgrader{
+	u := &WebTransportUpgrader{
 		UpgradeFunc: func(w http.ResponseWriter, r *http.Request) (StreamConn, error) {
 			conn := &MockStreamConn{}
 			conn.On("Context").Return(context.Background())
@@ -255,7 +255,7 @@ func TestUpgrader_Upgrade_WithoutServerContext(t *testing.T) {
 
 func TestUpgrader_Upgrade_PlainHTTPRejected(t *testing.T) {
 	s := &Server{}
-	u := &Upgrader{}
+	u := &WebTransportUpgrader{}
 
 	r, _ := http.NewRequest(http.MethodGet, "https://example.com/moq", nil)
 	r = r.WithContext(context.WithValue(context.Background(), moqServerContextKey, s))
@@ -276,7 +276,7 @@ func TestUpgrader_Upgrade_Success(t *testing.T) {
 	s := &Server{}
 	s.init()
 
-	u := &Upgrader{
+	u := &WebTransportUpgrader{
 		TrackMux: NewTrackMux(),
 		UpgradeFunc: func(w http.ResponseWriter, r *http.Request) (StreamConn, error) {
 			conn := &MockStreamConn{}
@@ -306,7 +306,7 @@ func TestUpgrader_Upgrade_Success(t *testing.T) {
 }
 
 func TestNativeQUICHandler_NoSessionHandler(t *testing.T) {
-	h := &NativeQUICHandler{}
+	h := &SessionHandleFunc{}
 	err := h.handleNativeQUIC(&MockStreamConn{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no session handler configured")
@@ -314,7 +314,7 @@ func TestNativeQUICHandler_NoSessionHandler(t *testing.T) {
 
 func TestNativeQUICHandler_WithSessionHandler(t *testing.T) {
 	called := false
-	h := &NativeQUICHandler{
+	h := &SessionHandleFunc{
 		SessionHandler: func(sess *Session) error {
 			called = true
 			return errors.New("session handler error")

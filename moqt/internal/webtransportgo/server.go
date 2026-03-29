@@ -26,18 +26,20 @@ type Server struct {
 func (s *Server) init() {
 	s.initOnce.Do(func() {
 		if s.internalServer == nil {
-			h3 := &http3.Server{}
-			if s.ConnContext != nil {
-				h3.ConnContext = func(ctx context.Context, conn *quicgo_quicgo.Conn) context.Context {
-					ctx = s.ConnContext(ctx, quicgo.WrapConnection(conn))
-					if ctx == nil {
-						panic("nil context returned by ConnContext")
-					}
-					return ctx
-				}
-			}
 			s.internalServer = &quicgo_webtransportgo.Server{
-				H3: h3,
+				H3: &http3.Server{},
+			}
+		}
+		if s.internalServer.H3 == nil {
+			s.internalServer.H3 = &http3.Server{}
+		}
+		if s.ConnContext != nil {
+			s.internalServer.H3.ConnContext = func(ctx context.Context, conn *quicgo_quicgo.Conn) context.Context {
+				ctx = s.ConnContext(ctx, quicgo.WrapConnection(conn))
+				if ctx == nil {
+					panic("nil context returned by ConnContext")
+				}
+				return ctx
 			}
 		}
 	})
