@@ -12,18 +12,19 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-func newSession(conn StreamConn, mux *TrackMux, _ func()) *Session {
+func newSession(conn StreamConn, mux *TrackMux, manager *sessionManager) *Session {
 	if mux == nil {
 		mux = DefaultMux
 	}
 
 	connCtx := conn.Context()
 	sess := &Session{
-		ctx:          connCtx,
-		conn:         conn,
-		mux:          mux,
-		trackReaders: make(map[SubscribeID]*TrackReader),
-		trackWriters: make(map[SubscribeID]*TrackWriter),
+		ctx:            connCtx,
+		conn:           conn,
+		mux:            mux,
+		trackReaders:   make(map[SubscribeID]*TrackReader),
+		trackWriters:   make(map[SubscribeID]*TrackWriter),
+		sessionManager: manager,
 	}
 
 	// Supervise session closure
@@ -74,6 +75,8 @@ type Session struct {
 
 	isTerminating atomic.Bool
 	sessErr       error
+
+	sessionManager *sessionManager
 }
 
 func (s *Session) UpdateTrackMux(mux *TrackMux) {
@@ -139,6 +142,13 @@ func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 
 	// Wait for finishing handling streams
 	s.wg.Wait()
+
+	if s.sessionManager != nil {
+		sessionManager := s.sessionManager
+		s.sessionManager = nil
+
+		sessionManager.removeSession(s)
+	}
 
 	return nil
 }

@@ -28,6 +28,9 @@ func main() {
 		return
 	}
 
+	serverDone := make(chan struct{}, 1)
+	mux := moqt.NewTrackMux()
+
 	// Print startup message directly
 	fmt.Printf("[OK] Started on %s\n", *addr)
 
@@ -42,15 +45,10 @@ func main() {
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		},
+		Handler: moqt.HandleFunc(func(sess *moqt.Session) {
+			runInteropSession(sess, mux, serverDone)
+		}),
 	}
-
-	serverDone := make(chan struct{}, 1)
-
-	nativeMux := moqt.NewTrackMux()
-	server.SessionHandler = moqt.SessionHandleFunc(func(sess *moqt.Session) error {
-		runInteropSession(sess, nativeMux, serverDone)
-		return nil
-	})
 
 	go func() {
 		<-serverDone
@@ -63,21 +61,16 @@ func main() {
 		}
 	}()
 
+	handler := &moqt.WebTransportHandler{
+		CheckOrigin: func(r *http.Request) bool { return true },
+		TrackMux:    mux,
+		Handler: moqt.HandleFunc(func(sess *moqt.Session) {
+			runInteropSession(sess, mux, serverDone)
+		}),
+	}
+
 	// Serve MOQ over WebTransport
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		upgrader := moqt.WebTransportUpgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
-			TrackMux:    moqt.NewTrackMux(),
-		}
-
-		sess, err := upgrader.Upgrade(w, r)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to upgrade to moq session: %v\n", err)
-			return
-		}
-
-		runInteropSession(sess, upgrader.TrackMux, serverDone)
-	})
+	http.Handle("/", handler)
 
 	fmt.Println("Listening...")
 	err := server.ListenAndServe()

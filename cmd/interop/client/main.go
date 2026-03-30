@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "moqt://localhost:9000", "server URL for MOQ (moqt://host:port or https://host:port)")
+	addr := flag.String("addr", "https://localhost:9000", "server URL for MOQ (https://host:port for WebTransport, moqt://host:port for native QUIC)")
 	flag.Parse()
 	client := &moqt.Client{
 		TLSConfig: &tls.Config{InsecureSkipVerify: true}, // interop uses local self-signed certs

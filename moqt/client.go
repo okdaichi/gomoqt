@@ -218,38 +218,6 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 	return sess, nil
 }
 
-func (c *Client) addSession(sess *Session) {
-	c.sessMu.Lock()
-	defer c.sessMu.Unlock()
-
-	if sess == nil {
-		return
-	}
-
-	c.activeSess[sess] = struct{}{}
-}
-
-func (c *Client) removeSession(sess *Session) {
-	c.sessMu.Lock()
-	defer c.sessMu.Unlock()
-
-	_, ok := c.activeSess[sess]
-	if !ok {
-		return
-	}
-
-	delete(c.activeSess, sess)
-	// Send completion signal if connections reach zero and server is closed
-	if len(c.activeSess) == 0 && c.shuttingDown() {
-		select {
-		case <-c.doneChan:
-			// Already closed
-		default:
-			close(c.doneChan)
-		}
-	}
-}
-
 func (c *Client) shuttingDown() bool {
 	return c.inShutdown.Load()
 }

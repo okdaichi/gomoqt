@@ -56,11 +56,7 @@ func main() {
 	// Server binds to :port (all interfaces), not hostname:port
 	clientURL := *addr
 	if !strings.Contains(clientURL, "://") {
-		if *lang == "go" {
-			clientURL = "moqt://" + clientURL
-		} else {
-			clientURL = "https://" + clientURL
-		}
+		clientURL = "https://" + clientURL
 	}
 
 	parsedAddr, err := url.Parse(clientURL)

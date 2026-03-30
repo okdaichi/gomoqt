@@ -198,10 +198,8 @@ func setupBroadcastServerWithFrameSize(b *testing.B, ctx context.Context, frameS
 
 	// Setup HTTP handler for WebTransport
 	mux := http.NewServeMux()
-	upgrader := WebTransportUpgrader{}
-	mux.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		upgrader.Upgrade(w, r)
-	})
+	upgrader := &WebTransportHandler{}
+	mux.Handle("/broadcast", upgrader)
 
 	httpServer := &http.Server{
 		Addr:      addr,

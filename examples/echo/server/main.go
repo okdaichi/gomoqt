@@ -29,85 +29,82 @@ func main() {
 	}
 
 	// Serve moq over webtransport
-	upgrader := moqt.WebTransportUpgrader{}
-	http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
-		sess, err := upgrader.Upgrade(w, r)
-		if err != nil {
-			slog.Error("failed to upgrade to WebTransport session", "error", err)
-			return
-		}
+	upgrader := &moqt.WebTransportHandler{
+		Handler: moqt.HandleFunc(func(sess *moqt.Session) {
+			mux := moqt.NewTrackMux()
 
-		mux := moqt.NewTrackMux()
-
-		anns, err := sess.AcceptAnnounce("/")
-		if err != nil {
-			slog.Error("failed to open announce stream", "error", err)
-		}
-
-		for {
-			ann, err := anns.ReceiveAnnouncement(context.Background())
+			anns, err := sess.AcceptAnnounce("/")
 			if err != nil {
-				slog.Error("failed to receive announcements", "error", err)
-				break
+				slog.Error("failed to open announce stream", "error", err)
 			}
 
-			go func(ann *moqt.Announcement) {
-				if !ann.IsActive() {
-					return
-				}
-
-				tr, err := sess.Subscribe(ann.BroadcastPath(), "index", nil)
+			for {
+				ann, err := anns.ReceiveAnnouncement(context.Background())
 				if err != nil {
-					slog.Error("failed to open track stream", "error", err)
-					return
+					slog.Error("failed to receive announcements", "error", err)
+					break
 				}
 
-				mux.Announce(ann, moqt.TrackHandlerFunc(func(tw *moqt.TrackWriter) {
-					defer tr.Close()
+				go func(ann *moqt.Announcement) {
+					if !ann.IsActive() {
+						return
+					}
 
-					for {
-						gr, err := tr.AcceptGroup(context.Background())
-						if err != nil {
-							slog.Error("failed to accept group", "error", err)
-							return
-						}
+					tr, err := sess.Subscribe(ann.BroadcastPath(), "index", nil)
+					if err != nil {
+						slog.Error("failed to open track stream", "error", err)
+						return
+					}
 
-						go func(gr *moqt.GroupReader) {
-							gw, err := tw.OpenGroup()
+					mux.Announce(ann, moqt.TrackHandlerFunc(func(tw *moqt.TrackWriter) {
+						defer tr.Close()
+
+						for {
+							gr, err := tr.AcceptGroup(context.Background())
 							if err != nil {
-								slog.Error("failed to open group", "error", err)
+								slog.Error("failed to accept group", "error", err)
 								return
 							}
-							defer gw.Close()
 
-							defer gr.CancelRead(moqt.InternalGroupErrorCode)
-							frame := moqt.NewFrame(0)
-							for {
-								err := gr.ReadFrame(frame)
+							go func(gr *moqt.GroupReader) {
+								gw, err := tw.OpenGroup()
 								if err != nil {
-									if err == io.EOF {
+									slog.Error("failed to open group", "error", err)
+									return
+								}
+								defer gw.Close()
+
+								defer gr.CancelRead(moqt.InternalGroupErrorCode)
+								frame := moqt.NewFrame(0)
+								for {
+									err := gr.ReadFrame(frame)
+									if err != nil {
+										if err == io.EOF {
+											return
+										}
+										slog.Error("failed to accept frame", "error", err)
 										return
 									}
-									slog.Error("failed to accept frame", "error", err)
-									return
+
+									err = gw.WriteFrame(frame)
+									if err != nil {
+										slog.Error("failed to write frame", "error", err)
+										return
+									}
+
+									// TODO: Release the frame after writing
+									// This is important to avoid memory leaks
 								}
+							}(gr)
 
-								err = gw.WriteFrame(frame)
-								if err != nil {
-									slog.Error("failed to write frame", "error", err)
-									return
-								}
+						}
+					}))
+				}(ann)
+			}
+		}),
+	}
 
-								// TODO: Release the frame after writing
-								// This is important to avoid memory leaks
-							}
-						}(gr)
-
-					}
-				}))
-			}(ann)
-		}
-	})
+	http.Handle("/echo", upgrader)
 
 	err := server.ListenAndServeTLS("../../cert/localhost.pem", "../../cert/localhost-key.pem")
 	if err != nil {
