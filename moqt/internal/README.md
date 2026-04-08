@@ -59,8 +59,6 @@ Main responsibilities:
 - Server/upgrader wrappers (`Server`, `Upgrader`)
 - Session/stream wrappers to `transport.StreamConn` and related stream
   interfaces
-- Optional `ConnContext` bridge in `Server` for wiring connection context from
-  HTTP/3+QUIC into higher layers
 
 ## Relationship to `moqt`
 

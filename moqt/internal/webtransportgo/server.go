@@ -12,8 +12,6 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-// var _ webtransport.Server = (*Server)(nil)
-
 // Server is a wrapper for (quic-go/webtransport-go).Server
 type Server struct {
 	internalServer *quicgo_webtransportgo.Server
