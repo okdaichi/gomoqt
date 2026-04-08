@@ -284,9 +284,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
-		var appErr *ApplicationError
-		if errors.As(err, &appErr) {
-
+		if appErr, ok := errors.AsType[*ApplicationError](err); ok {
 			return nil, &SessionError{
 				ApplicationError: appErr,
 			}
@@ -297,8 +295,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	err = message.StreamTypeAnnounce.Encode(stream)
 	if err != nil {
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
+		if strErr, ok := errors.AsType[*StreamError](err); ok {
 			strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
 			stream.CancelRead(strErrCode)
 
