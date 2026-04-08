@@ -2,11 +2,13 @@ import {
 	AnnounceInitMessage,
 	AnnouncePleaseMessage,
 	GroupMessage,
+	ProbeMessage,
 	readVarint,
 	SubscribeMessage,
 	SubscribeOkMessage,
 	writeVarint,
 } from "./internal/message/mod.ts";
+import { EOFError } from "@okdaichi/golikejs/io";
 import {
 	ReceiveStream,
 	Stream,
@@ -29,6 +31,12 @@ import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 import { Queue } from "./internal/queue.ts";
 import type { SubscribeID, TrackName } from "./alias.ts";
 
+const PROBE_STREAM_ERROR_CODE = 0x1;
+
+type ProbeStatsCapable = {
+	getStats?: () => Promise<{ estimatedSendRate: number | null }>;
+};
+
 export interface SessionInit {
 	transport: StreamConn;
 
@@ -42,7 +50,6 @@ export class Session {
 	#cancelFunc: CancelCauseFunc;
 
 	#wg: Promise<void>[] = [];
-
 	#subscribeIDCounter: number = 0;
 
 	readonly mux: TrackMux;
@@ -56,36 +63,35 @@ export class Session {
 		this.#webtransport = options.transport;
 		this.mux = options.mux ?? DefaultTrackMux;
 		const [ctx, cancel] = withCancelCause(background());
-		this.#webtransport.closed.then((info) => {
-			if (this.#ctx.err()) {
-				return;
-			}
-
-			if (info.closeCode === undefined && info.reason === undefined) {
-				// This means the establishment of the connection failed
-				cancel(new Error("webtransport: connection closed unexpectedly"));
-				return;
-			}
-
-			cancel(
-				new StreamConnError(
-					info as StreamConnErrorInfo,
-					true,
-				),
-			);
-		}).catch((info) => {
-			if (this.#ctx.err()) {
-				// Session was already closed
-				return;
-			}
-
-			// Some error occurred while establishing the connection or waiting for the connection to close
-			// The caught error here is likely not defined in general. So we wrap it in a generic Error.
-			cancel(new Error(info));
-		});
 		this.#ctx = ctx;
 		this.#cancelFunc = cancel;
 		this.ready = this.#setup();
+
+		this.#webtransport.closed
+			.then((info) => {
+				if (this.#ctx.err()) {
+					return;
+				}
+
+				if (info.closeCode === undefined && info.reason === undefined) {
+					cancel(new Error("webtransport: connection closed unexpectedly"));
+					return;
+				}
+
+				cancel(
+					new StreamConnError(
+						info as StreamConnErrorInfo,
+						true,
+					),
+				);
+			})
+			.catch((info) => {
+				if (this.#ctx.err()) {
+					return;
+				}
+
+				cancel(new Error(String(info)));
+			});
 	}
 
 	async #setup(): Promise<void> {
@@ -96,6 +102,35 @@ export class Session {
 		this.#wg.push(this.#listenUniStreams());
 
 		return;
+	}
+
+	async probe(bitrate: number): Promise<[number, undefined] | [undefined, Error]> {
+		const [stream, openErr] = await this.#webtransport.openStream();
+		if (openErr) {
+			console.error("moq: failed to open probe stream:", openErr);
+			return [undefined, openErr];
+		}
+
+		let [, err] = await writeVarint(stream.writable, BiStreamTypes.ProbeStreamType);
+		if (err) {
+			console.error("moq: failed to open probe stream:", err);
+			return [undefined, err];
+		}
+
+		err = await new ProbeMessage({ bitrate }).encode(stream.writable);
+		if (err) {
+			console.error("moq: failed to send PROBE message:", err);
+			return [undefined, err];
+		}
+
+		const rsp = new ProbeMessage({});
+		err = await rsp.decode(stream.readable);
+		if (err) {
+			console.error("moq: failed to receive PROBE response:", err);
+			return [undefined, err];
+		}
+
+		return [rsp.bitrate, undefined];
 	}
 
 	async acceptAnnounce(
@@ -275,6 +310,44 @@ export class Session {
 		await this.mux.serveAnnouncement(aw, aw.prefix);
 	}
 
+	async #handleProbeStream(stream: Stream): Promise<void> {
+		const quic = this.#webtransport as unknown as ProbeStatsCapable;
+		if (!quic.getStats) {
+			await stream.readable.cancel(PROBE_STREAM_ERROR_CODE).catch(() => {});
+			await stream.writable.cancel(PROBE_STREAM_ERROR_CODE).catch(() => {});
+			return;
+		}
+
+		try {
+			for (;;) {
+				const req = new ProbeMessage({});
+				const err = await req.decode(stream.readable);
+				if (err) {
+					if (err instanceof EOFError) {
+						return;
+					}
+					throw err;
+				}
+
+				const stats = await quic.getStats();
+				const bitrate = stats.estimatedSendRate;
+				if (bitrate == null) {
+					continue;
+				}
+
+				const rsp = new ProbeMessage({ bitrate });
+				const encErr = await rsp.encode(stream.writable);
+				if (encErr) {
+					throw encErr;
+				}
+			}
+		} catch (err) {
+			console.warn(`moq: probe stream error: ${err}`);
+			await stream.readable.cancel(PROBE_STREAM_ERROR_CODE).catch(() => {});
+			await stream.writable.cancel(PROBE_STREAM_ERROR_CODE).catch(() => {});
+		}
+	}
+
 	async #listenBiStreams(): Promise<void> {
 		const pendingHandles: Promise<void>[] = [];
 		try {
@@ -305,6 +378,9 @@ export class Session {
 						break;
 					case BiStreamTypes.AnnounceStreamType:
 						pendingHandles.push(this.#handleAnnounceStream(stream));
+						break;
+					case BiStreamTypes.ProbeStreamType:
+						pendingHandles.push(this.#handleProbeStream(stream));
 						break;
 					default:
 						console.warn(`Unknown bidirectional stream type: ${num}`);

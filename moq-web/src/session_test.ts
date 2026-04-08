@@ -5,6 +5,7 @@ import {
 	AnnounceInitMessage,
 	AnnouncePleaseMessage,
 	GroupMessage,
+	ProbeMessage,
 	SubscribeMessage,
 	SubscribeOkMessage,
 	writeVarint,
@@ -48,19 +49,27 @@ interface MockWebTransportSessionInit {
 	acceptUniStreamData?: Array<{ type: number; data: Uint8Array }>;
 	closedPromise?: Promise<WebTransportCloseInfo>;
 	protocol?: string;
+	stats?: { estimatedSendRate: number | null };
 }
+
+type WebTransportProbeStats = {
+	estimatedSendRate: number | null;
+};
 
 class MockWebTransportSession implements StreamConn {
 	#openStreamResponses: Uint8Array[];
 	#openStreamIndex = 0;
+	#openStreamWrittenData: Uint8Array[][] = [];
 	#acceptStreamData: Array<{ type: number; data: Uint8Array }>;
 	#acceptStreamIndex = 0;
+	#acceptStreamWrittenData: Uint8Array[][] = [];
 	#acceptUniStreamData: Array<{ type: number; data: Uint8Array }>;
 	#acceptUniStreamIndex = 0;
 	#closed = false;
 	#closedPromise: Promise<WebTransportCloseInfo>;
 	#closedResolve?: (info: WebTransportCloseInfo) => void;
 	#waitingAcceptResolvers: Array<() => void> = [];
+	#stats: WebTransportProbeStats = { estimatedSendRate: null };
 
 	ready: Promise<void> = Promise.resolve();
 	readonly protocol: string;
@@ -70,6 +79,15 @@ class MockWebTransportSession implements StreamConn {
 		this.#acceptStreamData = options.acceptStreamData ?? [];
 		this.#acceptUniStreamData = options.acceptUniStreamData ?? [];
 		this.protocol = options.protocol ?? "";
+		this.#stats = options.stats ?? { estimatedSendRate: null };
+		if (options.stats !== undefined) {
+			Object.defineProperty(this, "getStats", {
+				value: async () => this.#stats,
+				configurable: true,
+				enumerable: false,
+				writable: false,
+			});
+		}
 
 		if (options.closedPromise) {
 			this.#closedPromise = options.closedPromise;
@@ -92,6 +110,7 @@ class MockWebTransportSession implements StreamConn {
 		// Create inline mock stream
 		const writtenData: Uint8Array[] = [];
 		let readOffset = 0;
+		this.#openStreamWrittenData.push(writtenData);
 		const writable = {
 			write: spy(async (p: Uint8Array) => {
 				writtenData.push(new Uint8Array(p));
@@ -149,6 +168,7 @@ class MockWebTransportSession implements StreamConn {
 
 		const writtenData: Uint8Array[] = [];
 		let readOffset = 0;
+		this.#acceptStreamWrittenData.push(writtenData);
 		const writable = {
 			write: spy(async (p: Uint8Array) => {
 				writtenData.push(new Uint8Array(p));
@@ -220,6 +240,15 @@ class MockWebTransportSession implements StreamConn {
 	get closed(): Promise<WebTransportCloseInfo> {
 		return this.#closedPromise;
 	}
+
+	get openStreamWrittenData(): Uint8Array[][] {
+		return this.#openStreamWrittenData;
+	}
+
+	get acceptStreamWrittenData(): Uint8Array[][] {
+		return this.#acceptStreamWrittenData;
+	}
+
 }
 
 Deno.test({
@@ -364,6 +393,64 @@ Deno.test({
 
 				await new Promise((resolve) => setTimeout(resolve, 10));
 				assertEquals(served, true);
+				await session.close();
+			},
+		);
+
+		await t.step(
+			"listening for probe stream responds with current stats",
+			async () => {
+				const req = new ProbeMessage({ bitrate: 1234 });
+				const expected = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, BiStreamTypes.ProbeStreamType);
+					return await req.encode(w);
+				});
+
+				const mock = new MockWebTransportSession({
+					acceptStreamData: [{ type: BiStreamTypes.ProbeStreamType, data: expected }],
+					stats: { estimatedSendRate: 4321 },
+				});
+
+				const session = new Session({ transport: mock });
+				await session.ready;
+
+				await new Promise((resolve) => setTimeout(resolve, 10));
+
+				const written = mock.acceptStreamWrittenData[0] ?? [];
+				const rsp = new ProbeMessage({ bitrate: 4321 });
+				const expectedResponse = await encodeMessageToUint8Array(async (w) => rsp.encode(w));
+				const actualResponse = new Uint8Array(written.flatMap((chunk) => Array.from(chunk)));
+				assertEquals(actualResponse, expectedResponse);
+
+				await session.close();
+			},
+		);
+
+		await t.step(
+			"probe sends request and returns response bitrate",
+			async () => {
+				const rsp = new ProbeMessage({ bitrate: 4321 });
+				const rspBytes = await encodeMessageToUint8Array(async (w) => rsp.encode(w));
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [rspBytes],
+				});
+
+				const session = new Session({ transport: mock });
+				await session.ready;
+
+				const [got, err] = await session.probe(1234);
+				assertEquals(err, undefined);
+				assertEquals(got, 4321);
+
+				const written = mock.openStreamWrittenData[0] ?? [];
+				const actualRequest = new Uint8Array(written.flatMap((chunk) => Array.from(chunk)));
+				const expectedRequest = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, BiStreamTypes.ProbeStreamType);
+					return await new ProbeMessage({ bitrate: 1234 }).encode(w);
+				});
+				assertEquals(actualRequest, expectedRequest);
+
 				await session.close();
 			},
 		);
