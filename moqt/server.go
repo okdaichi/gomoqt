@@ -75,8 +75,13 @@ type Server struct {
 	// If nil, the server should use a global default mux or initialize a new one.
 	TrackMux *TrackMux
 
-	// Handler for native QUIC connections (non-WebTransport). If nil, native QUIC connections will not be handled.
+	// Handler serves accepted native QUIC sessions (i.e. connections negotiated with NextProtoMOQ).
+	// If nil, native QUIC connections are not handled.
 	Handler Handler
+
+	// FetchHandler serves incoming FETCH requests on native QUIC sessions.
+	// If nil, FETCH requests are rejected with an internal stream error.
+	FetchHandler FetchHandler
 
 	/*
 	 * Logger
@@ -220,6 +225,9 @@ type WebTransportHandler struct {
 	// Handler handles the accepted WebTransport session after successful handshake.
 	Handler Handler
 
+	// FetchHandler handles incoming fetch requests on WebTransport sessions. Optional; when nil, fetch requests are not handled.
+	FetchHandler FetchHandler
+
 	// UpgradeFunc performs a custom upgrade from HTTP request to QUIC StreamConn.
 	// If nil, the default WebTransport upgrader is used.
 	UpgradeFunc func(w http.ResponseWriter, r *http.Request) (WebTransportSession, error)
@@ -257,7 +265,7 @@ func (u *WebTransportHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 	manager := r.Context().Value(serverContextKey).(*sessionManager)
 
-	sess := newSession(conn, u.TrackMux, manager)
+	sess := newSession(conn, u.TrackMux, manager, u.FetchHandler)
 
 	u.Handler.ServeMOQ(sess)
 }
@@ -282,7 +290,7 @@ func (f HandleFunc) ServeMOQ(sess *Session) {
 
 func (s *Server) handleNativeQUIC(conn StreamConn) error {
 	if s.Handler != nil {
-		s.Handler.ServeMOQ(newSession(conn, s.TrackMux, nil))
+		s.Handler.ServeMOQ(newSession(conn, s.TrackMux, s.sessionManager, s.FetchHandler))
 	}
 	return fmt.Errorf("no native QUIC handler configured")
 }

@@ -24,14 +24,10 @@ type DialWebTransportFunc func(ctx context.Context, addr string, header http.Hea
 // Sessions are tracked and managed automatically. When the client shuts down,
 // all active sessions are terminated gracefully.
 type Dialer struct {
-	/*
-	 * TLS configuration
-	 */
+	// TLS configuration for both WebTransport and QUIC connections.
 	TLSConfig *tls.Config
 
-	/*
-	 * QUIC configuration
-	 */
+	// QUIC configuration for raw QUIC connections.
 	QUICConfig *quic.Config
 
 	/*
@@ -39,15 +35,17 @@ type Dialer struct {
 	 */
 	Config *Config
 
-	/*
-	 * Dial QUIC function
-	 */
+	// DialQUICFunc performs the QUIC handshake and establishes a connection.
+	// If nil, the default QUIC dialer is used.
 	DialQUICFunc DialQUICFunc
 
-	/*
-	 * Dial WebTransport function
-	 */
+	// DialWebTransportFunc performs the WebTransport handshake and establishes a connection.
+	// If nil, the default dialer is used.
 	DialWebTransportFunc DialWebTransportFunc
+
+	// FetchHandler handles incoming fetch requests on WebTransport sessions.
+	// Optional; when nil, fetch requests on WebTransport sessions are not handled.
+	FetchHandler FetchHandler
 
 	/*
 	 * Logger
@@ -123,7 +121,7 @@ func (c *Dialer) DialWebTransport(ctx context.Context, host, path string, mux *T
 	)
 	connLogger.Info("connection established")
 
-	return newSession(conn, mux, nil), nil
+	return newSession(conn, mux, nil, c.FetchHandler), nil
 }
 
 // TODO: Expose this method if QUIC is supported
@@ -156,5 +154,5 @@ func (c *Dialer) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 		return nil, err
 	}
 
-	return newSession(conn, mux, nil), nil
+	return newSession(conn, mux, nil, c.FetchHandler), nil
 }

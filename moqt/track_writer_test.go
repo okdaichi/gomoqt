@@ -36,7 +36,7 @@ func TestNewTrackWriter(t *testing.T) {
 	sender := newTrackWriter("/broadcastpath", "trackname", substr, openUniStreamFunc, onCloseTrack)
 
 	require.NotNil(t, sender, "newTrackWriter should not return nil")
-	assert.NotNil(t, sender.activeGroups, "activeGroups should be initialized")
+	assert.NotNil(t, sender.groupManager, "groupManager should be initialized")
 	assert.NotNil(t, sender.openUniStreamFunc, "openUniStreamFunc should be set")
 	assert.NotNil(t, sender.receiveSubscribeStream, "subscribeStream should be set")
 	assert.NotNil(t, sender.onCloseTrackFunc, "onCloseTrack should be set")
@@ -236,11 +236,8 @@ func TestTrackWriter_Close(t *testing.T) {
 		onCloseTrackCalled = true
 	})
 
-	// Verify that activeGroups is initialized
-	sender.groupMapMu.Lock()
-	isInitialized := sender.activeGroups != nil
-	sender.groupMapMu.Unlock()
-	assert.True(t, isInitialized, "activeGroups should be initialized")
+	// Verify that groupManager is initialized
+	assert.NotNil(t, sender.groupManager, "groupManager should be initialized")
 
 	// Close the sender (without opening any groups to avoid deadlock)
 	err := sender.Close()
@@ -249,11 +246,8 @@ func TestTrackWriter_Close(t *testing.T) {
 	// Verify that onCloseTrack was called
 	assert.True(t, onCloseTrackCalled, "onCloseTrack should be called")
 
-	// Verify that activeGroups is nil
-	sender.groupMapMu.Lock()
-	activeGroupsIsNil := sender.activeGroups == nil
-	sender.groupMapMu.Unlock()
-	assert.True(t, activeGroupsIsNil, "activeGroups should be nil after Close()")
+	// Verify that groupManager is cleared after Close()
+	assert.Nil(t, sender.groupManager, "groupManager should be nil after Close()")
 }
 
 func TestTrackWriter_OpenAfterClose(t *testing.T) {
@@ -367,10 +361,8 @@ func TestTrackWriter_OpenWhileClose(t *testing.T) {
 	// Wait for open goroutine to finish
 	wg.Wait()
 
-	// Ensure no panic and activeGroups is nil
-	sender.groupMapMu.Lock()
-	defer sender.groupMapMu.Unlock()
-	assert.True(t, sender.activeGroups == nil)
+	// Ensure no panic and groupManager is nil
+	assert.Nil(t, sender.groupManager)
 }
 
 func TestTrackWriter_Context(t *testing.T) {
@@ -446,12 +438,12 @@ func TestTrackWriter_RemoveGroup(t *testing.T) {
 
 	// Add a group
 	group := &GroupWriter{}
-	sender.activeGroups[group] = struct{}{}
-	assert.Contains(t, sender.activeGroups, group)
+	sender.groupManager.addGroup(group)
+	assert.Equal(t, 1, sender.groupManager.countGroups())
 
 	// Remove the group
-	sender.removeGroup(group)
-	assert.NotContains(t, sender.activeGroups, group)
+	sender.groupManager.removeGroup(group)
+	assert.Equal(t, 0, sender.groupManager.countGroups())
 }
 
 func TestTrackWriter_OpenGroup_AutoIncrement(t *testing.T) {

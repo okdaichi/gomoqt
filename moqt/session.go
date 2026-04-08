@@ -14,7 +14,7 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-func newSession(conn StreamConn, mux *TrackMux, manager *sessionManager) *Session {
+func newSession(conn StreamConn, mux *TrackMux, manager *sessionManager, fetchHandler FetchHandler) *Session {
 	if mux == nil {
 		mux = DefaultMux
 	}
@@ -24,6 +24,7 @@ func newSession(conn StreamConn, mux *TrackMux, manager *sessionManager) *Sessio
 		ctx:            connCtx,
 		conn:           conn,
 		mux:            mux,
+		fetchHandler:   fetchHandler,
 		trackReaders:   make(map[SubscribeID]*TrackReader),
 		trackWriters:   make(map[SubscribeID]*TrackWriter),
 		sessionManager: manager,
@@ -53,7 +54,7 @@ type Session struct {
 
 	transport string // "quic" or "webtransport"
 
-	mux *TrackMux // TODO
+	mux *TrackMux
 
 	subscribeIDCounter atomic.Uint64
 
@@ -62,6 +63,8 @@ type Session struct {
 
 	trackWriters         map[SubscribeID]*TrackWriter
 	trackWriterMapLocker sync.RWMutex
+
+	fetchHandler FetchHandler
 
 	isTerminating atomic.Bool
 	sessErr       error
@@ -244,8 +247,7 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 	err = subok.Decode(stream)
 	if err != nil {
 		cleanup()
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
+		if strErr, ok := errors.AsType[*StreamError](err); ok {
 			strErrCode := StreamErrorCode(strErr.ErrorCode)
 			stream.CancelWrite(strErrCode)
 
@@ -481,6 +483,31 @@ func (sess *Session) processBiStream(stream Stream) {
 
 		// Ensure the track writer is closed when done
 		w.Close()
+	case message.StreamTypeFetch:
+		defer stream.Close()
+		var fm message.FetchMessage
+		err := fm.Decode(stream)
+		if err != nil {
+			cancelStreamWithError(stream, StreamErrorCode(InternalFetchErrorCode))
+			return
+		}
+
+		handler := sess.fetchHandler
+		if handler == nil {
+			cancelStreamWithError(stream, StreamErrorCode(InternalFetchErrorCode))
+			return
+		}
+
+		req := &FetchRequest{
+			BroadcastPath: BroadcastPath(fm.BroadcastPath),
+			TrackName:     TrackName(fm.TrackName),
+			Priority:      TrackPriority(fm.Priority),
+			GroupSequence: GroupSequence(fm.GroupSequence),
+		}
+
+		w := newGroupWriter(stream, req.GroupSequence, nil)
+
+		handler.ServeFetch(w, req)
 	case message.StreamTypeProbe:
 		defer stream.Close()
 		if err := sess.handleProbeStream(stream); err != nil {

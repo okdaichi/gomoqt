@@ -140,6 +140,38 @@ func (err SubscribeError) SubscribeErrorCode() SubscribeErrorCode {
 	return SubscribeErrorCode(err.ErrorCode)
 }
 
+type FetchErrorCode uint32
+
+const (
+	InternalFetchErrorCode FetchErrorCode = 0x00
+	TimeoutFetchErrorCode  FetchErrorCode = 0x01
+)
+
+func FetchErrorText(code FetchErrorCode) string {
+	switch code {
+	case InternalFetchErrorCode:
+		return "moqt: internal error"
+	case TimeoutFetchErrorCode:
+		return "moqt: timeout"
+	default:
+		return ""
+	}
+}
+
+type FetchError struct{ *StreamError }
+
+func (err FetchError) Error() string {
+	text := FetchErrorText(err.FetchErrorCode())
+	if text != "" {
+		return text
+	}
+	return err.StreamError.Error()
+}
+
+func (err FetchError) FetchErrorCode() FetchErrorCode {
+	return FetchErrorCode(err.ErrorCode)
+}
+
 /*
  * Session Error
  */

@@ -79,7 +79,7 @@ func BenchmarkGroupWriter_WriteFrame(b *testing.B) {
 			// Use a discard writer to avoid memory accumulation
 			sendStream := &mockSendStream{Writer: io.Discard}
 
-			groupWriter := newGroupWriter(sendStream, GroupSequence(1), func() {})
+			groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupManager())
 
 			// Pre-create frame with data
 			frame := NewFrame(size)
@@ -171,7 +171,7 @@ func BenchmarkGroupWriter_ConcurrentWrite(b *testing.B) {
 					defer wg.Done()
 
 					sendStream := &mockSendStream{Writer: io.Discard}
-					groupWriter := newGroupWriter(sendStream, GroupSequence(1), func() {})
+					groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupManager())
 
 					frame := NewFrame(frameSize)
 					frame.Write(frameData)
@@ -264,7 +264,7 @@ func BenchmarkGroupWriter_MemoryAllocation(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		sendStream := &mockSendStream{Writer: io.Discard}
-		groupWriter := newGroupWriter(sendStream, GroupSequence(1), func() {})
+		groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupManager())
 
 		frame := NewFrame(frameSize)
 		frame.Write(frameData)

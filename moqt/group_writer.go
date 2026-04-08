@@ -7,15 +7,19 @@ import (
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 )
 
-func newGroupWriter(stream SendStream, sequence GroupSequence,
-	onClose func()) *GroupWriter {
-
-	return &GroupWriter{
-		sequence: sequence,
-		onClose:  onClose,
-		stream:   stream,
-		ctx:      context.WithValue(stream.Context(), uniStreamTypeCtxKey, message.StreamTypeGroup),
+func newGroupWriter(stream SendStream, sequence GroupSequence, groupManager *groupManager) *GroupWriter {
+	w := &GroupWriter{
+		sequence:     sequence,
+		groupManager: groupManager,
+		stream:       stream,
+		ctx:          context.WithValue(stream.Context(), uniStreamTypeCtxKey, message.StreamTypeGroup),
 	}
+
+	if w.groupManager != nil {
+		w.groupManager.addGroup(w)
+	}
+
+	return w
 }
 
 // GroupWriter writes frames for a single group.
@@ -28,7 +32,7 @@ type GroupWriter struct {
 
 	frameCount uint64 // Number of frames sent on this stream
 
-	onClose func()
+	groupManager *groupManager
 }
 
 // GroupSequence returns the group sequence identifier associated with this writer.
@@ -61,7 +65,9 @@ func (sgs *GroupWriter) SetWriteDeadline(t time.Time) error {
 func (sgs *GroupWriter) CancelWrite(code GroupErrorCode) {
 	sgs.stream.CancelWrite(StreamErrorCode(code))
 
-	sgs.onClose()
+	if sgs.groupManager != nil {
+		sgs.groupManager.removeGroup(sgs)
+	}
 }
 
 // Close closes the group stream gracefully.
@@ -71,7 +77,9 @@ func (sgs *GroupWriter) Close() error {
 		return Cause(sgs.ctx)
 	}
 
-	sgs.onClose()
+	if sgs.groupManager != nil {
+		sgs.groupManager.removeGroup(sgs)
+	}
 
 	return nil
 }

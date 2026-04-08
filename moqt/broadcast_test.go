@@ -76,7 +76,7 @@ func TestBroadcastRemoveClosesActiveTracks(t *testing.T) {
 
 	tw := &TrackWriter{
 		TrackName:    "video",
-		activeGroups: make(map[*GroupWriter]struct{}),
+		groupManager: newGroupManager(),
 		onCloseTrackFunc: func() {
 			close(closed)
 		},
@@ -118,7 +118,7 @@ func TestBroadcastRegisterReplacementClosesPreviousActiveTracks(t *testing.T) {
 
 	oldTrackWriter := &TrackWriter{
 		TrackName:    "video",
-		activeGroups: make(map[*GroupWriter]struct{}),
+		groupManager: newGroupManager(),
 		onCloseTrackFunc: func() {
 			close(closed)
 		},
