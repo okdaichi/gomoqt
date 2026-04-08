@@ -1114,6 +1114,7 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("StreamID").Return(StreamID(2))
 	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Close").Return(nil).Maybe()
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 
@@ -1198,6 +1199,7 @@ func TestSession_ProcessBiStream_InvalidStreamType(t *testing.T) {
 	// Create a mock stream with invalid stream type
 	mockStream := &MockQUICStream{}
 	mockStream.On("StreamID").Return(StreamID(3))
+	mockStream.On("Close").Return(nil).Maybe()
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Return()
 
@@ -1282,6 +1284,7 @@ func TestSession_ProcessBiStream_DecodeAnnounceMessageError(t *testing.T) {
 
 	mockStream := &MockQUICStream{}
 	mockStream.On("StreamID").Return(StreamID(7)).Maybe()
+	mockStream.On("Close").Return(nil).Maybe()
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 
@@ -1320,6 +1323,7 @@ func TestSession_ProcessBiStream_DecodeSubscribeMessageError(t *testing.T) {
 
 	mockStream := &MockQUICStream{}
 	mockStream.On("StreamID").Return(StreamID(9)).Maybe()
+	mockStream.On("Close").Return(nil).Maybe()
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 
