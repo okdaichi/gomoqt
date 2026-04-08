@@ -195,9 +195,9 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 		SubscribeID:          uint64(id),
 		BroadcastPath:        string(path),
 		TrackName:            string(name),
-		SubscriberPriority:   uint8(config.TrackPriority),
+		SubscriberPriority:   uint8(config.SubscriberPriority),
 		SubscriberOrdered:    ordered,
-		SubscriberMaxLatency: config.MaxLatencyMs,
+		SubscriberMaxLatency: config.MaxLatency,
 		StartGroup:           startGroup,
 		EndGroup:             endGroup,
 	}
@@ -314,8 +314,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		TrackPrefix: prefix,
 	}.Encode(stream)
 	if err != nil {
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
+		if strErr, ok := errors.AsType[*StreamError](err); ok {
 			strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
 			stream.CancelRead(strErrCode)
 
@@ -331,24 +330,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		return nil, fmt.Errorf("failed to send ANNOUNCE_PLEASE message: %w", err)
 	}
 
-	var aim message.AnnounceInitMessage
-	err = aim.Decode(stream)
-	if err != nil {
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
-			// Helpful debug logging for interop investigation: show exact stream error details
-			strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
-			stream.CancelRead(strErrCode)
-
-			return nil, &AnnounceError{
-				StreamError: strErr,
-			}
-		}
-
-		return nil, fmt.Errorf("failed to read ANNOUNCE_INIT message: %w", err)
-	}
-
-	return newAnnouncementReader(stream, prefix, aim.Suffixes), nil
+	return newAnnouncementReader(stream, prefix, nil), nil
 }
 
 // AcceptAnnounce requests announcements from the remote peer that match the
@@ -413,9 +395,9 @@ func (sess *Session) processBiStream(stream Stream) {
 
 		// Create a receiveSubscribeStream with draft3 fields decoded from SUBSCRIBE message
 		config := &TrackConfig{
-			TrackPriority: TrackPriority(sm.SubscriberPriority),
-			Ordered:       sm.SubscriberOrdered != 0,
-			MaxLatencyMs:  sm.SubscriberMaxLatency,
+			SubscriberPriority: TrackPriority(sm.SubscriberPriority),
+			Ordered:            sm.SubscriberOrdered != 0,
+			MaxLatency:         sm.SubscriberMaxLatency,
 		}
 
 		// Decode 0-sentinel / +1-encoded fields (matching SUBSCRIBE_UPDATE logic)

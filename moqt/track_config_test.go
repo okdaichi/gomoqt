@@ -24,10 +24,10 @@ func TestTrackConfig(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			config := TrackConfig{
-				TrackPriority: tt.trackPriority,
+				SubscriberPriority: tt.trackPriority,
 			}
 
-			assert.Equal(t, tt.trackPriority, config.TrackPriority)
+			assert.Equal(t, tt.trackPriority, config.SubscriberPriority)
 		})
 	}
 }
@@ -39,19 +39,19 @@ func TestTrackConfig_String(t *testing.T) {
 	}{
 		"default values": {
 			config: TrackConfig{
-				TrackPriority: TrackPriority(0),
+				SubscriberPriority: TrackPriority(0),
 			},
 			expected: "{ track_priority: 0, ordered: false, max_latency_ms: 0, start_group: 0, end_group: 0 }",
 		},
 		"specific values": {
 			config: TrackConfig{
-				TrackPriority: TrackPriority(128),
+				SubscriberPriority: TrackPriority(128),
 			},
 			expected: "{ track_priority: 128, ordered: false, max_latency_ms: 0, start_group: 0, end_group: 0 }",
 		},
 		"high values": {
 			config: TrackConfig{
-				TrackPriority: TrackPriority(255),
+				SubscriberPriority: TrackPriority(255),
 			},
 			expected: "{ track_priority: 255, ordered: false, max_latency_ms: 0, start_group: 0, end_group: 0 }",
 		},
@@ -68,20 +68,20 @@ func TestTrackConfig_String(t *testing.T) {
 func TestTrackConfig_ZeroValue(t *testing.T) {
 	var config TrackConfig
 
-	assert.Equal(t, TrackPriority(0), config.TrackPriority)
+	assert.Equal(t, TrackPriority(0), config.SubscriberPriority)
 }
 
 func TestTrackConfig_Comparison(t *testing.T) {
 	config1 := TrackConfig{
-		TrackPriority: TrackPriority(128),
+		SubscriberPriority: TrackPriority(128),
 	}
 
 	config2 := TrackConfig{
-		TrackPriority: TrackPriority(128),
+		SubscriberPriority: TrackPriority(128),
 	}
 
 	config3 := TrackConfig{
-		TrackPriority: TrackPriority(64),
+		SubscriberPriority: TrackPriority(64),
 	}
 
 	assert.Equal(t, config1, config2)

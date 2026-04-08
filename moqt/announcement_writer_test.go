@@ -48,7 +48,6 @@ func TestAnnouncementWriter_Init(t *testing.T) {
 			setupMocks: func(mockStream *MockQUICStream) {
 				ctx := context.Background()
 				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
 			},
 		},
 		"single active announcement": {
@@ -77,7 +76,7 @@ func TestAnnouncementWriter_Init(t *testing.T) {
 			setupMocks: func(mockStream *MockQUICStream) {
 				ctx := context.Background()
 				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
+				mockStream.On("Write", mock.Anything).Return(0, nil).Times(2)
 			},
 		},
 		"inactive announcement": {
@@ -92,7 +91,6 @@ func TestAnnouncementWriter_Init(t *testing.T) {
 			setupMocks: func(mockStream *MockQUICStream) {
 				ctx := context.Background()
 				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
 			},
 		},
 		"write error": {
@@ -119,7 +117,6 @@ func TestAnnouncementWriter_Init(t *testing.T) {
 			setupMocks: func(mockStream *MockQUICStream) {
 				ctx := context.Background()
 				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
 			},
 		},
 	}
@@ -392,7 +389,6 @@ func TestAnnouncementWriter_SendAnnouncement(t *testing.T) {
 			ctx := context.Background()
 
 			mockStream.On("Context").Return(ctx)
-			mockStream.On("Write", mock.Anything).Return(0, nil).Once() // init()
 			if !tt.expectError {
 				mockStream.On("Write", mock.Anything).Return(0, nil).Once() // SendAnnouncement()
 			}
@@ -443,7 +439,6 @@ func TestAnnouncementWriter_SendAnnouncement_WriteError(t *testing.T) {
 			ctx := context.Background()
 
 			mockStream.On("Context").Return(ctx)
-			mockStream.On("Write", mock.Anything).Return(0, nil).Once()           // init()
 			mockStream.On("Write", mock.Anything).Return(0, tt.writeError).Once() // SendAnnouncement()
 
 			sas := newAnnouncementWriter(mockStream, "/test/")
@@ -613,7 +608,7 @@ func TestAnnouncementWriter_SendAnnouncement_MultipleAnnouncements(t *testing.T)
 	ctx := context.Background()
 
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil).Times(3)
+	mockStream.On("Write", mock.Anything).Return(0, nil).Times(2)
 
 	sas := newAnnouncementWriter(mockStream, "/test/")
 
@@ -643,7 +638,7 @@ func TestAnnouncementWriter_SendAnnouncement_ReplaceExisting(t *testing.T) {
 	ctx := context.Background()
 
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil).Times(4)
+	mockStream.On("Write", mock.Anything).Return(0, nil).Times(3)
 
 	sas := newAnnouncementWriter(mockStream, "/test/")
 
@@ -677,7 +672,7 @@ func TestAnnouncementWriter_SendAnnouncement_SameInstance(t *testing.T) {
 	ctx := context.Background()
 
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil).Times(2)
+	mockStream.On("Write", mock.Anything).Return(0, nil).Once()
 
 	sas := newAnnouncementWriter(mockStream, "/test/")
 	ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -702,7 +697,7 @@ func TestAnnouncementWriter_AnnouncementEnd_BackgroundProcessing(t *testing.T) {
 	ctx := context.Background()
 
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil).Times(3)
+	mockStream.On("Write", mock.Anything).Return(0, nil).Times(2)
 
 	sas := newAnnouncementWriter(mockStream, "/test/")
 	ann, end := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -777,10 +772,8 @@ func TestAnnouncementWriter_BoundaryValues(t *testing.T) {
 			ctx := context.Background()
 
 			mockStream.On("Context").Return(ctx)
-			if tt.expectError {
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once() // init() only
-			} else {
-				mockStream.On("Write", mock.Anything).Return(0, nil).Times(2) // init() + SendAnnouncement()
+			if !tt.expectError {
+				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
 			}
 
 			sas := newAnnouncementWriter(mockStream, tt.prefix)

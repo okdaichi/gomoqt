@@ -57,11 +57,11 @@ func newReceiveSubscribeStream(id SubscribeID, stream Stream, config *TrackConfi
 			}
 
 			rss.config = &TrackConfig{
-				TrackPriority: TrackPriority(sum.SubscriberPriority),
-				Ordered:       ordered,
-				MaxLatencyMs:  sum.SubscriberMaxLatency,
-				StartGroup:    startGroup,
-				EndGroup:      endGroup,
+				SubscriberPriority: TrackPriority(sum.SubscriberPriority),
+				Ordered:            ordered,
+				MaxLatency:         sum.SubscriberMaxLatency,
+				StartGroup:         startGroup,
+				EndGroup:           endGroup,
 			}
 
 			select {
@@ -136,9 +136,9 @@ func (rss *receiveSubscribeStream) writeInfo(info Info) error {
 		}
 
 		sum := message.SubscribeOkMessage{
-			PublisherPriority:   uint8(rss.config.TrackPriority),
+			PublisherPriority:   uint8(rss.config.SubscriberPriority),
 			PublisherOrdered:    ordered,
-			PublisherMaxLatency: rss.config.MaxLatencyMs,
+			PublisherMaxLatency: rss.config.MaxLatency,
 			StartGroup:          startGroup,
 			EndGroup:            endGroup,
 		}

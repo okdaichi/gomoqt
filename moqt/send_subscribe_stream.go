@@ -74,9 +74,9 @@ func (sss *sendSubscribeStream) updateSubscribe(newConfig *TrackConfig) error {
 	}
 
 	sum := message.SubscribeUpdateMessage{
-		SubscriberPriority:   uint8(newConfig.TrackPriority),
+		SubscriberPriority:   uint8(newConfig.SubscriberPriority),
 		SubscriberOrdered:    ordered,
-		SubscriberMaxLatency: newConfig.MaxLatencyMs,
+		SubscriberMaxLatency: newConfig.MaxLatency,
 		StartGroup:           startGroup,
 		EndGroup:             endGroup,
 	}

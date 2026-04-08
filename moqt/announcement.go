@@ -60,6 +60,8 @@ type Announcement struct {
 
 	active atomic.Bool
 	once   sync.Once
+
+	hops int
 }
 
 // String returns a string representation of the announcement for debugging.
@@ -85,6 +87,11 @@ func (a *Announcement) String() string {
 // safe to copy.
 func (a *Announcement) BroadcastPath() BroadcastPath {
 	return a.path
+}
+
+// Hops returns the number of hops the announcement has taken, which is incremented by each broker it passes through. For local announcements, Hops returns 0.
+func (a *Announcement) Hops() int {
+	return a.hops
 }
 
 // Done returns a channel that is closed once when the announcement ends.

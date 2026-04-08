@@ -14,7 +14,7 @@ import (
 func TestNewSendSubscribeStream(t *testing.T) {
 	id := SubscribeID(123)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		SubscriberPriority: TrackPriority(1),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: (&bytes.Buffer{}).Read, // Empty buffer returns EOF immediately
@@ -69,7 +69,7 @@ func TestSendSubscribeStream_ReadInfo(t *testing.T) {
 func TestSendSubscribeStream_TrackConfig(t *testing.T) {
 	id := SubscribeID(789)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(5),
+		SubscriberPriority: TrackPriority(5),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
@@ -82,13 +82,13 @@ func TestSendSubscribeStream_TrackConfig(t *testing.T) {
 
 	returnedConfig := sss.TrackConfig()
 	assert.Equal(t, config, returnedConfig, "TrackConfig() should return the original config")
-	assert.Equal(t, config.TrackPriority, returnedConfig.TrackPriority, "TrackPriority should match")
+	assert.Equal(t, config.SubscriberPriority, returnedConfig.SubscriberPriority, "TrackPriority should match")
 }
 
 func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 	id := SubscribeID(101)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		SubscriberPriority: TrackPriority(1),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
@@ -102,7 +102,7 @@ func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 
 	// Test valid update
 	newConfig := &TrackConfig{
-		TrackPriority: TrackPriority(2),
+		SubscriberPriority: TrackPriority(2),
 	}
 
 	err := sss.updateSubscribe(newConfig)
@@ -110,7 +110,7 @@ func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 
 	// Verify config was updated
 	updatedConfig := sss.TrackConfig()
-	assert.Equal(t, newConfig.TrackPriority, updatedConfig.TrackPriority, "TrackPriority should be updated")
+	assert.Equal(t, newConfig.SubscriberPriority, updatedConfig.SubscriberPriority, "TrackPriority should be updated")
 
 	mockStream.AssertExpectations(t)
 }
@@ -118,7 +118,7 @@ func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 func TestSendSubscribeStream_UpdateSubscribe_InvalidRange(t *testing.T) {
 	id := SubscribeID(102)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		SubscriberPriority: TrackPriority(1),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
@@ -247,7 +247,7 @@ func TestSendSubscribeStream_CloseWithError_NilError(t *testing.T) {
 func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 	id := SubscribeID(106)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		SubscriberPriority: TrackPriority(1),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
@@ -264,7 +264,7 @@ func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		newConfig := &TrackConfig{
-			TrackPriority: TrackPriority(2),
+			SubscriberPriority: TrackPriority(2),
 		}
 		err := sss.updateSubscribe(newConfig)
 		if err != nil {
@@ -273,7 +273,7 @@ func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 	})
 	wg.Go(func() {
 		newConfig := &TrackConfig{
-			TrackPriority: TrackPriority(3),
+			SubscriberPriority: TrackPriority(3),
 		}
 		err := sss.updateSubscribe(newConfig)
 		if err != nil {
@@ -288,7 +288,7 @@ func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 	// The final config should be one of the two updates
 	finalConfig := sss.TrackConfig()
 	assert.Contains(t, []TrackPriority{TrackPriority(2), TrackPriority(3)},
-		finalConfig.TrackPriority, "Final config should be from one of the updates")
+		finalConfig.SubscriberPriority, "Final config should be from one of the updates")
 }
 
 func TestSendSubscribeStream_ContextCancellation(t *testing.T) {
@@ -320,7 +320,7 @@ func TestSendSubscribeStream_ContextCancellation(t *testing.T) {
 func TestSendSubscribeStream_UpdateSubscribeWriteError(t *testing.T) {
 	id := SubscribeID(108)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		SubscriberPriority: TrackPriority(1),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
@@ -343,7 +343,7 @@ func TestSendSubscribeStream_UpdateSubscribeWriteError(t *testing.T) {
 	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	newConfig := &TrackConfig{
-		TrackPriority: TrackPriority(2),
+		SubscriberPriority: TrackPriority(2),
 	}
 
 	err := sss.updateSubscribe(newConfig)
@@ -381,7 +381,7 @@ func TestSendSubscribeStream_UpdateSubscribeClosedStream(t *testing.T) {
 
 	// Try to update after closing
 	newConfig := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		SubscriberPriority: TrackPriority(1),
 	}
 
 	err = sss.updateSubscribe(newConfig)
@@ -468,10 +468,10 @@ func TestSendSubscribeStream_UpdateSubscribeValidRangeTransitions(t *testing.T) 
 	}{
 		"update priority": {
 			initialConfig: &TrackConfig{
-				TrackPriority: TrackPriority(1),
+				SubscriberPriority: TrackPriority(1),
 			},
 			newConfig: &TrackConfig{
-				TrackPriority: TrackPriority(2),
+				SubscriberPriority: TrackPriority(2),
 			},
 			expectError: false,
 			description: "should allow updating priority",

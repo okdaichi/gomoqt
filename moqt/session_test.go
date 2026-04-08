@@ -184,7 +184,7 @@ func TestSession_Subscribe(t *testing.T) {
 			path: BroadcastPath("/test/track"),
 			name: TrackName("video"),
 			config: &TrackConfig{
-				TrackPriority: TrackPriority(1),
+				SubscriberPriority: TrackPriority(1),
 			},
 			wantError: false,
 		},
@@ -264,7 +264,7 @@ func TestSession_Subscribe_OpenError(t *testing.T) {
 	session := newSession(conn, nil, nil)
 
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		SubscriberPriority: TrackPriority(1),
 	}
 
 	subscriber, err := session.Subscribe(BroadcastPath("/test"), TrackName("video"), config)
@@ -296,7 +296,7 @@ func TestSession_Subscribe_OpenStreamApplicationError(t *testing.T) {
 
 	session := newSession(conn, nil, nil)
 
-	config := &TrackConfig{TrackPriority: 1}
+	config := &TrackConfig{SubscriberPriority: 1}
 
 	reader, err := session.Subscribe("/test", "video", config)
 
@@ -332,7 +332,7 @@ func TestSession_Subscribe_EncodeStreamTypeError(t *testing.T) {
 
 	session := newSession(conn, nil, nil)
 
-	config := &TrackConfig{TrackPriority: 1}
+	config := &TrackConfig{SubscriberPriority: 1}
 
 	reader, err := session.Subscribe("/test", "video", config)
 
@@ -369,7 +369,7 @@ func TestSession_Subscribe_EncodeStreamTypeStreamError(t *testing.T) {
 
 	session := newSession(conn, nil, nil)
 
-	config := &TrackConfig{TrackPriority: 1}
+	config := &TrackConfig{SubscriberPriority: 1}
 
 	reader, err := session.Subscribe("/test", "video", config)
 
@@ -459,7 +459,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageStreamError(t *testing.T) {
 
 	session := newSession(conn, nil, nil)
 
-	config := &TrackConfig{TrackPriority: 1}
+	config := &TrackConfig{SubscriberPriority: 1}
 
 	reader, err := session.Subscribe("/test", "video", config)
 
@@ -505,7 +505,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageRemoteStreamError(t *testing.T)
 
 	session := newSession(conn, nil, nil)
 
-	config := &TrackConfig{TrackPriority: 1}
+	config := &TrackConfig{SubscriberPriority: 1}
 
 	reader, err := session.Subscribe("/test", "video", config)
 
@@ -545,7 +545,7 @@ func TestSession_Subscribe_DecodeSubscribeOkStreamError(t *testing.T) {
 
 	session := newSession(conn, nil, nil)
 
-	config := &TrackConfig{TrackPriority: 1}
+	config := &TrackConfig{SubscriberPriority: 1}
 
 	reader, err := session.Subscribe("/test", "video", config)
 
@@ -583,7 +583,7 @@ func TestSession_Subscribe_DecodeSubscribeOkError(t *testing.T) {
 
 	session := newSession(conn, nil, nil)
 
-	config := &TrackConfig{TrackPriority: 1}
+	config := &TrackConfig{SubscriberPriority: 1}
 
 	reader, err := session.Subscribe("/test", "video", config)
 
@@ -854,23 +854,7 @@ func TestSession_AcceptAnnounce(t *testing.T) {
 				stream.On("StreamID").Return(StreamID(1)).Once()
 				// Mock writes for StreamType and AnnouncePlease
 				stream.On("Write", mock.AnythingOfType("[]uint8")).Return(0, nil).Times(2)
-				// Mock read for AnnounceInitMessage
-				// Create a minimal AnnounceInitMessage with empty suffixes
-				aim := message.AnnounceInitMessage{Suffixes: []string{}}
-				var buf bytes.Buffer
-				err := aim.Encode(&buf)
-				if err != nil {
-					panic(err)
-				}
-				data := buf.Bytes()
-				stream.ReadFunc = func(p []byte) (int, error) {
-					if len(data) == 0 {
-						return 0, io.EOF
-					}
-					n := copy(p, data)
-					data = data[n:]
-					return n, nil
-				}
+				stream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 			},
 			expectError: false,
 		},
@@ -1595,7 +1579,7 @@ func TestSession_Subscribe_TerminatingSession(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Try to subscribe - should fail because session is terminating
-	config := &TrackConfig{TrackPriority: 1}
+	config := &TrackConfig{SubscriberPriority: 1}
 	reader, err := session.Subscribe("/test", "video", config)
 
 	// Subscribe should fail or return nil because session is terminated
@@ -1726,8 +1710,6 @@ func TestSession_AcceptAnnounce_EncodeStreamTypeStreamError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
-	var annErr *AnnounceError
-	assert.ErrorAs(t, err, &annErr)
 
 	_ = session.CloseWithError(NoError, "")
 }
@@ -1773,8 +1755,6 @@ func TestSession_AcceptAnnounce_EncodePleaseMessageStreamError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
-	var annErr *AnnounceError
-	assert.ErrorAs(t, err, &annErr)
 
 	_ = session.CloseWithError(NoError, "")
 }
@@ -1810,10 +1790,8 @@ func TestSession_AcceptAnnounce_DecodeInitMessageStreamError(t *testing.T) {
 
 	reader, err := session.AcceptAnnounce("/test/prefix/")
 
-	assert.Error(t, err)
-	assert.Nil(t, reader)
-	var annErr *AnnounceError
-	assert.ErrorAs(t, err, &annErr)
+	assert.NoError(t, err)
+	assert.NotNil(t, reader)
 
 	_ = session.CloseWithError(NoError, "")
 }
@@ -1844,8 +1822,8 @@ func TestSession_AcceptAnnounce_DecodeInitMessageError(t *testing.T) {
 
 	reader, err := session.AcceptAnnounce("/test/prefix/")
 
-	assert.Error(t, err)
-	assert.Nil(t, reader)
+	assert.NoError(t, err)
+	assert.NotNil(t, reader)
 
 	_ = session.CloseWithError(NoError, "")
 }

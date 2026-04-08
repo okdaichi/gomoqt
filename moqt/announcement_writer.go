@@ -56,7 +56,6 @@ func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) err
 		}
 
 		actives := make(map[suffix]*activeAnnouncement)
-		suffixes := make([]string, 0, len(announcements))
 
 		for ann := range announcements {
 			if !ann.IsActive() {
@@ -68,30 +67,32 @@ func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) err
 			}
 			// Always replace with the latest active announcement for the suffix.
 			actives[sfx] = &activeAnnouncement{announcement: ann}
-			suffixes = append(suffixes, sfx)
-		}
-
-		err = message.AnnounceInitMessage{
-			Suffixes: suffixes,
-		}.Encode(aw.stream)
-		if err != nil {
-			var strErr *StreamError
-			if errors.As(err, &strErr) {
-				err = &AnnounceError{StreamError: strErr}
-			}
-			aw.mu.Lock()
-			aw.initErr = err
-			aw.mu.Unlock()
-			return
 		}
 
 		aw.mu.Lock()
 		aw.actives = actives
-		// Register end functions for each active announcement
-		for sfx, active := range actives {
-			aw.registerEndHandler(sfx, active.announcement)
-		}
 		aw.mu.Unlock()
+
+		for sfx, active := range actives {
+			err = message.AnnounceMessage{
+				AnnounceStatus:      message.ACTIVE,
+				BroadcastPathSuffix: sfx,
+				Hops:                uint64(active.announcement.Hops()),
+			}.Encode(aw.stream)
+			if err != nil {
+				if strErr, ok := errors.AsType[*StreamError](err); ok {
+					err = &AnnounceError{StreamError: strErr}
+				}
+				aw.mu.Lock()
+				aw.initErr = err
+				aw.mu.Unlock()
+				return
+			}
+
+			aw.mu.Lock()
+			aw.registerEndHandler(sfx, active.announcement)
+			aw.mu.Unlock()
+		}
 	})
 
 	aw.mu.RLock()
