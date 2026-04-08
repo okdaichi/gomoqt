@@ -7,14 +7,18 @@ import (
 	"time"
 )
 
-func newGroupReader(sequence GroupSequence, stream ReceiveStream,
-	onClose func()) *GroupReader {
-	return &GroupReader{
-		sequence: sequence,
-		stream:   stream,
-		// frame:    newFrame(0),
-		onClose: onClose,
+func newGroupReader(sequence GroupSequence, stream ReceiveStream, groupManager *groupReaderManager) *GroupReader {
+	r := &GroupReader{
+		sequence:     sequence,
+		stream:       stream,
+		groupManager: groupManager,
 	}
+
+	if groupManager != nil {
+		groupManager.addGroup(r)
+	}
+
+	return r
 }
 
 // GroupReader receives group data for a subscribed track.
@@ -25,7 +29,7 @@ type GroupReader struct {
 	stream     ReceiveStream
 	frameCount int64
 
-	onClose func()
+	groupManager *groupReaderManager
 }
 
 // GroupSequence returns the GroupSequence this reader belongs to.
@@ -64,8 +68,11 @@ func (s *GroupReader) ReadFrame(frame *Frame) error {
 
 // CancelRead cancels the group using the provided GroupErrorCode.
 func (s *GroupReader) CancelRead(code GroupErrorCode) {
-	strErrCode := StreamErrorCode(code)
-	s.stream.CancelRead(strErrCode)
+	s.stream.CancelRead(StreamErrorCode(code))
+
+	if s.groupManager != nil {
+		s.groupManager.removeGroup(s)
+	}
 }
 
 // SetReadDeadline sets the read deadline for read operations.

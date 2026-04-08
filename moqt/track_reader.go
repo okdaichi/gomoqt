@@ -6,6 +6,33 @@ import (
 	"sync"
 )
 
+type groupReaderManager struct {
+	mu           sync.Mutex
+	activeGroups map[*GroupReader]struct{}
+	closed       bool
+}
+
+func newGroupReaderManager() *groupReaderManager {
+	return &groupReaderManager{
+		activeGroups: make(map[*GroupReader]struct{}),
+	}
+}
+
+func (m *groupReaderManager) addGroup(group *GroupReader) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return
+	}
+	m.activeGroups[group] = struct{}{}
+}
+
+func (m *groupReaderManager) removeGroup(group *GroupReader) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.activeGroups, group)
+}
+
 func newTrackReader(broadcastPath BroadcastPath, trackName TrackName, subscribeStream *sendSubscribeStream, onCloseFunc func()) *TrackReader {
 	track := &TrackReader{
 		BroadcastPath:       broadcastPath,
@@ -41,7 +68,8 @@ type TrackReader struct {
 
 	dequeued map[*GroupReader]struct{}
 
-	onCloseFunc func()
+	groupManager *groupReaderManager
+	onCloseFunc  func()
 }
 
 func (r *TrackReader) SubscribeID() SubscribeID {
@@ -58,12 +86,18 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 	trackCtx := r.Context()
 
 	for {
-		group := r.dequeueGroup()
-		if group != nil {
-			r.addGroup(group)
+		r.trackMu.Lock()
+		if len(r.queueing) > 0 {
+			next := r.queueing[0]
 
+			r.queueing = r.queueing[1:]
+
+			group := newGroupReader(next.sequence, next.stream, r.groupManager)
+
+			r.trackMu.Unlock()
 			return group, nil
 		}
+		r.trackMu.Unlock()
 
 		if trackCtx.Err() != nil {
 			return nil, Cause(trackCtx)
@@ -81,25 +115,6 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 
 func (r *TrackReader) Context() context.Context {
 	return r.sendSubscribeStream.Context()
-}
-
-func (r *TrackReader) dequeueGroup() *GroupReader {
-	r.trackMu.Lock()
-	defer r.trackMu.Unlock()
-
-	if len(r.queueing) > 0 {
-		next := r.queueing[0]
-
-		r.queueing = r.queueing[1:]
-
-		var group *GroupReader
-		group = newGroupReader(next.sequence, next.stream,
-			func() { r.removeGroup(group) })
-
-		return group
-	}
-
-	return nil
 }
 
 // Close cancels queued groups, closes the queued channel, and terminates
@@ -196,16 +211,16 @@ func (r *TrackReader) enqueueGroup(sequence GroupSequence, stream ReceiveStream)
 	}
 }
 
-func (r *TrackReader) addGroup(group *GroupReader) {
-	r.trackMu.Lock()
-	defer r.trackMu.Unlock()
+// func (r *TrackReader) addGroup(group *GroupReader) {
+// 	r.trackMu.Lock()
+// 	defer r.trackMu.Unlock()
 
-	r.dequeued[group] = struct{}{}
-}
+// 	r.dequeued[group] = struct{}{}
+// }
 
-func (r *TrackReader) removeGroup(group *GroupReader) {
-	r.trackMu.Lock()
-	defer r.trackMu.Unlock()
+// func (r *TrackReader) removeGroup(group *GroupReader) {
+// 	r.trackMu.Lock()
+// 	defer r.trackMu.Unlock()
 
-	delete(r.dequeued, group)
-}
+// 	delete(r.dequeued, group)
+// }

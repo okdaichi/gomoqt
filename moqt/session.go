@@ -269,15 +269,76 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 	return trackReceiver, nil
 }
 
-// Subscribe starts a subscription for the specified broadcast path and track name within the session.
-// It returns a TrackReader that can be used to accept groups and read track data.
-// The returned TrackReader and the subscription exist for the lifetime of this session unless closed.
-
+// nextSubscribeID atomically increments and returns the next SubscribeID for new subscriptions.
 func (s *Session) nextSubscribeID() SubscribeID {
 	// Increment and return the previous value atomically
 	return SubscribeID(s.subscribeIDCounter.Add(1))
 }
 
+func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
+	if s.terminating() {
+		if s.sessErr == nil {
+			return nil, ErrClosedSession
+		}
+		return nil, s.sessErr
+	}
+
+	stream, err := s.conn.OpenStream()
+	if err != nil {
+		var appErr *ApplicationError
+		if errors.As(err, &appErr) {
+			return nil, &SessionError{
+				ApplicationError: appErr,
+			}
+		}
+		return nil, fmt.Errorf("failed to open stream for fetch: %w", err)
+	}
+
+	err = message.StreamTypeFetch.Encode(stream)
+	if err != nil {
+		var strErr *StreamError
+		if errors.As(err, &strErr) && strErr.Remote {
+			stream.CancelRead(strErr.ErrorCode)
+			return nil, &FetchError{
+				StreamError: strErr,
+			}
+		}
+		strErrCode := StreamErrorCode(InternalFetchErrorCode)
+		stream.CancelWrite(strErrCode)
+		stream.CancelRead(strErrCode)
+		return nil, fmt.Errorf("failed to encode stream type message: %w", err)
+	}
+
+	err = message.FetchMessage{
+		BroadcastPath: string(req.BroadcastPath),
+		TrackName:     string(req.TrackName),
+		Priority:      uint8(req.Priority),
+		GroupSequence: uint64(req.GroupSequence),
+	}.Encode(stream)
+	if err != nil {
+		var strErr *StreamError
+		if errors.As(err, &strErr) && strErr.Remote {
+			stream.CancelRead(strErr.ErrorCode)
+			return nil, &FetchError{
+				StreamError: strErr,
+			}
+		}
+
+		strErrCode := StreamErrorCode(InternalFetchErrorCode)
+		stream.CancelWrite(strErrCode)
+		stream.CancelRead(strErrCode)
+
+		return nil, fmt.Errorf("failed to encode FETCH message: %w", err)
+	}
+
+	group := newGroupReader(req.GroupSequence, stream, nil)
+
+	return group, nil
+}
+
+// AcceptAnnounce requests announcements from the remote peer that match the
+// specified prefix. It opens an announce stream and returns an
+// AnnouncementReader that yields Announcement objects for active tracks.
 func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) {
 	if sess.terminating() {
 		if sess.sessErr == nil {

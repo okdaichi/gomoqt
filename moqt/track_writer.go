@@ -9,6 +9,48 @@ import (
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 )
 
+type groupWriterManager struct {
+	mu           sync.Mutex
+	activeGroups map[*GroupWriter]struct{}
+
+	closed bool
+}
+
+func newGroupWriterManager() *groupWriterManager {
+	return &groupWriterManager{
+		activeGroups: make(map[*GroupWriter]struct{}),
+	}
+}
+
+func (m *groupWriterManager) addGroup(group *GroupWriter) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return
+	}
+	m.activeGroups[group] = struct{}{}
+}
+
+func (m *groupWriterManager) removeGroup(group *GroupWriter) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	delete(m.activeGroups, group)
+}
+
+func (m *groupWriterManager) countGroups() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.activeGroups)
+}
+
+func (m *groupWriterManager) close() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.closed = true
+	m.activeGroups = nil
+}
+
 func newTrackWriter(
 	broadcastPath BroadcastPath,
 	trackName TrackName,
@@ -20,7 +62,7 @@ func newTrackWriter(
 		BroadcastPath:          broadcastPath,
 		TrackName:              trackName,
 		receiveSubscribeStream: subscribeStream,
-		groupManager:           newGroupManager(),
+		groupManager:           newGroupWriterManager(),
 		openUniStreamFunc:      openUniStreamFunc,
 		onCloseTrackFunc:       onCloseTrackFunc,
 	}
@@ -35,7 +77,7 @@ type TrackWriter struct {
 	BroadcastPath BroadcastPath
 	TrackName     TrackName
 
-	groupManager *groupManager
+	groupManager *groupWriterManager
 
 	receiveSubscribeStream *receiveSubscribeStream
 

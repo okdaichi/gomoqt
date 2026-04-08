@@ -37,7 +37,7 @@ func TestNewGroupWriter(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.setupMock()
-			groupManager := newGroupManager()
+			groupManager := newGroupWriterManager()
 
 			sgs := newGroupWriter(mockStream, tt.sequence, groupManager)
 
@@ -55,7 +55,7 @@ func TestGroupWriter_GroupSequence(t *testing.T) {
 	mockStream := &MockQUICSendStream{}
 	mockStream.On("Context").Return(context.Background())
 	sequence := GroupSequence(789)
-	sgs := newGroupWriter(mockStream, sequence, newGroupManager())
+	sgs := newGroupWriter(mockStream, sequence, newGroupWriterManager())
 
 	result := sgs.GroupSequence()
 	assert.Equal(t, sequence, result)
@@ -111,7 +111,7 @@ func TestGroupWriter_WriteFrame(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.setupMock()
-			sgs := newGroupWriter(mockStream, GroupSequence(123), newGroupManager())
+			sgs := newGroupWriter(mockStream, GroupSequence(123), newGroupWriterManager())
 
 			frame := tt.setupFrame()
 			err := sgs.WriteFrame(frame)
@@ -131,7 +131,7 @@ func TestGroupWriter_SetWriteDeadline(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 	deadline := time.Now().Add(time.Minute)
 	mockStream.On("SetWriteDeadline", deadline).Return(nil)
-	sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupManager())
+	sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
 	err := sgs.SetWriteDeadline(deadline)
 	assert.NoError(t, err)
@@ -143,7 +143,7 @@ func TestGroupWriter_Close(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Close").Return(nil)
 
-	sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupManager())
+	sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
 	err := sgs.Close()
 	assert.NoError(t, err)
@@ -157,7 +157,7 @@ func TestGroupWriter_ContextCancellation(t *testing.T) {
 		mockStream.On("Context").Return(ctx)
 		mockStream.On("Write", mock.Anything).Return(4, nil)
 
-		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupManager())
+		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
 		// Cancel the context
 		cancel()
@@ -185,7 +185,7 @@ func TestGroupWriter_CloseWithStreamError(t *testing.T) {
 
 		mockStream.On("Close").Return(streamErr)
 
-		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupManager())
+		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
 		err := sgs.Close()
 		// Due to the current implementation bug, Cause(ctx) returns nil when there's no context cause
@@ -201,7 +201,7 @@ func TestGroupWriter_CloseWithStreamError(t *testing.T) {
 
 		mockStream.On("Close").Return(otherErr)
 
-		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupManager())
+		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
 		err := sgs.Close()
 		// Due to the current implementation bug, Cause(ctx) returns nil when there's no context cause
@@ -216,7 +216,7 @@ func TestGroupWriter_CloseWithStreamError(t *testing.T) {
 		mockStream.On("Context").Return(ctx)
 		mockStream.On("Close").Return(nil)
 
-		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupManager())
+		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
 		// Cancel the context first
 		cancel()
@@ -231,7 +231,7 @@ func TestGroupWriter_Context(t *testing.T) {
 	mockStream := &MockQUICSendStream{}
 	mockStream.On("Context").Return(context.Background())
 
-	sgs := newGroupWriter(mockStream, GroupSequence(123), newGroupManager())
+	sgs := newGroupWriter(mockStream, GroupSequence(123), newGroupWriterManager())
 
 	ctx := sgs.Context()
 	assert.NotNil(t, ctx)
@@ -244,7 +244,7 @@ func TestGroupWriter_CancelWrite(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("CancelWrite", StreamErrorCode(1)).Return()
 
-	groupManager := newGroupManager()
+	groupManager := newGroupWriterManager()
 	sgs := newGroupWriter(mockStream, GroupSequence(1), groupManager)
 	groupManager.addGroup(sgs)
 

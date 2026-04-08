@@ -7,7 +7,7 @@ import (
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 )
 
-func newGroupWriter(stream SendStream, sequence GroupSequence, groupManager *groupManager) *GroupWriter {
+func newGroupWriter(stream SendStream, sequence GroupSequence, groupManager *groupWriterManager) *GroupWriter {
 	w := &GroupWriter{
 		sequence:     sequence,
 		groupManager: groupManager,
@@ -32,7 +32,7 @@ type GroupWriter struct {
 
 	frameCount uint64 // Number of frames sent on this stream
 
-	groupManager *groupManager
+	groupManager *groupWriterManager
 }
 
 // GroupSequence returns the group sequence identifier associated with this writer.

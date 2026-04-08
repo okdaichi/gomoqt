@@ -40,7 +40,7 @@ func BenchmarkGroupReader_ReadFrame(b *testing.B) {
 			// Wrap the reader to implement ReceiveStream
 			recvStream := &mockReceiveStream{Reader: reader}
 
-			groupReader := newGroupReader(GroupSequence(1), recvStream, func() {})
+			groupReader := newGroupReader(GroupSequence(1), recvStream, nil)
 
 			frame := NewFrame(size)
 
@@ -55,7 +55,7 @@ func BenchmarkGroupReader_ReadFrame(b *testing.B) {
 					b.ResetTimer()
 					reader = bytes.NewReader(repeatingData)
 					recvStream = &mockReceiveStream{Reader: reader}
-					groupReader = newGroupReader(GroupSequence(1), recvStream, func() {})
+					groupReader = newGroupReader(GroupSequence(1), recvStream, nil)
 					continue
 				}
 				if err != nil {
@@ -79,7 +79,7 @@ func BenchmarkGroupWriter_WriteFrame(b *testing.B) {
 			// Use a discard writer to avoid memory accumulation
 			sendStream := &mockSendStream{Writer: io.Discard}
 
-			groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupManager())
+			groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupWriterManager())
 
 			// Pre-create frame with data
 			frame := NewFrame(size)
@@ -133,7 +133,7 @@ func BenchmarkGroupReader_ConcurrentRead(b *testing.B) {
 
 					reader := bytes.NewReader(repeatingData)
 					recvStream := &mockReceiveStream{Reader: reader}
-					groupReader := newGroupReader(GroupSequence(1), recvStream, func() {})
+					groupReader := newGroupReader(GroupSequence(1), recvStream, nil)
 					frame := NewFrame(frameSize)
 
 					for i := 0; i < b.N/conc; i++ {
@@ -171,7 +171,7 @@ func BenchmarkGroupWriter_ConcurrentWrite(b *testing.B) {
 					defer wg.Done()
 
 					sendStream := &mockSendStream{Writer: io.Discard}
-					groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupManager())
+					groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupWriterManager())
 
 					frame := NewFrame(frameSize)
 					frame.Write(frameData)
@@ -219,7 +219,7 @@ func BenchmarkFrame_EncodeDecodeCycle(b *testing.B) {
 				readFrame := NewFrame(size)
 				reader := bytes.NewReader(buf.Bytes())
 				recvStream := &mockReceiveStream{Reader: reader}
-				groupReader := newGroupReader(GroupSequence(1), recvStream, func() {})
+				groupReader := newGroupReader(GroupSequence(1), recvStream, nil)
 
 				err = groupReader.ReadFrame(readFrame)
 				if err != nil {
@@ -248,7 +248,7 @@ func BenchmarkGroupReader_MemoryAllocation(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		reader := bytes.NewReader(repeatingData)
 		recvStream := &mockReceiveStream{Reader: reader}
-		groupReader := newGroupReader(GroupSequence(1), recvStream, func() {})
+		groupReader := newGroupReader(GroupSequence(1), recvStream, nil)
 
 		frame := NewFrame(frameSize)
 		_ = groupReader.ReadFrame(frame)
@@ -264,7 +264,7 @@ func BenchmarkGroupWriter_MemoryAllocation(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		sendStream := &mockSendStream{Writer: io.Discard}
-		groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupManager())
+		groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupWriterManager())
 
 		frame := NewFrame(frameSize)
 		frame.Write(frameData)
