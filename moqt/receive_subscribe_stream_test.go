@@ -296,9 +296,9 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 
 func TestReceiveSubscribeStream_CloseWithError_MultipleClose(t *testing.T) {
 	mockStream := &MockQUICStream{}
-			mockStream.ReadFunc = func(p []byte) (int, error) {
-				return 0, io.EOF
-			}
+	mockStream.ReadFunc = func(p []byte) (int, error) {
+		return 0, io.EOF
+	}
 	mockStream.On("CancelWrite", mock.Anything).Return().Twice()
 	mockStream.On("CancelRead", mock.Anything).Return().Twice()
 
@@ -307,13 +307,13 @@ func TestReceiveSubscribeStream_CloseWithError_MultipleClose(t *testing.T) {
 	}
 	// Create stream manually
 	rss := newReceiveSubscribeStream(123, mockStream, config)
-			updatedCh := rss.Updated()
+	updatedCh := rss.Updated()
 
 	rss.closeWithError(SubscribeErrorCodeInternal)
 	rss.closeWithError(SubscribeErrorCodeInternal)
 
 	select {
-			case _, ok := <-updatedCh:
+	case _, ok := <-updatedCh:
 		assert.False(t, ok, "updated channel should be closed")
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("expected updated channel to close")

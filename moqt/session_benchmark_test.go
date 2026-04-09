@@ -345,7 +345,7 @@ func BenchmarkSession_ContextCancellation(b *testing.B) {
 		conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
 		mux := NewTrackMux()
-			session := newSession(conn, mux, nil, nil, 0)
+		session := newSession(conn, mux, nil, nil, 0)
 
 		// Cancel context
 		cancel()
