@@ -6,14 +6,15 @@ import (
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 )
 
-func newSendSubscribeStream(id SubscribeID, stream Stream, initConfig *SubscribeConfig, info PublishInfo) *sendSubscribeStream {
+func newSendSubscribeStream(id SubscribeID, stream Stream, initConfig *SubscribeConfig, info PublishInfo, dropHandler func(SubscribeDrop)) *sendSubscribeStream {
+
 	substr := &sendSubscribeStream{
 		id:            id,
 		config:        initConfig,
 		stream:        stream,
 		info:          info,
 		wroteInfoChan: make(chan struct{}, 1),
-		dropCh:        make(chan SubscribeDrop, 1),
+		dropHandler:   dropHandler,
 	}
 
 	go func() {
@@ -63,7 +64,6 @@ type sendSubscribeStream struct {
 	mu     sync.Mutex
 	dropMu sync.Mutex
 
-	dropCh      chan SubscribeDrop
 	dropHandler func(SubscribeDrop)
 	drop        SubscribeDrop
 	dropSeen    bool
@@ -143,16 +143,7 @@ func (substr *sendSubscribeStream) notifyDrop(drop SubscribeDrop) {
 	if shouldDeliver {
 		substr.dropSent = true
 	}
-	ch := substr.dropCh
 	substr.dropMu.Unlock()
-
-	if ch != nil {
-		select {
-		case ch <- drop:
-		default:
-		}
-		close(ch)
-	}
 
 	if shouldDeliver {
 		go handler(drop)
@@ -176,10 +167,6 @@ func (substr *sendSubscribeStream) setDropHandler(handler func(SubscribeDrop)) {
 
 func (substr *sendSubscribeStream) ReadInfo() PublishInfo {
 	return substr.info
-}
-
-func (substr *sendSubscribeStream) Dropped() <-chan SubscribeDrop {
-	return substr.dropCh
 }
 
 func (substr *sendSubscribeStream) close() error {

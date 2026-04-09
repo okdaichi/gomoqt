@@ -219,6 +219,7 @@ func TestSession_Subscribe(t *testing.T) {
 				EndGroup:            10,
 			}
 			var buf bytes.Buffer
+			_, _ = buf.Write([]byte{byte(message.MessageTypeSubscribeOk)})
 			err := subok.Encode(&buf)
 			assert.NoError(t, err, "failed to encode SubscribeOkMessage")
 
@@ -241,7 +242,7 @@ func TestSession_Subscribe(t *testing.T) {
 
 			session := newSession(conn, nil, nil, nil, 0)
 
-			track, err := session.Subscribe(context.Background(), tt.path, tt.name, tt.config)
+			track, err := session.Subscribe(context.Background(), NewSubscribeRequest(tt.path, tt.name, tt.config))
 
 			if tt.wantError {
 				assert.Error(t, err)
@@ -249,8 +250,10 @@ func TestSession_Subscribe(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, track)
-				assert.Equal(t, tt.path, track.BroadcastPath)
-				assert.Equal(t, tt.name, track.TrackName)
+				require.NotNil(t, track.Request)
+				assert.Equal(t, tt.path, track.Request.BroadcastPath)
+				assert.Equal(t, tt.name, track.Request.TrackName)
+				assert.Equal(t, tt.config, track.Request.Config)
 				gotConfig := track.TrackConfig()
 				assert.Equal(t, tt.config, gotConfig)
 				assert.Equal(t, tt.config.Ordered, gotConfig.Ordered)
@@ -263,6 +266,36 @@ func TestSession_Subscribe(t *testing.T) {
 			_ = session.CloseWithError(NoError, "")
 		})
 	}
+}
+
+func TestSession_Subscribe_NilRequest(t *testing.T) {
+	conn := &MockStreamConn{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+
+	session := newSession(conn, nil, nil, nil, 0)
+
+	reader, err := session.Subscribe(context.Background(), nil)
+	assert.Error(t, err)
+	assert.Nil(t, reader)
+}
+
+func TestSession_Subscribe_NilContext(t *testing.T) {
+	conn := &MockStreamConn{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+
+	session := newSession(conn, nil, nil, nil, 0)
+
+	reader, err := session.Subscribe(nil, NewSubscribeRequest("/test", "video", nil))
+	assert.Error(t, err)
+	assert.Nil(t, reader)
 }
 
 func TestSession_Subscribe_OpenError(t *testing.T) {
@@ -283,7 +316,7 @@ func TestSession_Subscribe_OpenError(t *testing.T) {
 		Priority: TrackPriority(1),
 	}
 
-	subscriber, err := session.Subscribe(context.Background(), BroadcastPath("/test"), TrackName("video"), config)
+	subscriber, err := session.Subscribe(context.Background(), NewSubscribeRequest(BroadcastPath("/test"), TrackName("video"), config))
 
 	assert.Error(t, err)
 	assert.Nil(t, subscriber)
@@ -314,7 +347,7 @@ func TestSession_Subscribe_OpenStreamApplicationError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), "/test", "video", config)
+	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -350,7 +383,7 @@ func TestSession_Subscribe_EncodeStreamTypeError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), "/test", "video", config)
+	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -387,7 +420,7 @@ func TestSession_Subscribe_EncodeStreamTypeStreamError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), "/test", "video", config)
+	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -416,6 +449,7 @@ func TestSession_Subscribe_NilConfig(t *testing.T) {
 	// Create a SubscribeOkMessage response
 	subok := message.SubscribeOkMessage{}
 	var buf bytes.Buffer
+	_, _ = buf.Write([]byte{byte(message.MessageTypeSubscribeOk)})
 	err := subok.Encode(&buf)
 	assert.NoError(t, err)
 
@@ -435,7 +469,7 @@ func TestSession_Subscribe_NilConfig(t *testing.T) {
 	session := newSession(conn, nil, nil, nil, 0)
 
 	// Pass nil config - should use default
-	reader, err := session.Subscribe(context.Background(), "/test", "video", nil)
+	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", nil))
 
 	assert.NoError(t, err)
 	assert.NotNil(t, reader)
@@ -478,7 +512,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageStreamError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), "/test", "video", config)
+	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -524,7 +558,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageRemoteStreamError(t *testing.T)
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), "/test", "video", config)
+	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -564,7 +598,7 @@ func TestSession_Subscribe_DecodeSubscribeOkStreamError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), "/test", "video", config)
+	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -602,7 +636,7 @@ func TestSession_Subscribe_DecodeSubscribeOkError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), "/test", "video", config)
+	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -1577,7 +1611,7 @@ func TestSession_ProcessUniStream_Group(t *testing.T) {
 	mockTrackStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockTrackStream.On("Write", mock.Anything).Return(0, nil).Maybe()
 
-	substr := newSendSubscribeStream(1, mockTrackStream, &SubscribeConfig{}, PublishInfo{})
+	substr := newTestSendSubscribeStream(mockTrackStream, &SubscribeConfig{})
 	trackReader := newTrackReader("/test", "video", substr, func() {})
 	session.addTrackReader(1, trackReader)
 
@@ -1796,7 +1830,7 @@ func TestSession_Subscribe_TerminatingSession(t *testing.T) {
 
 	// Try to subscribe - should fail because session is terminating
 	config := &SubscribeConfig{Priority: 1}
-	reader, err := session.Subscribe(context.Background(), "/test", "video", config)
+	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
 
 	// Subscribe should fail or return nil because session is terminated
 	if err != nil || reader == nil {

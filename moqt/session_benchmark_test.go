@@ -45,6 +45,7 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 					// Encode SUBSCRIBE_OK message
 					msg := message.SubscribeOkMessage{}
 					var buf bytes.Buffer
+					_, _ = buf.Write([]byte{byte(message.MessageTypeSubscribeOk)})
 					err := msg.Encode(&buf)
 					if err != nil {
 						return 0, err
@@ -77,7 +78,7 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 
 			for i := range b.N {
 				idx := i % size
-				_, _ = session.Subscribe(context.Background(), paths[idx], names[idx], nil)
+				_, _ = session.Subscribe(context.Background(), NewSubscribeRequest(paths[idx], names[idx], nil))
 			}
 
 			b.StopTimer()
@@ -115,6 +116,7 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 				mockBiStream.ReadFunc = func(b []byte) (int, error) {
 					msg := message.SubscribeOkMessage{}
 					var buf bytes.Buffer
+					_, _ = buf.Write([]byte{byte(message.MessageTypeSubscribeOk)})
 					err := msg.Encode(&buf)
 					if err != nil {
 						return 0, err
@@ -140,7 +142,7 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 				for pb.Next() {
 					path := BroadcastPath(fmt.Sprintf("/broadcast/%d", i))
 					name := TrackName(fmt.Sprintf("track_%d", i))
-					_, _ = session.Subscribe(context.Background(), path, name, nil)
+					_, _ = session.Subscribe(context.Background(), NewSubscribeRequest(path, name, nil))
 					i++
 				}
 			})
@@ -173,7 +175,7 @@ func BenchmarkSession_TrackReaderOperations(b *testing.B) {
 		mockSubStream.On("Context").Return(context.Background())
 		mockSubStream.On("StreamID").Return(StreamID(i))
 
-		substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{})
+		substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{}, nil)
 		trackReader := newTrackReader(
 			BroadcastPath("/test"),
 			TrackName("track"),
@@ -257,7 +259,7 @@ func BenchmarkSession_MapLookup(b *testing.B) {
 				mockSubStream.On("Context").Return(context.Background())
 				mockSubStream.On("StreamID").Return(StreamID(i))
 
-				substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{})
+				substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{}, nil)
 				trackReader := newTrackReader(
 					BroadcastPath("/test"),
 					TrackName("track"),
@@ -314,7 +316,7 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 					mockSubStream.On("Context").Return(context.Background())
 					mockSubStream.On("StreamID").Return(StreamID(j))
 
-					substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{})
+					substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{}, nil)
 					trackReader := newTrackReader(
 						BroadcastPath("/test"),
 						TrackName("track"),

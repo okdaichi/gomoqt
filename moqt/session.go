@@ -85,13 +85,6 @@ func (s *Session) terminating() bool {
 	return s.isTerminating.Load()
 }
 
-func (s *Session) timeout() time.Duration {
-	if s.subscribeTimeout != 0 {
-		return s.subscribeTimeout
-	}
-	return 5 * time.Second // TODO: Tune default timeout based on real-world usage and performance testing.
-}
-
 // Context returns the session's context which is canceled when the session
 // terminates. Use it to observe session lifecycle and cancellation.
 func (s *Session) Context() context.Context {
@@ -156,7 +149,19 @@ func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 	return nil
 }
 
-func (s *Session) Subscribe(ctx context.Context, path BroadcastPath, name TrackName, config *SubscribeConfig) (*TrackReader, error) {
+// Subscribe sends SUBSCRIBE and waits for SUBSCRIBE_OK.
+// ctx is used while opening the stream, sending SUBSCRIBE, and waiting for the response.
+func (s *Session) Subscribe(ctx context.Context, req *SubscribeRequest) (*TrackReader, error) {
+	if ctx == nil {
+		return nil, errors.New("nil context")
+	}
+
+	if req == nil {
+		return nil, errors.New("subscribe request cannot be nil")
+	}
+
+	req = req.normalized()
+
 	if s.terminating() {
 		if s.sessErr == nil {
 			return nil, ErrClosedSession
@@ -164,9 +169,9 @@ func (s *Session) Subscribe(ctx context.Context, path BroadcastPath, name TrackN
 		return nil, s.sessErr
 	}
 
-	if config == nil {
-		config = &SubscribeConfig{}
-	}
+	config := req.Config
+	path := req.BroadcastPath
+	name := req.TrackName
 
 	id := s.nextSubscribeID()
 
@@ -206,7 +211,7 @@ func (s *Session) Subscribe(ctx context.Context, path BroadcastPath, name TrackN
 
 	endGroup := groupSequenceToWire(config.EndGroup)
 
-	sm := message.SubscribeMessage{
+	err = message.SubscribeMessage{
 		SubscribeID:          uint64(id),
 		BroadcastPath:        string(path),
 		TrackName:            string(name),
@@ -215,11 +220,7 @@ func (s *Session) Subscribe(ctx context.Context, path BroadcastPath, name TrackN
 		SubscriberMaxLatency: config.MaxLatency,
 		StartGroup:           startGroup,
 		EndGroup:             endGroup,
-	}
-	err = sm.Encode(stream)
-	if err == nil {
-		// Message sent successfully
-	}
+	}.Encode(stream)
 	if err != nil {
 		if strErr, ok := errors.AsType[*StreamError](err); ok && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
@@ -233,30 +234,31 @@ func (s *Session) Subscribe(ctx context.Context, path BroadcastPath, name TrackN
 		return nil, fmt.Errorf("failed to encode SUBSCRIBE message: %w", err)
 	}
 
-	// Register TrackReader AFTER sending SUBSCRIBE but BEFORE waiting for the response.
-	// This ensures we're ready to receive data streams immediately when server approves.
-	substr := newSendSubscribeStream(id, stream, config, PublishInfo{})
+	// Create and register a TrackReader for this subscription.
+	substr := newSendSubscribeStream(id, stream, config, PublishInfo{}, req.OnDrop)
 
 	removeTrackFunc := func() {
 		s.removeTrackReader(id)
 	}
-	// Create a receive group stream queue
-	track := newTrackReader(
-		path,
-		name,
-		substr,
-		removeTrackFunc,
-	)
+	track := newTrackReaderWithRequest(req, substr, removeTrackFunc)
 	s.addTrackReader(id, track)
 
-	ctx, cancel := context.WithTimeout(ctx, s.timeout())
+	waitTimeout := req.Timeout
+	if waitTimeout == 0 {
+		waitTimeout = s.subscribeTimeout
+	}
+
+	waitCtx := ctx
+	cancel := func() {}
+	if waitTimeout > 0 {
+		waitCtx, cancel = context.WithTimeout(ctx, waitTimeout)
+	}
 	defer cancel()
 	select {
 	case <-substr.wroteInfoChan:
-	case <-ctx.Done():
-		// Timeout or cancellation occurred
+	case <-waitCtx.Done():
 		track.CloseWithError(SubscribeErrorCodeTimeout)
-		return nil, fmt.Errorf("subscription timed out: %w", ctx.Err())
+		return nil, fmt.Errorf("subscription timed out: %w", waitCtx.Err())
 	}
 
 	return track, nil
