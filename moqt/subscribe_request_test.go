@@ -8,12 +8,19 @@ import (
 )
 
 func TestNewSubscribeRequest(t *testing.T) {
-	req := NewSubscribeRequest("/path", "track", nil)
+	req, err := NewSubscribeRequest("/path", "track", nil)
+	require.NoError(t, err)
 	require.NotNil(t, req)
 	assert.Equal(t, BroadcastPath("/path"), req.BroadcastPath)
 	assert.Equal(t, TrackName("track"), req.TrackName)
 	require.NotNil(t, req.Config)
 	assert.Equal(t, TrackPriority(0), req.Config.Priority)
+}
+
+func TestNewSubscribeRequest_InvalidPath(t *testing.T) {
+	req, err := NewSubscribeRequest("invalid", "track", nil)
+	assert.Error(t, err)
+	assert.Nil(t, req)
 }
 
 func TestSubscribeRequest_Normalized_DefaultConfig(t *testing.T) {

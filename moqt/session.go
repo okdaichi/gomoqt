@@ -161,6 +161,9 @@ func (s *Session) Subscribe(ctx context.Context, req *SubscribeRequest) (*TrackR
 	}
 
 	req = req.normalized()
+	if !isValidPath(req.BroadcastPath) {
+		return nil, fmt.Errorf("invalid broadcast path: %q", req.BroadcastPath)
+	}
 
 	if s.terminating() {
 		if s.sessErr == nil {
@@ -240,7 +243,7 @@ func (s *Session) Subscribe(ctx context.Context, req *SubscribeRequest) (*TrackR
 	removeTrackFunc := func() {
 		s.removeTrackReader(id)
 	}
-	track := newTrackReaderWithRequest(req, substr, removeTrackFunc)
+	track := newTrackReader(req, substr, removeTrackFunc)
 	s.addTrackReader(id, track)
 
 	waitTimeout := req.Timeout

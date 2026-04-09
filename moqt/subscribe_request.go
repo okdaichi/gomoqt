@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -22,13 +23,17 @@ type SubscribeRequest struct {
 }
 
 // NewSubscribeRequest returns a subscribe request initialized with the given values.
-func NewSubscribeRequest(path BroadcastPath, name TrackName, config *SubscribeConfig) *SubscribeRequest {
+func NewSubscribeRequest(path BroadcastPath, name TrackName, config *SubscribeConfig) (*SubscribeRequest, error) {
+	if !isValidPath(path) {
+		return nil, fmt.Errorf("invalid broadcast path: %q", path)
+	}
+
 	req := &SubscribeRequest{
 		BroadcastPath: path,
 		TrackName:     name,
 		Config:        config,
 	}
-	return req.normalized()
+	return req.normalized(), nil
 }
 
 func (r *SubscribeRequest) normalized() *SubscribeRequest {

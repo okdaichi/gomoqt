@@ -35,30 +35,9 @@ func (m *groupReaderManager) removeGroup(group *GroupReader) {
 	delete(m.activeGroups, group)
 }
 
-func newTrackReader(broadcastPath BroadcastPath, trackName TrackName, subscribeStream *sendSubscribeStream, onCloseFunc func()) *TrackReader {
-	req := NewSubscribeRequest(
-		broadcastPath,
-		trackName,
-		subscribeStream.TrackConfig(),
-	).normalized()
-
-	return newTrackReaderWithRequest(req, subscribeStream, onCloseFunc)
-}
-
-func newTrackReaderWithRequest(request *SubscribeRequest, subscribeStream *sendSubscribeStream, onCloseFunc func()) *TrackReader {
-	req := request
-	if req == nil {
-		req = NewSubscribeRequest("", "", nil).normalized()
-	} else {
-		req = req.normalized()
-	}
-
-	if req.Config == nil {
-		req.Config = subscribeStream.TrackConfig()
-	}
-
+func newTrackReader(request *SubscribeRequest, subscribeStream *sendSubscribeStream, onCloseFunc func()) *TrackReader {
 	track := &TrackReader{
-		Request:             req,
+		Request:             request,
 		sendSubscribeStream: subscribeStream,
 		queuedCh:            make(chan struct{}, 1),
 		queueing: make([]struct {

@@ -16,6 +16,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func testSubscribeRequest(tb testing.TB, config *SubscribeConfig) *SubscribeRequest {
+	tb.Helper()
+	req, err := NewSubscribeRequest("/test", "video", config)
+	require.NoError(tb, err)
+	return req
+}
+
 func TestNewSession(t *testing.T) {
 	tests := map[string]struct {
 		mux      *TrackMux
@@ -242,7 +249,9 @@ func TestSession_Subscribe(t *testing.T) {
 
 			session := newSession(conn, nil, nil, nil, 0)
 
-			track, err := session.Subscribe(context.Background(), NewSubscribeRequest(tt.path, tt.name, tt.config))
+			req, err := NewSubscribeRequest(tt.path, tt.name, tt.config)
+			require.NoError(t, err)
+			track, err := session.Subscribe(context.Background(), req)
 
 			if tt.wantError {
 				assert.Error(t, err)
@@ -293,7 +302,23 @@ func TestSession_Subscribe_NilContext(t *testing.T) {
 
 	session := newSession(conn, nil, nil, nil, 0)
 
-	reader, err := session.Subscribe(nil, NewSubscribeRequest("/test", "video", nil))
+	reader, err := session.Subscribe(nil, testSubscribeRequest(t, nil))
+	assert.Error(t, err)
+	assert.Nil(t, reader)
+}
+
+func TestSession_Subscribe_InvalidPath(t *testing.T) {
+	conn := &MockStreamConn{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+
+	session := newSession(conn, nil, nil, nil, 0)
+
+	req := &SubscribeRequest{BroadcastPath: "invalid", TrackName: "video"}
+	reader, err := session.Subscribe(context.Background(), req)
 	assert.Error(t, err)
 	assert.Nil(t, reader)
 }
@@ -316,7 +341,7 @@ func TestSession_Subscribe_OpenError(t *testing.T) {
 		Priority: TrackPriority(1),
 	}
 
-	subscriber, err := session.Subscribe(context.Background(), NewSubscribeRequest(BroadcastPath("/test"), TrackName("video"), config))
+	subscriber, err := session.Subscribe(context.Background(), testSubscribeRequest(t, config))
 
 	assert.Error(t, err)
 	assert.Nil(t, subscriber)
@@ -347,7 +372,7 @@ func TestSession_Subscribe_OpenStreamApplicationError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
+	reader, err := session.Subscribe(context.Background(), testSubscribeRequest(t, config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -383,7 +408,7 @@ func TestSession_Subscribe_EncodeStreamTypeError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
+	reader, err := session.Subscribe(context.Background(), testSubscribeRequest(t, config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -420,7 +445,7 @@ func TestSession_Subscribe_EncodeStreamTypeStreamError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
+	reader, err := session.Subscribe(context.Background(), testSubscribeRequest(t, config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -469,7 +494,7 @@ func TestSession_Subscribe_NilConfig(t *testing.T) {
 	session := newSession(conn, nil, nil, nil, 0)
 
 	// Pass nil config - should use default
-	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", nil))
+	reader, err := session.Subscribe(context.Background(), testSubscribeRequest(t, nil))
 
 	assert.NoError(t, err)
 	assert.NotNil(t, reader)
@@ -512,7 +537,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageStreamError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
+	reader, err := session.Subscribe(context.Background(), testSubscribeRequest(t, config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -558,7 +583,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageRemoteStreamError(t *testing.T)
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
+	reader, err := session.Subscribe(context.Background(), testSubscribeRequest(t, config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -598,7 +623,7 @@ func TestSession_Subscribe_DecodeSubscribeOkStreamError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
+	reader, err := session.Subscribe(context.Background(), testSubscribeRequest(t, config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -636,7 +661,7 @@ func TestSession_Subscribe_DecodeSubscribeOkError(t *testing.T) {
 
 	config := &SubscribeConfig{Priority: 1}
 
-	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
+	reader, err := session.Subscribe(context.Background(), testSubscribeRequest(t, config))
 
 	assert.Error(t, err)
 	assert.Nil(t, reader)
@@ -1612,7 +1637,7 @@ func TestSession_ProcessUniStream_Group(t *testing.T) {
 	mockTrackStream.On("Write", mock.Anything).Return(0, nil).Maybe()
 
 	substr := newTestSendSubscribeStream(mockTrackStream, &SubscribeConfig{})
-	trackReader := newTrackReader("/test", "video", substr, func() {})
+	trackReader := newTrackReader(testSubscribeRequest(t, nil), substr, func() {})
 	session.addTrackReader(1, trackReader)
 
 	// Create a mock receive stream for GROUP
@@ -1830,7 +1855,7 @@ func TestSession_Subscribe_TerminatingSession(t *testing.T) {
 
 	// Try to subscribe - should fail because session is terminating
 	config := &SubscribeConfig{Priority: 1}
-	reader, err := session.Subscribe(context.Background(), NewSubscribeRequest("/test", "video", config))
+	reader, err := session.Subscribe(context.Background(), testSubscribeRequest(t, config))
 
 	// Subscribe should fail or return nil because session is terminated
 	if err != nil || reader == nil {
