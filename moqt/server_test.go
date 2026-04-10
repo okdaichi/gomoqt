@@ -31,7 +31,7 @@ func TestServer_Init(t *testing.T) {
 	s.init()
 
 	assert.NotNil(t, s.listeners)
-	assert.NotNil(t, s.sessionManager)
+	assert.NotNil(t, s.connManager)
 	assert.NotNil(t, s.WebTransportServer)
 }
 
@@ -48,9 +48,9 @@ func TestServer_connContext_AppliesCustomAndInjectsServer(t *testing.T) {
 	ctx := s.connContext(context.Background(), &MockStreamConn{})
 
 	assert.Equal(t, "ok", ctx.Value(customKey{}))
-	ctxServer, ok := ctx.Value(serverContextKey).(*sessionManager)
+	ctxServer, ok := ctx.Value(serverContextKey).(*connManager)
 	assert.True(t, ok)
-	assert.Equal(t, s.sessionManager, ctxServer)
+	assert.Equal(t, s.connManager, ctxServer)
 }
 
 func TestServer_connContext_PanicsOnNilCustomContext(t *testing.T) {
@@ -214,9 +214,9 @@ func TestServer_addRemoveSession_ShutdownCompletesWhenLastSessionLeaves(t *testi
 	sess := newSession(conn, nil, nil, nil)
 	t.Cleanup(func() { _ = sess.CloseWithError(NoError, "") })
 
-	s.sessionManager.addSession(sess)
-	done := s.sessionManager.Done()
-	s.sessionManager.removeSession(sess)
+	s.connManager.addConn(conn)
+	done := s.connManager.Done()
+	s.connManager.removeConn(conn)
 
 	select {
 	case <-done:

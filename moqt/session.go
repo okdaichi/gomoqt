@@ -39,15 +39,15 @@ type Session struct {
 	fetchHandler FetchHandler
 
 	isTerminating atomic.Bool
-	sessErr       error
+	// sessErr       error
 
-	sessionManager *sessionManager
+	connManager *connManager
 }
 
 func newSession(
 	conn StreamConn,
 	mux *TrackMux,
-	manager *sessionManager,
+	manager *connManager,
 	fetchHandler FetchHandler,
 ) *Session {
 	if mux == nil {
@@ -56,13 +56,13 @@ func newSession(
 
 	connCtx := conn.Context()
 	sess := &Session{
-		ctx:            connCtx,
-		conn:           conn,
-		mux:            mux,
-		fetchHandler:   fetchHandler,
-		trackReaders:   make(map[SubscribeID]*TrackReader),
-		trackWriters:   make(map[SubscribeID]*TrackWriter),
-		sessionManager: manager,
+		ctx:          connCtx,
+		conn:         conn,
+		mux:          mux,
+		fetchHandler: fetchHandler,
+		trackReaders: make(map[SubscribeID]*TrackReader),
+		trackWriters: make(map[SubscribeID]*TrackWriter),
+		connManager:  manager,
 	}
 
 	// Listen bidirectional streams
@@ -115,7 +115,7 @@ func (s *Session) RemoteAddr() net.Addr {
 // CloseWithError closes the connection with an error code and message.
 func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 	if s.terminating() {
-		return s.sessErr
+		return nil
 	}
 	s.isTerminating.Store(true)
 
@@ -125,21 +125,19 @@ func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 			reason := &SessionError{
 				ApplicationError: appErr,
 			}
-			s.sessErr = reason
 			return reason
 		}
-		s.sessErr = err
 		return fmt.Errorf("session termination failed: %w", err)
 	}
 
 	// Wait for finishing handling streams
 	s.wg.Wait()
 
-	if s.sessionManager != nil {
-		sessionManager := s.sessionManager
-		s.sessionManager = nil
+	if s.connManager != nil {
+		connManager := s.connManager
+		s.connManager = nil
 
-		sessionManager.removeSession(s)
+		connManager.removeConn(s.conn)
 	}
 
 	return nil
@@ -155,17 +153,15 @@ func (s *Session) Subscribe(ctx context.Context, req *SubscribeRequest) (*TrackR
 	if req == nil {
 		return nil, errors.New("subscribe request cannot be nil")
 	}
+
+	if s.terminating() {
+		return nil, ErrClosedSession
+	}
+
 	req = req.Clone().normalized()
 
 	if !isValidPath(req.BroadcastPath) {
 		return nil, fmt.Errorf("invalid broadcast path: %q", req.BroadcastPath)
-	}
-
-	if s.terminating() {
-		if s.sessErr == nil {
-			return nil, ErrClosedSession
-		}
-		return nil, s.sessErr
 	}
 
 	id := s.nextSubscribeID()
@@ -299,10 +295,7 @@ func (s *Session) timeout() time.Duration {
 
 func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 	if s.terminating() {
-		if s.sessErr == nil {
-			return nil, ErrClosedSession
-		}
-		return nil, s.sessErr
+		return nil, ErrClosedSession
 	}
 
 	stream, err := s.conn.OpenStream()
@@ -362,10 +355,7 @@ func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 // AnnouncementReader that yields Announcement objects for active tracks.
 func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) {
 	if sess.terminating() {
-		if sess.sessErr == nil {
-			return nil, ErrClosedSession
-		}
-		return nil, sess.sessErr
+		return nil, ErrClosedSession
 	}
 
 	stream, err := sess.conn.OpenStream()
@@ -418,10 +408,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 // bitrate reported by the response.
 func (sess *Session) Probe(bitrate uint64) (uint64, error) {
 	if sess.terminating() {
-		if sess.sessErr == nil {
-			return 0, ErrClosedSession
-		}
-		return 0, sess.sessErr
+		return 0, ErrClosedSession
 	}
 
 	stream, err := sess.conn.OpenStream()
@@ -469,15 +456,10 @@ func (sess *Session) Probe(bitrate uint64) (uint64, error) {
 	return resp.Bitrate, nil
 }
 
-// AcceptAnnounce requests announcements from the remote peer that match the
-// specified prefix. It opens an announce stream and returns an
-// AnnouncementReader that yields Announcement objects for active tracks.
-
-func (sess *Session) goAway(_ string) error {
+func goAway(conn StreamConn) {
 	// goAway is a no-op in MOQT. Graceful shutdown is handled by the
 	// underlying QUIC connection close. This method exists for API
 	// compatibility with server/client shutdown logic.
-	return nil
 }
 
 // listenBiStreams accepts bidirectional streams and handles them based on their type.
@@ -497,13 +479,12 @@ func (sess *Session) handleBiStreams() {
 }
 
 func (sess *Session) processBiStream(stream transport.Stream) {
+	defer stream.Close()
 	var streamType message.StreamType
 	err := streamType.Decode(stream)
 	if err != nil {
-		_ = sess.CloseWithError(ProtocolViolationErrorCode, err.Error())
 		return
 	}
-	defer stream.Close()
 
 	switch streamType {
 	case message.StreamTypeAnnounce:

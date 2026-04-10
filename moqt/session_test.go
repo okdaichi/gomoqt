@@ -898,30 +898,6 @@ func TestSession_WithRealMux(t *testing.T) {
 	_ = session.CloseWithError(NoError, "")
 }
 
-func TestSession_GoAway(t *testing.T) {
-	// Create a minimal session for testing
-	conn := &MockStreamConn{}
-	conn.On("Context").Return(context.Background())
-	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
-	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
-	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
-
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-
-	session := newTestSession(conn)
-
-	// Test goAway - now it calls updateSession
-	err := session.goAway("test-uri")
-	assert.NoError(t, err)
-
-	// Cleanup
-	_ = session.CloseWithError(NoError, "")
-}
-
 func TestSession_AcceptAnnounce(t *testing.T) {
 	tests := map[string]struct {
 		prefix      string
@@ -1329,6 +1305,7 @@ func TestSession_ProcessBiStream_DecodeStreamTypeError(t *testing.T) {
 
 	mockStream := &MockQUICStream{}
 	mockStream.On("StreamID").Return(transport.StreamID(5))
+	mockStream.On("Close").Return(nil).Maybe()
 	mockStream.ReadFunc = func(p []byte) (int, error) {
 		return 0, io.ErrUnexpectedEOF
 	}
@@ -1345,7 +1322,7 @@ func TestSession_ProcessBiStream_DecodeStreamTypeError(t *testing.T) {
 		t.Error("processBiStream should complete after stream type decode error")
 	}
 
-	assert.True(t, session.terminating(), "Session should be terminating after bi-stream decode error")
+	assert.False(t, session.terminating(), "Session should not terminate after bi-stream decode error")
 }
 
 func TestSession_ProcessBiStream_DecodeAnnounceMessageError(t *testing.T) {

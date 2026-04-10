@@ -20,7 +20,7 @@ func TestDialer_Dial_HTTPSRoutesToDialWebTransport(t *testing.T) {
 	called := false
 	dialer := &Dialer{
 		Config: &Config{SetupTimeout: 50 * time.Millisecond},
-		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, StreamConn, error) {
+		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
 			called = true
 			deadline, ok := ctx.Deadline()
 			require.True(t, ok)
@@ -29,7 +29,7 @@ func TestDialer_Dial_HTTPSRoutesToDialWebTransport(t *testing.T) {
 			assert.Nil(t, header)
 			assert.Nil(t, tlsConfig)
 
-			conn := &MockStreamConn{}
+			conn := &MockWebTransportSession{}
 			conn.On("Context").Return(context.Background())
 			conn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled)
 			conn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled)
@@ -98,9 +98,9 @@ func TestDialer_DialWebTransport_DefaultPath(t *testing.T) {
 	recordedTarget := ""
 	dialer := &Dialer{
 		Config: &Config{SetupTimeout: 25 * time.Millisecond},
-		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, StreamConn, error) {
+		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
 			recordedTarget = addr
-			conn := &MockStreamConn{}
+			conn := &MockWebTransportSession{}
 			conn.On("Context").Return(context.Background())
 			conn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled)
 			conn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled)
@@ -159,7 +159,7 @@ func TestDialer_DialWebTransport_CustomDialError(t *testing.T) {
 	dialErr := errors.New("dial failed")
 	dialer := &Dialer{
 		Config: &Config{SetupTimeout: 25 * time.Millisecond},
-		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, StreamConn, error) {
+		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
 			return nil, nil, dialErr
 		},
 	}

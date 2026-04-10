@@ -13,6 +13,7 @@ import (
 
 	"github.com/okdaichi/gomoqt/moqt/internal/quicgo"
 	"github.com/okdaichi/gomoqt/moqt/internal/webtransportgo"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/quic-go/quic-go"
 )
 
@@ -78,7 +79,7 @@ type Server struct {
 	listeners     map[QUICListener]struct{}
 	listenerGroup sync.WaitGroup
 
-	sessionManager *sessionManager
+	connManager *connManager
 
 	initOnce sync.Once
 
@@ -88,7 +89,7 @@ type Server struct {
 func (s *Server) init() {
 	s.initOnce.Do(func() {
 		s.listeners = make(map[QUICListener]struct{})
-		s.sessionManager = newSessionManager()
+		s.connManager = newConnManager()
 		if s.WebTransportServer == nil {
 			s.WebTransportServer = &webtransportgo.Server{}
 			return
@@ -179,7 +180,7 @@ func (s *Server) ServeQUICConn(conn StreamConn) error {
 }
 
 func (s *Server) connContext(ctx context.Context, conn StreamConn) context.Context {
-	ctx = context.WithValue(ctx, serverContextKey, s.sessionManager)
+	ctx = context.WithValue(ctx, serverContextKey, s.connManager)
 
 	if s.ConnContext != nil {
 		custom := s.ConnContext(ctx, conn)
@@ -248,7 +249,7 @@ func (u *WebTransportHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	manager := r.Context().Value(serverContextKey).(*sessionManager)
+	manager := r.Context().Value(serverContextKey).(*connManager)
 
 	sess := newSession(conn, u.TrackMux, manager, u.FetchHandler)
 
@@ -275,7 +276,7 @@ func (f HandleFunc) ServeMOQ(sess *Session) {
 
 func (s *Server) handleNativeQUIC(conn StreamConn) error {
 	if s.Handler != nil {
-		sess := newSession(conn, s.TrackMux, s.sessionManager, s.FetchHandler)
+		sess := newSession(conn, s.TrackMux, s.connManager, s.FetchHandler)
 		s.Handler.ServeMOQ(sess)
 	}
 	return fmt.Errorf("no native QUIC handler configured")
@@ -387,19 +388,19 @@ func (s *Server) Close() error {
 	}
 	s.listenerMu.Unlock()
 
-	sessionManager := s.sessionManager
-	s.sessionManager = nil
+	connectionManager := s.connManager
+	s.connManager = nil
 
 	// Terminate all active sessions
-	for sess := range sessionManager.sessions {
+	for conn := range connectionManager.connections {
 		// Close sessions concurrently; log potential errors.
-		go func(sess *Session) {
-			_ = sess.CloseWithError(NoError, SessionErrorText(NoError))
-		}(sess)
+		go func(conn StreamConn) {
+
+		}(conn)
 	}
 
 	// Wait for all sessions to close
-	<-sessionManager.Done()
+	<-connectionManager.Done()
 
 	// Close WebTransport server (guard against panics from underlying implementations)
 	if s.WebTransportServer != nil {
@@ -445,30 +446,30 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 	s.listenerMu.Unlock()
 
-	sessionManager := s.sessionManager
-	s.sessionManager = nil
+	connManager := s.connManager
+	s.connManager = nil
 
-	for sess := range sessionManager.sessions {
+	for conn := range connManager.connections {
 		// Send goaway to sessions concurrently; log potential errors.
-		go func(sess *Session) {
-			_ = sess.goAway("")
-		}(sess)
+		go func(conn StreamConn) {
+			goAway(conn)
+		}(conn)
 	}
 
 	// Wait for sessions to close or context timeout
 	select {
-	case <-sessionManager.Done():
+	case <-connManager.Done():
 		// All sessions closed gracefully
 	case <-ctx.Done():
 		// Context canceled, terminate all sessions forcefully
-		for sess := range sessionManager.sessions {
-			go func(sess *Session) {
-				_ = sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
-			}(sess)
+		for conn := range connManager.connections {
+			go func(conn StreamConn) {
+				conn.CloseWithError(transport.ConnErrorCode(GoAwayTimeoutErrorCode), SessionErrorText(GoAwayTimeoutErrorCode))
+			}(conn)
 		}
 
 		// Wait for all sessions to close
-		<-sessionManager.Done()
+		<-connManager.Done()
 	}
 
 	// Close WebTransport server (guard against panics from underlying implementations)

@@ -5,22 +5,22 @@ import (
 	"sync"
 )
 
-type sessionManager struct {
-	closed   bool
-	mu       sync.Mutex
-	sessions map[*Session]struct{}
+type connManager struct {
+	closed      bool
+	mu          sync.Mutex
+	connections map[StreamConn]struct{}
 
 	doneChan chan struct{}
 }
 
-func newSessionManager() *sessionManager {
-	return &sessionManager{
-		sessions: make(map[*Session]struct{}),
+func newConnManager() *connManager {
+	return &connManager{
+		connections: make(map[StreamConn]struct{}),
 	}
 }
 
-func (s *sessionManager) addSession(sess *Session) {
-	if sess == nil {
+func (s *connManager) addConn(conn StreamConn) {
+	if conn == nil {
 		return
 	}
 	s.mu.Lock()
@@ -28,21 +28,21 @@ func (s *sessionManager) addSession(sess *Session) {
 	if s.closed {
 		return
 	}
-	if len(s.sessions) == 0 {
+	if len(s.connections) == 0 {
 		s.doneChan = make(chan struct{})
 	}
-	s.sessions[sess] = struct{}{}
+	s.connections[conn] = struct{}{}
 }
 
-func (s *sessionManager) removeSession(sess *Session) {
+func (s *connManager) removeConn(conn StreamConn) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return
 	}
-	delete(s.sessions, sess)
+	delete(s.connections, conn)
 
-	if len(s.sessions) == 0 {
+	if len(s.connections) == 0 {
 		if s.doneChan != nil {
 			close(s.doneChan)
 			s.doneChan = nil
@@ -50,13 +50,13 @@ func (s *sessionManager) removeSession(sess *Session) {
 	}
 }
 
-func (s *sessionManager) countSessions() int {
+func (s *connManager) countSessions() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.sessions)
+	return len(s.connections)
 }
 
-func (s *sessionManager) Done() <-chan struct{} {
+func (s *connManager) Done() <-chan struct{} {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.doneChan == nil {
@@ -67,13 +67,13 @@ func (s *sessionManager) Done() <-chan struct{} {
 	return s.doneChan
 }
 
-func (s *sessionManager) Close() error {
+func (s *connManager) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil
 	}
-	if len(s.sessions) != 0 {
+	if len(s.connections) != 0 {
 		return fmt.Errorf("cannot close session manager with active sessions")
 	}
 	s.closed = true

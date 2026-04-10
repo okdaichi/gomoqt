@@ -13,10 +13,6 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-type DialQUICFunc func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (StreamConn, error)
-
-type DialWebTransportFunc func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, StreamConn, error)
-
 // Dialer is a MOQ client that can establish sessions with MOQ servers.
 // It supports both WebTransport (for browser compatibility) and raw QUIC connections.
 //
@@ -35,11 +31,11 @@ type Dialer struct {
 
 	// DialQUICFunc performs the QUIC handshake and establishes a connection.
 	// If nil, the default QUIC dialer is used.
-	DialQUICFunc DialQUICFunc
+	DialQUICFunc func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (StreamConn, error)
 
 	// DialWebTransportFunc performs the WebTransport handshake and establishes a connection.
 	// If nil, the default dialer is used.
-	DialWebTransportFunc DialWebTransportFunc
+	DialWebTransportFunc func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error)
 
 	// FetchHandler handles incoming fetch requests on WebTransport sessions.
 	// Optional; when nil, fetch requests on WebTransport sessions are not handled.
@@ -93,7 +89,7 @@ func (d *Dialer) DialWebTransport(ctx context.Context, host, path string, mux *T
 	dialCtx, cancelDial := context.WithTimeout(ctx, d.Config.setupTimeout())
 	defer cancelDial()
 
-	var dialer DialWebTransportFunc
+	var dialer func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error)
 	if d.DialWebTransportFunc != nil {
 		dialer = d.DialWebTransportFunc
 	} else {
@@ -141,7 +137,7 @@ func (c *Dialer) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 		tlsConfig.NextProtos = []string{NextProtoMOQ}
 	}
 
-	var dialFunc DialQUICFunc
+	var dialFunc func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (StreamConn, error)
 	if c.DialQUICFunc != nil {
 		dialFunc = c.DialQUICFunc
 	} else {
