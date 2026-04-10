@@ -215,13 +215,9 @@ func (s *Session) Subscribe(ctx context.Context, req *SubscribeRequest) (*TrackR
 		return nil, fmt.Errorf("failed to encode SUBSCRIBE message: %w", err)
 	}
 
-	// Create and register a TrackReader for this subscription.
-	substr := newSendSubscribeStream(id, stream, req.Config, PublishInfo{}, req.OnDrop)
+	substr := newSendSubscribeStream(id, stream, req.Config, req.OnDrop)
 
-	removeTrackFunc := func() {
-		s.removeTrackReader(id)
-	}
-	track := newTrackReader(req, substr, removeTrackFunc)
+	track := newTrackReader(req, substr, func() { s.removeTrackReader(id) })
 	s.addTrackReader(id, track)
 
 	ctx, cancel := context.WithTimeout(ctx, s.timeout())

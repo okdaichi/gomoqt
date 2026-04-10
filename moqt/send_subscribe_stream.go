@@ -7,13 +7,11 @@ import (
 	"github.com/okdaichi/gomoqt/transport"
 )
 
-func newSendSubscribeStream(id SubscribeID, stream transport.Stream, initConfig *SubscribeConfig, info PublishInfo, dropHandler func(SubscribeDrop)) *sendSubscribeStream {
-
+func newSendSubscribeStream(id SubscribeID, stream transport.Stream, initConfig *SubscribeConfig, dropHandler func(SubscribeDrop)) *sendSubscribeStream {
 	substr := &sendSubscribeStream{
 		id:            id,
 		config:        initConfig,
 		stream:        stream,
-		info:          info,
 		wroteInfoChan: make(chan struct{}, 1),
 		dropHandler:   dropHandler,
 	}
@@ -58,7 +56,7 @@ type sendSubscribeStream struct {
 
 	config *SubscribeConfig
 
-	info PublishInfo
+	info *PublishInfo
 
 	wroteInfoChan chan struct{}
 
@@ -88,7 +86,7 @@ func (substr *sendSubscribeStream) updateInfo(newInfo PublishInfo) {
 	substr.mu.Lock()
 	defer substr.mu.Unlock()
 
-	substr.info = newInfo
+	substr.info = &newInfo
 	select {
 	case substr.wroteInfoChan <- struct{}{}:
 	default:
@@ -164,7 +162,7 @@ func (substr *sendSubscribeStream) setDropHandler(handler func(SubscribeDrop)) {
 }
 
 func (substr *sendSubscribeStream) ReadInfo() PublishInfo {
-	return substr.info
+	return *substr.info
 }
 
 func (substr *sendSubscribeStream) close() error {

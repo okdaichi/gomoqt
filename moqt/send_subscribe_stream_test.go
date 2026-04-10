@@ -26,7 +26,7 @@ func newTestSendSubscribeStream(stream transport.Stream, config *SubscribeConfig
 		config = &SubscribeConfig{}
 	}
 
-	return newSendSubscribeStream(SubscribeID(1), stream, config, PublishInfo{}, nil)
+	return newSendSubscribeStream(SubscribeID(1), stream, config, nil)
 }
 
 func TestNewSendSubscribeStream(t *testing.T) {
@@ -36,8 +36,7 @@ func TestNewSendSubscribeStream(t *testing.T) {
 	}
 	mockStream := newEOFMockStream()
 
-	info := PublishInfo{}
-	sss := newSendSubscribeStream(id, mockStream, config, info, func(SubscribeDrop) {})
+	sss := newSendSubscribeStream(id, mockStream, config, func(SubscribeDrop) {})
 
 	assert.NotNil(t, sss, "newSendSubscribeStream should not return nil")
 	assert.Equal(t, id, sss.id, "id should be set correctly")
@@ -50,7 +49,7 @@ func TestSendSubscribeStream_SubscribeID(t *testing.T) {
 	config := &SubscribeConfig{}
 	mockStream := newEOFMockStream()
 
-	sss := newSendSubscribeStream(id, mockStream, config, PublishInfo{}, nil)
+	sss := newSendSubscribeStream(id, mockStream, config, func(SubscribeDrop) {})
 
 	returnedID := sss.SubscribeID()
 
@@ -63,7 +62,7 @@ func TestSendSubscribeStream_ReadInfo(t *testing.T) {
 	mockStream := newEOFMockStream()
 
 	info := PublishInfo{}
-	sss := newSendSubscribeStream(id, mockStream, config, info, nil)
+	sss := newSendSubscribeStream(id, mockStream, config, func(SubscribeDrop) {})
 
 	ret := sss.ReadInfo()
 	assert.Equal(t, info, ret, "ReadInfo() should return the Info passed to constructor")

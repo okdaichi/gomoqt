@@ -184,7 +184,7 @@ func BenchmarkSession_TrackReaderOperations(b *testing.B) {
 		mockSubStream.On("Context").Return(context.Background())
 		mockSubStream.On("StreamID").Return(transport.StreamID(i))
 
-		substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{}, nil)
+		substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, nil)
 		req := testSubscribeRequest(b, nil)
 		trackReader := newTrackReader(req, substr, func() {})
 
@@ -264,7 +264,7 @@ func BenchmarkSession_MapLookup(b *testing.B) {
 				mockSubStream.On("Context").Return(context.Background())
 				mockSubStream.On("StreamID").Return(transport.StreamID(i))
 
-				substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{}, nil)
+				substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, nil)
 				req := testSubscribeRequest(b, nil)
 				trackReader := newTrackReader(req, substr, func() {})
 				session.addTrackReader(id, trackReader)
@@ -317,7 +317,7 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 					mockSubStream.On("Context").Return(context.Background())
 					mockSubStream.On("StreamID").Return(transport.StreamID(j))
 
-					substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{}, nil)
+					substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, nil)
 					req := testSubscribeRequest(b, nil)
 					trackReader := newTrackReader(req, substr, func() {})
 					session.addTrackReader(id, trackReader)

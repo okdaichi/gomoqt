@@ -15,8 +15,7 @@ import (
 func TestNewTrackReader(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
-	info := PublishInfo{}
-	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{}, info, nil)
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{}, nil)
 	receiver := newTrackReader(testSubscribeRequest(t, nil), substr, func() {})
 
 	assert.NotNil(t, receiver, "newTrackReader should not return nil")
@@ -24,7 +23,7 @@ func TestNewTrackReader(t *testing.T) {
 	assert.Equal(t, BroadcastPath("/test"), receiver.Request.BroadcastPath)
 	assert.Equal(t, TrackName("video"), receiver.Request.TrackName)
 	// Verify info propagation
-	assert.Equal(t, info, substr.ReadInfo(), "sendSubscribeStream should return the Info passed at construction")
+	assert.Equal(t, PublishInfo{}, substr.ReadInfo(), "sendSubscribeStream should return the Info passed at construction")
 	assert.NotNil(t, receiver.queueing, "queue should be initialized")
 	assert.NotNil(t, receiver.queuedCh, "queuedCh should be initialized")
 	assert.NotNil(t, receiver.dequeued, "dequeued should be initialized")
