@@ -6,8 +6,13 @@ import (
 
 // SubscribeRequest represents parameters for one subscribe operation.
 type SubscribeRequest struct {
+	// BroadcastPath is the path of the broadcast to subscribe to.
+	// It must be a non-empty string and follow the path format defined in the spec.
 	BroadcastPath BroadcastPath
-	TrackName     TrackName
+
+	// TrackName is the name of the track to subscribe to.
+	// It can be an empty string if the track name is not specified.
+	TrackName TrackName
 
 	// Config holds wire-level subscribe parameters.
 	// If nil, a zero-value config is used.

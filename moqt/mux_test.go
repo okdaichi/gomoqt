@@ -670,7 +670,7 @@ func TestNotFound(t *testing.T) {
 			expectPanic: false,
 		},
 		"track writer with nil TrackWriter": {
-			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"), nil, nil, nil),
+			trackWriter: &TrackWriter{BroadcastPath: BroadcastPath("/test"), TrackName: TrackName("test")},
 			expectPanic: false,
 		},
 		"track writer with mock TrackWriter": {
@@ -708,7 +708,7 @@ func TestNotFoundHandler(t *testing.T) {
 			expectPanic: false,
 		},
 		"track writer with nil TrackWriter": {
-			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"), nil, nil, nil),
+			trackWriter: &TrackWriter{BroadcastPath: BroadcastPath("/test"), TrackName: TrackName("test")},
 			expectPanic: false,
 		},
 		"track writer with mock TrackWriter": {

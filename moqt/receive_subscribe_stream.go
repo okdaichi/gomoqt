@@ -8,11 +8,6 @@ import (
 )
 
 func newReceiveSubscribeStream(id SubscribeID, stream Stream, config *SubscribeConfig) *receiveSubscribeStream {
-	// Ensure config is not nil
-	if config == nil {
-		config = &SubscribeConfig{}
-	}
-
 	substr := &receiveSubscribeStream{
 		subscribeID: id,
 		config:      config,
@@ -68,8 +63,8 @@ type receiveSubscribeStream struct {
 	updatedCh chan struct{}
 }
 
-func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
-	return rss.subscribeID
+func (substr *receiveSubscribeStream) SubscribeID() SubscribeID {
+	return substr.subscribeID
 }
 
 func (substr *receiveSubscribeStream) writeInfo(info PublishInfo) error {
@@ -104,20 +99,20 @@ func (substr *receiveSubscribeStream) writeInfo(info PublishInfo) error {
 	return err
 }
 
-func (rss *receiveSubscribeStream) TrackConfig() *SubscribeConfig {
-	rss.mu.Lock()
-	defer rss.mu.Unlock()
+func (substr *receiveSubscribeStream) TrackConfig() *SubscribeConfig {
+	substr.mu.Lock()
+	defer substr.mu.Unlock()
 
 	// Ensure config is never nil
-	if rss.config == nil {
-		rss.config = &SubscribeConfig{}
+	if substr.config == nil {
+		substr.config = &SubscribeConfig{}
 	}
 
-	return rss.config
+	return substr.config
 }
 
-func (rss *receiveSubscribeStream) Updated() <-chan struct{} {
-	return rss.updatedCh
+func (substr *receiveSubscribeStream) Updated() <-chan struct{} {
+	return substr.updatedCh
 }
 
 func (substr *receiveSubscribeStream) close() error {
@@ -132,15 +127,15 @@ func (substr *receiveSubscribeStream) close() error {
 	return substr.stream.Close()
 }
 
-func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error {
-	rss.mu.Lock()
-	defer rss.mu.Unlock()
+func (substr *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error {
+	substr.mu.Lock()
+	defer substr.mu.Unlock()
 
 	strErrCode := transport.StreamErrorCode(code)
-	cancelStreamWithError(rss.stream, strErrCode)
+	cancelStreamWithError(substr.stream, strErrCode)
 
-	if updateCh := rss.updatedCh; updateCh != nil {
-		rss.updatedCh = nil
+	if updateCh := substr.updatedCh; updateCh != nil {
+		substr.updatedCh = nil
 		close(updateCh)
 	}
 

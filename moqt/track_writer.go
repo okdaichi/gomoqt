@@ -59,6 +59,8 @@ func newTrackWriter(
 	openUniStreamFunc func() (SendStream, error),
 	onCloseTrackFunc func(),
 ) *TrackWriter {
+	streamCtx := subscribeStream.stream.Context()
+
 	track := &TrackWriter{
 		BroadcastPath:     broadcastPath,
 		TrackName:         trackName,
@@ -66,7 +68,7 @@ func newTrackWriter(
 		groupManager:      newGroupWriterManager(),
 		openUniStreamFunc: openUniStreamFunc,
 		onCloseTrackFunc:  onCloseTrackFunc,
-		ctx:               context.WithValue(subscribeStream.stream.Context(), biStreamTypeCtxKey, message.StreamTypeSubscribe),
+		ctx:               context.WithValue(streamCtx, biStreamTypeCtxKey, message.StreamTypeSubscribe),
 	}
 
 	return track
