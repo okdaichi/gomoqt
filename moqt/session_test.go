@@ -1160,6 +1160,15 @@ func TestSession_ProcessBiStream_Announce(t *testing.T) {
 	mockSessStream.On("Read", mock.Anything).Return(0, io.EOF)
 
 	session := newTestSession(conn)
+	blockHandler := make(chan struct{})
+	trackReady := make(chan *TrackWriter, 1)
+	session.mux.PublishFunc(context.Background(), BroadcastPath("/test/path"), func(tw *TrackWriter) {
+		trackReady <- tw
+		select {
+		case <-blockHandler:
+		case <-tw.Context().Done():
+		}
+	})
 
 	// Create a mock stream for ANNOUNCE
 	mockStream := &MockQUICStream{}
@@ -1230,6 +1239,15 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 	mockSessStream.On("Read", mock.Anything).Return(0, io.EOF)
 
 	session := newTestSession(conn)
+	blockHandler := make(chan struct{})
+	trackReady := make(chan *TrackWriter, 1)
+	session.mux.PublishFunc(context.Background(), BroadcastPath("/test/path"), func(tw *TrackWriter) {
+		trackReady <- tw
+		select {
+		case <-blockHandler:
+		case <-tw.Context().Done():
+		}
+	})
 
 	// Create a mock stream for SUBSCRIBE
 	mockStream := &MockQUICStream{}
@@ -1244,9 +1262,14 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 	err := message.StreamTypeSubscribe.Encode(&buf)
 	assert.NoError(t, err)
 	sm := message.SubscribeMessage{
-		SubscribeID:   1,
-		BroadcastPath: "/test/path",
-		TrackName:     "video",
+		SubscribeID:          1,
+		BroadcastPath:        "/test/path",
+		TrackName:            "video",
+		SubscriberPriority:   7,
+		SubscriberOrdered:    1,
+		SubscriberMaxLatency: 500,
+		StartGroup:           5,
+		EndGroup:             10,
 	}
 	err = sm.Encode(&buf)
 	assert.NoError(t, err)
@@ -1291,6 +1314,23 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("processBiStream did not read subscribe message")
 	}
+
+	// Wait for the track writer to reach the handler and verify the initial config
+	var track *TrackWriter
+	select {
+	case track = <-trackReady:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("processBiStream did not deliver track writer to handler")
+	}
+
+	gotConfig := track.TrackConfig()
+	assert.Equal(t, TrackPriority(7), gotConfig.Priority)
+	assert.True(t, gotConfig.Ordered)
+	assert.Equal(t, uint64(500), gotConfig.MaxLatency)
+	assert.Equal(t, GroupSequence(4), gotConfig.StartGroup)
+	assert.Equal(t, GroupSequence(9), gotConfig.EndGroup)
+
+	close(blockHandler)
 
 	// Terminate to stop blocking
 	_ = session.CloseWithError(NoError, "")
