@@ -179,7 +179,7 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 				// Close the AW to signal the writer to cleanup and close its channel.
 				go func(a *AnnouncementWriter) {
 					// Use InternalAnnounceErrorCode to indicate an internal error condition
-					_ = a.CloseWithError(InternalAnnounceErrorCode)
+					_ = a.CloseWithError(AnnounceErrorCodeInternal)
 				}(ac.aw)
 			}
 		}
@@ -264,7 +264,7 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 	}
 
 	if !isValidPrefix(aw.prefix) {
-		_ = aw.CloseWithError(InvalidPrefixErrorCode)
+		_ = aw.CloseWithError(AnnounceErrorCodeInvalidPrefix)
 		return
 	}
 
@@ -299,7 +299,7 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 
 	err := aw.init(actives)
 	if err != nil {
-		_ = aw.CloseWithError(InternalAnnounceErrorCode)
+		_ = aw.CloseWithError(AnnounceErrorCodeInternal)
 		return
 	}
 
@@ -311,7 +311,7 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 				return
 			}
 			if err := aw.SendAnnouncement(ann); err != nil {
-				_ = aw.CloseWithError(InternalAnnounceErrorCode)
+				_ = aw.CloseWithError(AnnounceErrorCodeInternal)
 				return
 			}
 		case <-aw.Context().Done():

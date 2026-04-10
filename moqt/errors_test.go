@@ -3,6 +3,7 @@ package moqt
 import (
 	"testing"
 
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -40,15 +41,15 @@ func TestAnnounceErrorText(t *testing.T) {
 		expect string
 	}{
 		"internal error code": {
-			code:   InternalAnnounceErrorCode,
+			code:   AnnounceErrorCodeInternal,
 			expect: "moqt: internal error",
 		},
 		"duplicated announce error code": {
-			code:   DuplicatedAnnounceErrorCode,
+			code:   AnnounceErrorCodeDuplicated,
 			expect: "moqt: duplicated broadcast path",
 		},
 		"invalid announce status error code": {
-			code:   InvalidAnnounceStatusErrorCode,
+			code:   AnnounceErrorCodeInvalidStatus,
 			expect: "moqt: invalid announce status",
 		},
 		"uninterested error code": {
@@ -60,7 +61,7 @@ func TestAnnounceErrorText(t *testing.T) {
 			expect: "moqt: banned prefix",
 		},
 		"invalid prefix error code": {
-			code:   InvalidPrefixErrorCode,
+			code:   AnnounceErrorCodeInvalidPrefix,
 			expect: "moqt: invalid prefix",
 		},
 		"unknown code": {
@@ -249,8 +250,8 @@ func TestGroupErrorText(t *testing.T) {
 func TestAnnounceError_UnknownCodeFallback(t *testing.T) {
 	unknownCode := AnnounceErrorCode(0x99)
 	err := AnnounceError{
-		&StreamError{
-			ErrorCode: StreamErrorCode(unknownCode),
+		&transport.StreamError{
+			ErrorCode: transport.StreamErrorCode(unknownCode),
 		},
 	}
 
@@ -265,8 +266,8 @@ func TestAnnounceError_UnknownCodeFallback(t *testing.T) {
 func TestSubscribeError_UnknownCodeFallback(t *testing.T) {
 	unknownCode := SubscribeErrorCode(0x99)
 	err := SubscribeError{
-		&StreamError{
-			ErrorCode: StreamErrorCode(unknownCode),
+		&transport.StreamError{
+			ErrorCode: transport.StreamErrorCode(unknownCode),
 		},
 	}
 
@@ -294,8 +295,8 @@ func TestSessionError_UnknownCodeFallback(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			unknownCode := SessionErrorCode(0x99)
 			err := SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(unknownCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(unknownCode),
 					Remote:    tt.remote,
 				},
 			}
@@ -313,8 +314,8 @@ func TestSessionError_UnknownCodeFallback(t *testing.T) {
 func TestGroupError_UnknownCodeFallback(t *testing.T) {
 	unknownCode := GroupErrorCode(0x99)
 	err := GroupError{
-		&StreamError{
-			ErrorCode: StreamErrorCode(unknownCode),
+		&transport.StreamError{
+			ErrorCode: transport.StreamErrorCode(unknownCode),
 		},
 	}
 
@@ -334,35 +335,35 @@ func TestAnnounceError(t *testing.T) {
 	}{
 		"internal error": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InternalAnnounceErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(AnnounceErrorCodeInternal),
 				},
 			},
 			expectedString: "moqt: internal error",
-			expectedCode:   InternalAnnounceErrorCode,
+			expectedCode:   AnnounceErrorCodeInternal,
 		},
 		"duplicated broadcast path": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(DuplicatedAnnounceErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(AnnounceErrorCodeDuplicated),
 				},
 			},
 			expectedString: "moqt: duplicated broadcast path",
-			expectedCode:   DuplicatedAnnounceErrorCode,
+			expectedCode:   AnnounceErrorCodeDuplicated,
 		},
 		"invalid announce status": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InvalidAnnounceStatusErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(AnnounceErrorCodeInvalidStatus),
 				},
 			},
 			expectedString: "moqt: invalid announce status",
-			expectedCode:   InvalidAnnounceStatusErrorCode,
+			expectedCode:   AnnounceErrorCodeInvalidStatus,
 		},
 		"uninterested": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(UninterestedErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(UninterestedErrorCode),
 				},
 			},
 			expectedString: "moqt: uninterested",
@@ -370,8 +371,8 @@ func TestAnnounceError(t *testing.T) {
 		},
 		"banned prefix": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(BannedPrefixErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(BannedPrefixErrorCode),
 				},
 			},
 			expectedString: "moqt: banned prefix",
@@ -379,12 +380,12 @@ func TestAnnounceError(t *testing.T) {
 		},
 		"invalid prefix": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InvalidPrefixErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(AnnounceErrorCodeInvalidPrefix),
 				},
 			},
 			expectedString: "moqt: invalid prefix",
-			expectedCode:   InvalidPrefixErrorCode,
+			expectedCode:   AnnounceErrorCodeInvalidPrefix,
 		},
 	}
 
@@ -405,8 +406,8 @@ func TestSubscribeError(t *testing.T) {
 	}{
 		"internal error": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(SubscribeErrorCodeInternal),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeInternal),
 				},
 			},
 			expectedString: "moqt: internal error",
@@ -414,8 +415,8 @@ func TestSubscribeError(t *testing.T) {
 		},
 		"invalid range": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(SubscribeErrorCodeInvalidRange),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeInvalidRange),
 				},
 			},
 			expectedString: "moqt: invalid range",
@@ -423,8 +424,8 @@ func TestSubscribeError(t *testing.T) {
 		},
 		"duplicate subscribe ID": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(SubscribeErrorCodeDuplicateID),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeDuplicateID),
 				},
 			},
 			expectedString: "moqt: duplicated id",
@@ -432,8 +433,8 @@ func TestSubscribeError(t *testing.T) {
 		},
 		"track not found": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(SubscribeErrorCodeNotFound),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeNotFound),
 				},
 			},
 			expectedString: "moqt: track does not exist",
@@ -441,8 +442,8 @@ func TestSubscribeError(t *testing.T) {
 		},
 		"unauthorized": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(SubscribeErrorCodeUnauthorized),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeUnauthorized),
 				},
 			},
 			expectedString: "moqt: unauthorized",
@@ -450,8 +451,8 @@ func TestSubscribeError(t *testing.T) {
 		},
 		"timeout": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(SubscribeErrorCodeTimeout),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeTimeout),
 				},
 			},
 			expectedString: "moqt: timeout",
@@ -476,8 +477,8 @@ func TestSessionError(t *testing.T) {
 	}{
 		"local internal error": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(InternalSessionErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(InternalSessionErrorCode),
 					Remote:    false,
 				},
 			},
@@ -486,8 +487,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"remote unauthorized": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(UnauthorizedSessionErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(UnauthorizedSessionErrorCode),
 					Remote:    true,
 				},
 			},
@@ -496,8 +497,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"local protocol violation": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(ProtocolViolationErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(ProtocolViolationErrorCode),
 					Remote:    false,
 				},
 			},
@@ -506,8 +507,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"remote parameter length mismatch": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(ParameterLengthMismatchErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(ParameterLengthMismatchErrorCode),
 					Remote:    true,
 				},
 			},
@@ -516,8 +517,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"local too many subscribes": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(TooManySubscribeErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(TooManySubscribeErrorCode),
 					Remote:    false,
 				},
 			},
@@ -526,8 +527,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"local goaway timeout": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(GoAwayTimeoutErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(GoAwayTimeoutErrorCode),
 					Remote:    false,
 				},
 			},
@@ -536,8 +537,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"remote unsupported version": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(UnsupportedVersionErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(UnsupportedVersionErrorCode),
 					Remote:    true,
 				},
 			},
@@ -546,8 +547,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"local setup failed": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(SetupFailedErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(SetupFailedErrorCode),
 					Remote:    false,
 				},
 			},
@@ -556,8 +557,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"local no error": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(NoError),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(NoError),
 					Remote:    false,
 				},
 			},
@@ -583,8 +584,8 @@ func TestGroupError(t *testing.T) {
 	}{
 		"internal error": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InternalGroupErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(InternalGroupErrorCode),
 				},
 			},
 			expectedString: "moqt: internal error",
@@ -592,8 +593,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"out of range": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(OutOfRangeErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(OutOfRangeErrorCode),
 				},
 			},
 			expectedString: "moqt: out of range",
@@ -601,8 +602,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"expired group": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(ExpiredGroupErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(ExpiredGroupErrorCode),
 				},
 			},
 			expectedString: "moqt: group expires",
@@ -610,8 +611,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"subscribe canceled": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(SubscribeCanceledErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeCanceledErrorCode),
 				},
 			},
 			expectedString: "moqt: subscribe canceled",
@@ -619,8 +620,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"publish aborted": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(PublishAbortedErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(PublishAbortedErrorCode),
 				},
 			},
 			expectedString: "moqt: publish aborted",
@@ -628,8 +629,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"session closed": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(ClosedSessionGroupErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(ClosedSessionGroupErrorCode),
 				},
 			},
 			expectedString: "moqt: session closed",
@@ -637,8 +638,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"invalid subscribe ID": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InvalidSubscribeIDErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(InvalidSubscribeIDErrorCode),
 				},
 			},
 			expectedString: "moqt: invalid subscribe id",
@@ -659,19 +660,19 @@ func TestErrorTextConsistency(t *testing.T) {
 	t.Run("AnnounceError consistency", func(t *testing.T) {
 		// Test all defined announce error codes
 		codes := []AnnounceErrorCode{
-			InternalAnnounceErrorCode,
-			DuplicatedAnnounceErrorCode,
-			InvalidAnnounceStatusErrorCode,
+			AnnounceErrorCodeInternal,
+			AnnounceErrorCodeDuplicated,
+			AnnounceErrorCodeInvalidStatus,
 			UninterestedErrorCode,
 			BannedPrefixErrorCode,
-			InvalidPrefixErrorCode,
+			AnnounceErrorCodeInvalidPrefix,
 		}
 
 		for _, code := range codes {
 			text := AnnounceErrorText(code)
 			err := AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(code),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(code),
 				},
 			}
 			assert.Equal(t, text, err.Error(), "AnnounceErrorText and AnnounceError.Error() should return the same text for code %v", code)
@@ -692,8 +693,8 @@ func TestErrorTextConsistency(t *testing.T) {
 		for _, code := range codes {
 			text := SubscribeErrorText(code)
 			err := SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(code),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(code),
 				},
 			}
 			assert.Equal(t, text, err.Error(), "SubscribeErrorText and SubscribeError.Error() should return the same text for code %v", code)
@@ -720,8 +721,8 @@ func TestErrorTextConsistency(t *testing.T) {
 			// Test both local and remote
 			for _, remote := range []bool{false, true} {
 				err := SessionError{
-					&ApplicationError{
-						ErrorCode: ApplicationErrorCode(code),
+					&transport.ApplicationError{
+						ErrorCode: transport.ApplicationErrorCode(code),
 						Remote:    remote,
 					},
 				}
@@ -752,8 +753,8 @@ func TestErrorTextConsistency(t *testing.T) {
 		for _, code := range codes {
 			text := GroupErrorText(code)
 			err := GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(code),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(code),
 				},
 			}
 			assert.Equal(t, text, err.Error(), "GroupErrorText and GroupError.Error() should return the same text for code %v", code)
@@ -765,12 +766,12 @@ func TestErrorTextConsistency(t *testing.T) {
 func TestErrorText_NonEmpty(t *testing.T) {
 	t.Run("AnnounceErrorText returns non-empty for all defined codes", func(t *testing.T) {
 		codes := []AnnounceErrorCode{
-			InternalAnnounceErrorCode,
-			DuplicatedAnnounceErrorCode,
-			InvalidAnnounceStatusErrorCode,
+			AnnounceErrorCodeInternal,
+			AnnounceErrorCodeDuplicated,
+			AnnounceErrorCodeInvalidStatus,
 			UninterestedErrorCode,
 			BannedPrefixErrorCode,
-			InvalidPrefixErrorCode,
+			AnnounceErrorCodeInvalidPrefix,
 		}
 
 		for _, code := range codes {

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 type groupReaderManager struct {
@@ -138,7 +139,7 @@ func (r *TrackReader) Close() error {
 	defer r.trackMu.Unlock()
 
 	// Cancel all pending groups first
-	errCode := StreamErrorCode(SubscribeCanceledErrorCode)
+	errCode := transport.StreamErrorCode(SubscribeCanceledErrorCode)
 	for _, entry := range r.queueing {
 		entry.stream.CancelRead(errCode)
 	}
@@ -166,7 +167,7 @@ func (r *TrackReader) CloseWithError(code SubscribeErrorCode) {
 	defer r.trackMu.Unlock()
 
 	// Cancel all pending groups first
-	errCode := StreamErrorCode(code)
+	errCode := transport.StreamErrorCode(code)
 	for _, entry := range r.queueing {
 		entry.stream.CancelRead(errCode)
 	}
@@ -206,7 +207,7 @@ func (r *TrackReader) enqueueGroup(sequence GroupSequence, stream ReceiveStream)
 	defer r.trackMu.Unlock()
 
 	if r.Context().Err() != nil || r.queueing == nil {
-		stream.CancelRead(StreamErrorCode(SubscribeCanceledErrorCode))
+		stream.CancelRead(transport.StreamErrorCode(SubscribeCanceledErrorCode))
 		return
 	}
 

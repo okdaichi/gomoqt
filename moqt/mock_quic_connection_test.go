@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net"
 
+	"github.com/okdaichi/gomoqt/transport"
 	quicgo "github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/mock"
 )
@@ -108,7 +109,7 @@ func (m *MockStreamConn) RemoteAddr() net.Addr {
 	return args.Get(0).(net.Addr)
 }
 
-func (m *MockStreamConn) CloseWithError(code ConnErrorCode, reason string) error {
+func (m *MockStreamConn) CloseWithError(code transport.ConnErrorCode, reason string) error {
 	args := m.Called(code, reason)
 	return args.Error(0)
 }

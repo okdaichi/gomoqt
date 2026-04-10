@@ -53,10 +53,6 @@ func TestStreamType_Constants(t *testing.T) {
 		streamType message.StreamType
 		expected   message.StreamType
 	}{
-		"session constant": {
-			streamType: message.StreamTypeSession,
-			expected:   message.StreamType(0x0),
-		},
 		"announce constant": {
 			streamType: message.StreamTypeAnnounce,
 			expected:   message.StreamType(0x1),

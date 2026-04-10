@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) *AnnouncementReader {
@@ -66,7 +67,7 @@ func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) 
 					}()
 
 					if shouldClose {
-						_ = ar.CloseWithError(DuplicatedAnnounceErrorCode)
+						ar.CloseWithError(AnnounceErrorCodeDuplicated)
 						return
 					}
 				}
@@ -89,11 +90,11 @@ func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) 
 					if handled {
 						continue
 					}
-					_ = ar.CloseWithError(DuplicatedAnnounceErrorCode)
+					ar.CloseWithError(AnnounceErrorCodeDuplicated)
 					return
 				}
 			default:
-				_ = ar.CloseWithError(InvalidAnnounceStatusErrorCode)
+				ar.CloseWithError(AnnounceErrorCodeInvalidStatus)
 				return
 			}
 		}
@@ -193,7 +194,7 @@ func (ras *AnnouncementReader) Close() error {
 // CloseWithError closes the AnnouncementReader with an error, ending all
 // active announcements and canceling the stream with the specified error
 // code.
-func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
+func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) {
 	ras.announcementsMu.Lock()
 	defer ras.announcementsMu.Unlock()
 
@@ -202,11 +203,7 @@ func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 		ras.announcedCh = nil
 	}
 
-	strErrCode := StreamErrorCode(code)
-	ras.stream.CancelRead(strErrCode)
-	ras.stream.CancelWrite(strErrCode)
-
-	return nil
+	cancelStreamWithError(ras.stream, transport.StreamErrorCode(code))
 }
 
 // Context returns the AnnouncementReader's context. It is canceled when the reader is closed.

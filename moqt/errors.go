@@ -3,6 +3,8 @@ package moqt
 import (
 	"errors"
 	"fmt"
+
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 var (
@@ -26,33 +28,33 @@ var (
 type AnnounceErrorCode uint32
 
 const (
-	InternalAnnounceErrorCode AnnounceErrorCode = 0x0
+	AnnounceErrorCodeInternal AnnounceErrorCode = 0x0
 
 	// Subscriber
-	DuplicatedAnnounceErrorCode    AnnounceErrorCode = 0x1
-	InvalidAnnounceStatusErrorCode AnnounceErrorCode = 0x2 // TODO: Is this necessary?
-	UninterestedErrorCode          AnnounceErrorCode = 0x3
+	AnnounceErrorCodeDuplicated    AnnounceErrorCode = 0x1
+	AnnounceErrorCodeInvalidStatus AnnounceErrorCode = 0x2
+	UninterestedErrorCode          AnnounceErrorCode = 0x3 // TODO: Is this necessary?
 
 	// Publisher
-	BannedPrefixErrorCode  AnnounceErrorCode = 0x4 // TODO: Is this necessary?
-	InvalidPrefixErrorCode AnnounceErrorCode = 0x5 // TODO: Is this necessary?
+	BannedPrefixErrorCode          AnnounceErrorCode = 0x4 // TODO: Is this necessary?
+	AnnounceErrorCodeInvalidPrefix AnnounceErrorCode = 0x5
 )
 
 // AnnounceErrorText returns a text for the announce error code.
 // It returns an empty string if the code is unknown.
 func AnnounceErrorText(code AnnounceErrorCode) string {
 	switch code {
-	case InternalAnnounceErrorCode:
+	case AnnounceErrorCodeInternal:
 		return "moqt: internal error"
-	case DuplicatedAnnounceErrorCode:
+	case AnnounceErrorCodeDuplicated:
 		return "moqt: duplicated broadcast path"
-	case InvalidAnnounceStatusErrorCode:
+	case AnnounceErrorCodeInvalidStatus:
 		return "moqt: invalid announce status"
 	case UninterestedErrorCode:
 		return "moqt: uninterested"
 	case BannedPrefixErrorCode:
 		return "moqt: banned prefix"
-	case InvalidPrefixErrorCode:
+	case AnnounceErrorCodeInvalidPrefix:
 		return "moqt: invalid prefix"
 	default:
 		return ""
@@ -60,7 +62,7 @@ func AnnounceErrorText(code AnnounceErrorCode) string {
 }
 
 // AnnounceError wraps a QUIC stream error with announcement-specific error codes.
-type AnnounceError struct{ *StreamError }
+type AnnounceError struct{ *transport.StreamError }
 
 func (err AnnounceError) Error() string {
 	text := AnnounceErrorText(err.AnnounceErrorCode())
@@ -119,7 +121,7 @@ func SubscribeErrorText(code SubscribeErrorCode) string {
 }
 
 // SubscribeError wraps a QUIC stream error with subscription-specific error codes.
-type SubscribeError struct{ *StreamError }
+type SubscribeError struct{ *transport.StreamError }
 
 func (err SubscribeError) Error() string {
 	text := SubscribeErrorText(err.SubscribeErrorCode())
@@ -151,7 +153,7 @@ func FetchErrorText(code FetchErrorCode) string {
 	}
 }
 
-type FetchError struct{ *StreamError }
+type FetchError struct{ *transport.StreamError }
 
 func (err FetchError) Error() string {
 	text := FetchErrorText(err.FetchErrorCode())
@@ -186,7 +188,7 @@ func ProbeErrorText(code ProbeErrorCode) string {
 	}
 }
 
-type ProbeError struct{ *StreamError }
+type ProbeError struct{ *transport.StreamError }
 
 func (err ProbeError) Error() string {
 	text := ProbeErrorText(err.ProbeErrorCode())
@@ -250,7 +252,7 @@ func SessionErrorText(code SessionErrorCode) string {
 }
 
 // SessionError wraps a QUIC application error with session-specific error codes.
-type SessionError struct{ *ApplicationError }
+type SessionError struct{ *transport.ApplicationError }
 
 func (err SessionError) Error() string {
 	var role string
@@ -312,7 +314,7 @@ func GroupErrorText(code GroupErrorCode) string {
 }
 
 // GroupError wraps a QUIC stream error with group-specific error codes.
-type GroupError struct{ *StreamError }
+type GroupError struct{ *transport.StreamError }
 
 func (err GroupError) Error() string {
 	text := GroupErrorText(err.GroupErrorCode())

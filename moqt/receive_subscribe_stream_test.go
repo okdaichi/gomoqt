@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -264,8 +265,8 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 					select {}
 				},
 			}
-			mockStream.On("CancelWrite", StreamErrorCode(tt.errorCode)).Return()
-			mockStream.On("CancelRead", StreamErrorCode(tt.errorCode)).Return()
+			mockStream.On("CancelWrite", transport.StreamErrorCode(tt.errorCode)).Return()
+			mockStream.On("CancelRead", transport.StreamErrorCode(tt.errorCode)).Return()
 
 			config := &SubscribeConfig{
 				Priority: TrackPriority(1),

@@ -3,6 +3,7 @@ package moqt
 import (
 	"time"
 
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -36,7 +37,7 @@ func (m *MockQUICReceiveStream) Read(p []byte) (n int, err error) {
 	return args.Int(0), args.Error(1)
 }
 
-func (m *MockQUICReceiveStream) CancelRead(code StreamErrorCode) {
+func (m *MockQUICReceiveStream) CancelRead(code transport.StreamErrorCode) {
 	m.Called(code)
 }
 

@@ -5,6 +5,8 @@ import (
 	"io"
 	"iter"
 	"time"
+
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 func newGroupReader(sequence GroupSequence, stream ReceiveStream, groupManager *groupReaderManager) *GroupReader {
@@ -49,8 +51,7 @@ func (s *GroupReader) ReadFrame(frame *Frame) error {
 			return err
 		}
 
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
 			grpErr := &GroupError{
 				StreamError: strErr,
 			}
@@ -68,7 +69,7 @@ func (s *GroupReader) ReadFrame(frame *Frame) error {
 
 // CancelRead cancels the group using the provided GroupErrorCode.
 func (s *GroupReader) CancelRead(code GroupErrorCode) {
-	s.stream.CancelRead(StreamErrorCode(code))
+	s.stream.CancelRead(transport.StreamErrorCode(code))
 
 	if s.groupManager != nil {
 		s.groupManager.removeGroup(s)

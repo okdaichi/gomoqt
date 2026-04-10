@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -243,9 +244,9 @@ func TestAnnouncementReader_CloseWithError(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Run(func(args mock.Arguments) {
-		cancel(&StreamError{
+		cancel(&transport.StreamError{
 			StreamID:  mockStream.StreamID(),
-			ErrorCode: args[0].(StreamErrorCode),
+			ErrorCode: args[0].(transport.StreamErrorCode),
 		})
 	}).Return()
 
@@ -255,8 +256,7 @@ func TestAnnouncementReader_CloseWithError(t *testing.T) {
 	time.Sleep(1 * time.Millisecond)
 
 	// First close with error
-	err := ras.CloseWithError(InternalAnnounceErrorCode)
-	assert.NoError(t, err)
+	ras.CloseWithError(AnnounceErrorCodeInternal)
 
 	assert.True(t, ras.Context().Err() != nil, "Context should be cancelled after close with error")
 	// TODO: Fix Cause function issue
@@ -272,9 +272,9 @@ func TestAnnouncementReader_CloseWithError_MultipleClose(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Run(func(args mock.Arguments) {
-		cancel(&StreamError{
+		cancel(&transport.StreamError{
 			StreamID:  mockStream.StreamID(),
-			ErrorCode: args[0].(StreamErrorCode),
+			ErrorCode: args[0].(transport.StreamErrorCode),
 		})
 	}).Return()
 	mockStream.On("Context").Return(ctx)
@@ -285,12 +285,10 @@ func TestAnnouncementReader_CloseWithError_MultipleClose(t *testing.T) {
 	time.Sleep(1 * time.Millisecond)
 
 	// First close with error
-	err := ras.CloseWithError(InternalAnnounceErrorCode)
-	assert.NoError(t, err)
+	ras.CloseWithError(AnnounceErrorCodeInternal)
 
 	// Second close with error should return the same error
-	err = ras.CloseWithError(DuplicatedAnnounceErrorCode)
-	assert.NoError(t, err)
+	ras.CloseWithError(AnnounceErrorCodeDuplicated)
 
 	assert.True(t, ras.Context().Err() != nil, "Context should be cancelled after close with error")
 
@@ -920,9 +918,9 @@ func TestAnnouncementReader_StreamErrors(t *testing.T) {
 	}{
 		"quic_stream_error": {
 			setupError: func() error {
-				return &StreamError{
+				return &transport.StreamError{
 					StreamID:  StreamID(123),
-					ErrorCode: StreamErrorCode(42),
+					ErrorCode: transport.StreamErrorCode(42),
 				}
 			},
 			expectedType: &AnnounceError{},

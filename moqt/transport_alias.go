@@ -12,13 +12,5 @@ type (
 	ReceiveStream = transport.ReceiveStream
 	StreamID      = transport.StreamID
 
-	ConnErrorCode        = transport.ConnErrorCode
-	ApplicationError     = transport.ApplicationError
-	ApplicationErrorCode = transport.ApplicationErrorCode
-	StreamError          = transport.StreamError
-	StreamErrorCode      = transport.StreamErrorCode
-
-	QUICConnectionStats = transport.ConnectionStats
-
 	WebTransportSession = transport.WebTransportSession
 )

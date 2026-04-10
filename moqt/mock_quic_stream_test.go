@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -60,7 +61,7 @@ func (m *MockQUICStream) Write(p []byte) (n int, err error) {
 	return args.Int(0), args.Error(1)
 }
 
-func (m *MockQUICStream) CancelRead(code StreamErrorCode) {
+func (m *MockQUICStream) CancelRead(code transport.StreamErrorCode) {
 	m.Called(code)
 	// Cancel the context to simulate stream cancellation
 	m.mu.Lock()
@@ -71,7 +72,7 @@ func (m *MockQUICStream) CancelRead(code StreamErrorCode) {
 	m.mu.Unlock()
 }
 
-func (m *MockQUICStream) CancelWrite(code StreamErrorCode) {
+func (m *MockQUICStream) CancelWrite(code transport.StreamErrorCode) {
 	m.Called(code)
 	// Cancel the context to simulate stream cancellation
 	m.mu.Lock()

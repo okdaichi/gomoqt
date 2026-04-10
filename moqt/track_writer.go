@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 type groupWriterManager struct {
@@ -231,8 +232,7 @@ func (w *TrackWriter) openGroupWithSequence(seq GroupSequence) (*GroupWriter, er
 
 	stream, err := w.openUniStreamFunc()
 	if err != nil {
-		var appErr *ApplicationError
-		if errors.As(err, &appErr) {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
 			sessErr := &SessionError{
 				ApplicationError: appErr,
 			}
@@ -243,12 +243,12 @@ func (w *TrackWriter) openGroupWithSequence(seq GroupSequence) (*GroupWriter, er
 
 	err = message.StreamTypeGroup.Encode(stream)
 	if err != nil {
-		var strErr *StreamError
+		var strErr *transport.StreamError
 		if errors.As(err, &strErr) {
 			return nil, &GroupError{StreamError: strErr}
 		}
 
-		strErrCode := StreamErrorCode(InternalGroupErrorCode)
+		strErrCode := transport.StreamErrorCode(InternalGroupErrorCode)
 		stream.CancelWrite(strErrCode)
 
 		return nil, err
@@ -259,12 +259,12 @@ func (w *TrackWriter) openGroupWithSequence(seq GroupSequence) (*GroupWriter, er
 		GroupSequence: uint64(seq),
 	}.Encode(stream)
 	if err != nil {
-		var strErr *StreamError
+		var strErr *transport.StreamError
 		if errors.As(err, &strErr) {
 			return nil, &GroupError{StreamError: strErr}
 		}
 
-		strErrCode := StreamErrorCode(InternalGroupErrorCode)
+		strErrCode := transport.StreamErrorCode(InternalGroupErrorCode)
 		stream.CancelWrite(strErrCode)
 
 		return nil, err

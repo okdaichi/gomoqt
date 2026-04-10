@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 func newReceiveSubscribeStream(id SubscribeID, stream Stream, config *SubscribeConfig) *receiveSubscribeStream {
@@ -135,7 +136,7 @@ func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error
 	rss.mu.Lock()
 	defer rss.mu.Unlock()
 
-	strErrCode := StreamErrorCode(code)
+	strErrCode := transport.StreamErrorCode(code)
 	cancelStreamWithError(rss.stream, strErrCode)
 
 	if updateCh := rss.updatedCh; updateCh != nil {

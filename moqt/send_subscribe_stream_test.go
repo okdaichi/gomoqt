@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -169,8 +170,8 @@ func TestSendSubscribeStream_Close(t *testing.T) {
 func TestSendSubscribeStream_CloseWithError(t *testing.T) {
 	config := &SubscribeConfig{}
 	mockStream := newEOFMockStream()
-	mockStream.On("CancelWrite", StreamErrorCode(SubscribeErrorCodeInternal)).Return()
-	mockStream.On("CancelRead", StreamErrorCode(SubscribeErrorCodeInternal)).Return()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(SubscribeErrorCodeInternal)).Return()
+	mockStream.On("CancelRead", transport.StreamErrorCode(SubscribeErrorCodeInternal)).Return()
 
 	sss := newTestSendSubscribeStream(mockStream, config)
 
@@ -178,8 +179,8 @@ func TestSendSubscribeStream_CloseWithError(t *testing.T) {
 	sss.closeWithError(testErrCode)
 
 	// Verify CancelWrite and CancelRead were called on the underlying stream
-	mockStream.AssertCalled(t, "CancelWrite", StreamErrorCode(testErrCode))
-	mockStream.AssertCalled(t, "CancelRead", StreamErrorCode(testErrCode))
+	mockStream.AssertCalled(t, "CancelWrite", transport.StreamErrorCode(testErrCode))
+	mockStream.AssertCalled(t, "CancelRead", transport.StreamErrorCode(testErrCode))
 }
 
 func TestSendSubscribeStream_CloseWithError_NilError(t *testing.T) {
@@ -189,8 +190,8 @@ func TestSendSubscribeStream_CloseWithError_NilError(t *testing.T) {
 			return 0, io.EOF
 		},
 	}
-	mockStream.On("CancelWrite", StreamErrorCode(0)).Return()
-	mockStream.On("CancelRead", StreamErrorCode(0)).Return()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(0)).Return()
+	mockStream.On("CancelRead", transport.StreamErrorCode(0)).Return()
 
 	sss := newTestSendSubscribeStream(mockStream, config)
 
@@ -198,8 +199,8 @@ func TestSendSubscribeStream_CloseWithError_NilError(t *testing.T) {
 	sss.closeWithError(testErrCode)
 
 	// Should still cancel the stream operations
-	mockStream.AssertCalled(t, "CancelWrite", StreamErrorCode(testErrCode))
-	mockStream.AssertCalled(t, "CancelRead", StreamErrorCode(testErrCode))
+	mockStream.AssertCalled(t, "CancelWrite", transport.StreamErrorCode(testErrCode))
+	mockStream.AssertCalled(t, "CancelRead", transport.StreamErrorCode(testErrCode))
 }
 
 func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
@@ -254,8 +255,8 @@ func TestSendSubscribeStream_UpdateSubscribeWriteError(t *testing.T) {
 
 	// Mock Write to return an error
 	mockStream.On("Write", mock.Anything).Return(0, assert.AnError)
-	mockStream.On("CancelWrite", StreamErrorCode(SubscribeErrorCodeInternal)).Return()
-	mockStream.On("CancelRead", StreamErrorCode(SubscribeErrorCodeInternal)).Return()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(SubscribeErrorCodeInternal)).Return()
+	mockStream.On("CancelRead", transport.StreamErrorCode(SubscribeErrorCodeInternal)).Return()
 
 	sss := newTestSendSubscribeStream(mockStream, config)
 
@@ -274,8 +275,8 @@ func TestSendSubscribeStream_UpdateSubscribeClosedStream(t *testing.T) {
 	mockStream := newEOFMockStream()
 
 	mockStream.On("Write", mock.Anything).Return(0, io.EOF)
-	mockStream.On("CancelWrite", StreamErrorCode(SubscribeErrorCodeInternal)).Return()
-	mockStream.On("CancelRead", StreamErrorCode(SubscribeErrorCodeInternal)).Return()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(SubscribeErrorCodeInternal)).Return()
+	mockStream.On("CancelRead", transport.StreamErrorCode(SubscribeErrorCodeInternal)).Return()
 	mockStream.On("Close").Return(nil)
 
 	sss := newTestSendSubscribeStream(mockStream, config)

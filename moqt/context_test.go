@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -31,73 +32,81 @@ func TestCause(t *testing.T) {
 		"with stream error": {
 			setupCtx: func() context.Context {
 				ctx, cancel := context.WithCancelCause(context.Background())
-				streamErr := &StreamError{StreamID: 1, ErrorCode: 1, Remote: true}
+				streamErr := &transport.StreamError{StreamID: 1, ErrorCode: 1, Remote: true}
 				cancel(streamErr)
 				return ctx
 			},
-			expected: &StreamError{StreamID: 1, ErrorCode: 1, Remote: true},
-		},
-		"with stream error and session type": {
-			setupCtx: func() context.Context {
-				ctx, cancel := context.WithCancelCause(context.Background())
-				streamErr := &StreamError{StreamID: 1, ErrorCode: 1, Remote: true}
-				ctx = context.WithValue(ctx, biStreamTypeCtxKey, message.StreamTypeSession)
-				cancel(streamErr)
-				return ctx
-			},
-			expected: &SessionError{
-				ApplicationError: &ApplicationError{
-					Remote:       true,
-					ErrorCode:    ApplicationErrorCode(ProtocolViolationErrorCode),
-					ErrorMessage: "moqt: closed session stream",
-				},
-			},
+			expected: &transport.StreamError{StreamID: 1, ErrorCode: 1, Remote: true},
 		},
 		"with stream error and announce stream type": {
 			setupCtx: func() context.Context {
 				ctx, cancel := context.WithCancelCause(context.Background())
-				streamErr := &StreamError{StreamID: 1, ErrorCode: 2, Remote: true}
+				streamErr := &transport.StreamError{StreamID: 1, ErrorCode: 2, Remote: true}
 				ctx = context.WithValue(ctx, biStreamTypeCtxKey, message.StreamTypeAnnounce)
 				cancel(streamErr)
 				return ctx
 			},
 			expected: &AnnounceError{
-				StreamError: &StreamError{StreamID: 1, ErrorCode: 2, Remote: true},
+				StreamError: &transport.StreamError{StreamID: 1, ErrorCode: 2, Remote: true},
 			},
 		},
 		"with stream error and subscribe stream type": {
 			setupCtx: func() context.Context {
 				ctx, cancel := context.WithCancelCause(context.Background())
-				streamErr := &StreamError{StreamID: 1, ErrorCode: 3, Remote: true}
+				streamErr := &transport.StreamError{StreamID: 1, ErrorCode: 3, Remote: true}
 				ctx = context.WithValue(ctx, biStreamTypeCtxKey, message.StreamTypeSubscribe)
 				cancel(streamErr)
 				return ctx
 			},
 			expected: &SubscribeError{
-				StreamError: &StreamError{StreamID: 1, ErrorCode: 3, Remote: true},
+				StreamError: &transport.StreamError{StreamID: 1, ErrorCode: 3, Remote: true},
+			},
+		},
+		"with stream error and fetch stream type": {
+			setupCtx: func() context.Context {
+				ctx, cancel := context.WithCancelCause(context.Background())
+				streamErr := &transport.StreamError{StreamID: 1, ErrorCode: 4, Remote: true}
+				ctx = context.WithValue(ctx, biStreamTypeCtxKey, message.StreamTypeFetch)
+				cancel(streamErr)
+				return ctx
+			},
+			expected: &FetchError{
+				StreamError: &transport.StreamError{StreamID: 1, ErrorCode: 4, Remote: true},
+			},
+		},
+		"with stream error and probe stream type": {
+			setupCtx: func() context.Context {
+				ctx, cancel := context.WithCancelCause(context.Background())
+				streamErr := &transport.StreamError{StreamID: 1, ErrorCode: 5, Remote: true}
+				ctx = context.WithValue(ctx, biStreamTypeCtxKey, message.StreamTypeProbe)
+				cancel(streamErr)
+				return ctx
+			},
+			expected: &ProbeError{
+				StreamError: &transport.StreamError{StreamID: 1, ErrorCode: 5, Remote: true},
 			},
 		},
 		"with stream error and group stream type": {
 			setupCtx: func() context.Context {
 				ctx, cancel := context.WithCancelCause(context.Background())
-				streamErr := &StreamError{StreamID: 1, ErrorCode: 4, Remote: true}
+				streamErr := &transport.StreamError{StreamID: 1, ErrorCode: 6, Remote: true}
 				ctx = context.WithValue(ctx, uniStreamTypeCtxKey, message.StreamTypeGroup)
 				cancel(streamErr)
 				return ctx
 			},
 			expected: &GroupError{
-				StreamError: &StreamError{StreamID: 1, ErrorCode: 4, Remote: true},
+				StreamError: &transport.StreamError{StreamID: 1, ErrorCode: 6, Remote: true},
 			},
 		},
 		"with application error": {
 			setupCtx: func() context.Context {
 				ctx, cancel := context.WithCancelCause(context.Background())
-				appErr := &ApplicationError{Remote: false, ErrorCode: 5, ErrorMessage: "app error"}
+				appErr := &transport.ApplicationError{Remote: false, ErrorCode: 5, ErrorMessage: "app error"}
 				cancel(appErr)
 				return ctx
 			},
 			expected: &SessionError{
-				ApplicationError: &ApplicationError{Remote: false, ErrorCode: 5, ErrorMessage: "app error"},
+				ApplicationError: &transport.ApplicationError{Remote: false, ErrorCode: 5, ErrorMessage: "app error"},
 			},
 		},
 	}

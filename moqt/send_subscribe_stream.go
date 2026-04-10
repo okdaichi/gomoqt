@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 func newSendSubscribeStream(id SubscribeID, stream Stream, initConfig *SubscribeConfig, info PublishInfo, dropHandler func(SubscribeDrop)) *sendSubscribeStream {
@@ -181,5 +182,5 @@ func (substr *sendSubscribeStream) closeWithError(code SubscribeErrorCode) {
 	substr.mu.Lock()
 	defer substr.mu.Unlock()
 
-	cancelStreamWithError(substr.stream, StreamErrorCode(code))
+	cancelStreamWithError(substr.stream, transport.StreamErrorCode(code))
 }

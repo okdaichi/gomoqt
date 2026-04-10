@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/quic-go/quic-go"
 )
 
@@ -118,10 +119,9 @@ func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 	}
 	s.isTerminating.Store(true)
 
-	err := s.conn.CloseWithError(ConnErrorCode(code), msg)
+	err := s.conn.CloseWithError(transport.ConnErrorCode(code), msg)
 	if err != nil {
-		var appErr *ApplicationError
-		if errors.As(err, &appErr) {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
 			reason := &SessionError{
 				ApplicationError: appErr,
 			}
@@ -172,7 +172,7 @@ func (s *Session) Subscribe(ctx context.Context, req *SubscribeRequest) (*TrackR
 
 	stream, err := s.conn.OpenStream()
 	if err != nil {
-		if appErr, ok := errors.AsType[*ApplicationError](err); ok {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
 			return nil, &SessionError{
 				ApplicationError: appErr,
 			}
@@ -182,13 +182,13 @@ func (s *Session) Subscribe(ctx context.Context, req *SubscribeRequest) (*TrackR
 
 	err = message.StreamTypeSubscribe.Encode(stream)
 	if err != nil {
-		if strErr, ok := errors.AsType[*StreamError](err); ok && strErr.Remote {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
 			return nil, &SubscribeError{
 				StreamError: strErr,
 			}
 		}
-		cancelStreamWithError(stream, StreamErrorCode(SubscribeErrorCodeInternal))
+		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
 		return nil, fmt.Errorf("failed to encode stream type message: %w", err)
 	}
 
@@ -203,14 +203,14 @@ func (s *Session) Subscribe(ctx context.Context, req *SubscribeRequest) (*TrackR
 		EndGroup:             groupSequenceToWire(req.Config.EndGroup),
 	}.Encode(stream)
 	if err != nil {
-		if strErr, ok := errors.AsType[*StreamError](err); ok && strErr.Remote {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
 			return nil, &SubscribeError{
 				StreamError: strErr,
 			}
 		}
 
-		cancelStreamWithError(stream, StreamErrorCode(SubscribeErrorCodeInternal))
+		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
 
 		return nil, fmt.Errorf("failed to encode SUBSCRIBE message: %w", err)
 	}
@@ -287,8 +287,7 @@ func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 
 	stream, err := s.conn.OpenStream()
 	if err != nil {
-		var appErr *ApplicationError
-		if errors.As(err, &appErr) {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
 			return nil, &SessionError{
 				ApplicationError: appErr,
 			}
@@ -298,14 +297,14 @@ func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 
 	err = message.StreamTypeFetch.Encode(stream)
 	if err != nil {
-		var strErr *StreamError
+		var strErr *transport.StreamError
 		if errors.As(err, &strErr) && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
 			return nil, &FetchError{
 				StreamError: strErr,
 			}
 		}
-		strErrCode := StreamErrorCode(FetchErrorCodeInternal)
+		strErrCode := transport.StreamErrorCode(FetchErrorCodeInternal)
 		stream.CancelWrite(strErrCode)
 		stream.CancelRead(strErrCode)
 		return nil, fmt.Errorf("failed to encode stream type message: %w", err)
@@ -318,7 +317,7 @@ func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 		GroupSequence: uint64(req.GroupSequence),
 	}.Encode(stream)
 	if err != nil {
-		var strErr *StreamError
+		var strErr *transport.StreamError
 		if errors.As(err, &strErr) && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
 			return nil, &FetchError{
@@ -326,7 +325,7 @@ func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 			}
 		}
 
-		strErrCode := StreamErrorCode(FetchErrorCodeInternal)
+		strErrCode := transport.StreamErrorCode(FetchErrorCodeInternal)
 		stream.CancelWrite(strErrCode)
 		stream.CancelRead(strErrCode)
 
@@ -351,7 +350,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
-		if appErr, ok := errors.AsType[*ApplicationError](err); ok {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
 			return nil, &SessionError{
 				ApplicationError: appErr,
 			}
@@ -362,8 +361,8 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	err = message.StreamTypeAnnounce.Encode(stream)
 	if err != nil {
-		if strErr, ok := errors.AsType[*StreamError](err); ok {
-			strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
+			strErrCode := transport.StreamErrorCode(AnnounceErrorCodeInternal)
 			stream.CancelRead(strErrCode)
 
 			return nil, &AnnounceError{
@@ -378,8 +377,8 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		TrackPrefix: prefix,
 	}.Encode(stream)
 	if err != nil {
-		if strErr, ok := errors.AsType[*StreamError](err); ok {
-			strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
+			strErrCode := transport.StreamErrorCode(AnnounceErrorCodeInternal)
 			stream.CancelRead(strErrCode)
 
 			return nil, &AnnounceError{
@@ -387,9 +386,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 			}
 		}
 
-		strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
-		stream.CancelWrite(strErrCode)
-		stream.CancelRead(strErrCode)
+		cancelStreamWithError(stream, transport.StreamErrorCode(AnnounceErrorCodeInternal))
 
 		return nil, fmt.Errorf("failed to send ANNOUNCE_PLEASE message: %w", err)
 	}
@@ -409,7 +406,7 @@ func (sess *Session) Probe(bitrate uint64) (uint64, error) {
 
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
-		if appErr, ok := errors.AsType[*ApplicationError](err); ok {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
 			return 0, &SessionError{
 				ApplicationError: appErr,
 			}
@@ -421,24 +418,24 @@ func (sess *Session) Probe(bitrate uint64) (uint64, error) {
 
 	err = message.StreamTypeProbe.Encode(stream)
 	if err != nil {
-		if strErr, ok := errors.AsType[*StreamError](err); ok {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
 			stream.CancelRead(strErr.ErrorCode)
 			return 0, err
 		}
 
-		cancelStreamWithError(stream, StreamErrorCode(ProbeErrorCodeInternal))
+		cancelStreamWithError(stream, transport.StreamErrorCode(ProbeErrorCodeInternal))
 
 		return 0, fmt.Errorf("failed to encode stream type message: %w", err)
 	}
 
 	err = message.ProbeMessage{Bitrate: bitrate}.Encode(stream)
 	if err != nil {
-		if strErr, ok := errors.AsType[*StreamError](err); ok {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
 			stream.CancelRead(strErr.ErrorCode)
 			return 0, err
 		}
 
-		cancelStreamWithError(stream, StreamErrorCode(ProbeErrorCodeInternal))
+		cancelStreamWithError(stream, transport.StreamErrorCode(ProbeErrorCodeInternal))
 
 		return 0, fmt.Errorf("failed to send PROBE message: %w", err)
 	}
@@ -493,7 +490,7 @@ func (sess *Session) processBiStream(stream Stream) {
 		var apm message.AnnouncePleaseMessage
 		err := apm.Decode(stream)
 		if err != nil {
-			cancelStreamWithError(stream, StreamErrorCode(InternalAnnounceErrorCode))
+			cancelStreamWithError(stream, transport.StreamErrorCode(AnnounceErrorCodeInternal))
 			return
 		}
 
@@ -509,7 +506,7 @@ func (sess *Session) processBiStream(stream Stream) {
 		var sm message.SubscribeMessage
 		err := sm.Decode(stream)
 		if err != nil {
-			cancelStreamWithError(stream, StreamErrorCode(SubscribeErrorCodeInternal))
+			cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
 			return
 		}
 
@@ -543,13 +540,13 @@ func (sess *Session) processBiStream(stream Stream) {
 		var fm message.FetchMessage
 		err := fm.Decode(stream)
 		if err != nil {
-			cancelStreamWithError(stream, StreamErrorCode(FetchErrorCodeInternal))
+			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
 			return
 		}
 
 		handler := sess.fetchHandler
 		if handler == nil {
-			cancelStreamWithError(stream, StreamErrorCode(FetchErrorCodeInternal))
+			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
 			return
 		}
 
@@ -565,11 +562,11 @@ func (sess *Session) processBiStream(stream Stream) {
 		handler.ServeFetch(w, req)
 	case message.StreamTypeProbe:
 		if err := sess.handleProbeStream(stream); err != nil {
-			cancelStreamWithError(stream, StreamErrorCode(ProbeErrorCodeInternal))
+			cancelStreamWithError(stream, transport.StreamErrorCode(ProbeErrorCodeInternal))
 			return
 		}
 	default:
-		cancelStreamWithError(stream, StreamErrorCode(InternalSessionErrorCode))
+		cancelStreamWithError(stream, transport.StreamErrorCode(InternalSessionErrorCode))
 		return
 	}
 }
@@ -591,7 +588,7 @@ func (sess *Session) processUniStream(stream ReceiveStream) {
 	if err != nil {
 		return
 	}
-	defer stream.CancelRead(StreamErrorCode(InternalSessionErrorCode))
+	defer stream.CancelRead(transport.StreamErrorCode(InternalSessionErrorCode))
 
 	switch streamType {
 	case message.StreamTypeGroup:
@@ -603,7 +600,7 @@ func (sess *Session) processUniStream(stream ReceiveStream) {
 
 		track, ok := sess.trackReaders[SubscribeID(gm.SubscribeID)]
 		if !ok {
-			stream.CancelRead(StreamErrorCode(InvalidSubscribeIDErrorCode))
+			stream.CancelRead(transport.StreamErrorCode(InvalidSubscribeIDErrorCode))
 			return
 		}
 
@@ -643,7 +640,7 @@ func (s *Session) removeTrackReader(id SubscribeID) {
 	delete(s.trackReaders, id)
 }
 
-func cancelStreamWithError(stream Stream, code StreamErrorCode) {
+func cancelStreamWithError(stream Stream, code transport.StreamErrorCode) {
 	stream.CancelRead(code)
 	stream.CancelWrite(code)
 }

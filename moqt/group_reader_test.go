@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -108,7 +109,7 @@ func TestReceiveGroupStream_CancelRead(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := &MockQUICReceiveStream{}
-			mockStream.On("CancelRead", StreamErrorCode(tt.errorCode)).Return()
+			mockStream.On("CancelRead", transport.StreamErrorCode(tt.errorCode)).Return()
 
 			rgs := newGroupReader(GroupSequence(123), mockStream, nil)
 
@@ -121,7 +122,7 @@ func TestReceiveGroupStream_CancelRead(t *testing.T) {
 
 func TestReceiveGroupStream_CancelRead_MultipleCalls(t *testing.T) {
 	mockStream := &MockQUICReceiveStream{}
-	mockStream.On("CancelRead", StreamErrorCode(InternalGroupErrorCode)).Return()
+	mockStream.On("CancelRead", transport.StreamErrorCode(InternalGroupErrorCode)).Return()
 
 	rgs := newGroupReader(GroupSequence(123), mockStream, nil)
 
@@ -130,7 +131,7 @@ func TestReceiveGroupStream_CancelRead_MultipleCalls(t *testing.T) {
 	rgs.CancelRead(InternalGroupErrorCode)
 
 	// Should be called for each CancelRead invocation
-	mockStream.AssertCalled(t, "CancelRead", StreamErrorCode(InternalGroupErrorCode))
+	mockStream.AssertCalled(t, "CancelRead", transport.StreamErrorCode(InternalGroupErrorCode))
 	mockStream.AssertExpectations(t)
 }
 
@@ -199,9 +200,9 @@ func TestReceiveGroupStream_SetReadDeadline(t *testing.T) {
 func TestReceiveGroupStream_ReadFrame_StreamError(t *testing.T) {
 	mockStream := &MockQUICReceiveStream{
 		ReadFunc: func(p []byte) (int, error) {
-			return 0, &StreamError{
+			return 0, &transport.StreamError{
 				StreamID:  StreamID(123),
-				ErrorCode: StreamErrorCode(1),
+				ErrorCode: transport.StreamErrorCode(1),
 			}
 		},
 	}

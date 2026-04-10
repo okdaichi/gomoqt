@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 // newAnnouncementWriter creates a new AnnouncementWriter for the given stream and prefix.
@@ -80,7 +81,7 @@ func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) err
 				Hops:                uint64(active.announcement.Hops() + 1),
 			}.Encode(aw.stream)
 			if err != nil {
-				if strErr, ok := errors.AsType[*StreamError](err); ok {
+				if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
 					err = &AnnounceError{StreamError: strErr}
 				}
 				aw.mu.Lock()
@@ -195,8 +196,7 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 		BroadcastPathSuffix: suffix,
 	}.Encode(aw.stream)
 	if err != nil {
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
 			return &AnnounceError{
 				StreamError: strErr,
 			}
@@ -250,9 +250,7 @@ func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 		endFunc()
 	}
 
-	strErrCode := StreamErrorCode(code)
-	aw.stream.CancelWrite(strErrCode)
-	aw.stream.CancelRead(strErrCode)
+	cancelStreamWithError(aw.stream, transport.StreamErrorCode(code))
 
 	return nil
 }

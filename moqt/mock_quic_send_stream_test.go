@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -38,7 +39,7 @@ func (m *MockQUICSendStream) Write(p []byte) (n int, err error) {
 	return args.Int(0), args.Error(1)
 }
 
-func (m *MockQUICSendStream) CancelWrite(code StreamErrorCode) {
+func (m *MockQUICSendStream) CancelWrite(code transport.StreamErrorCode) {
 	m.Called(code)
 }
 

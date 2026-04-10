@@ -5,20 +5,13 @@ import (
 )
 
 const (
-	/*
-	 * Bidirectional Stream Type
-	 */
-	// StreamTypeSession is deprecated in moq-lite-03 and kept only for
-	// transition compatibility.
-	StreamTypeSession   StreamType = 0x0
+	// Bi-directional Stream Types
 	StreamTypeAnnounce  StreamType = 0x1
 	StreamTypeSubscribe StreamType = 0x2
 	StreamTypeFetch     StreamType = 0x3
 	StreamTypeProbe     StreamType = 0x4
 
-	/*
-	 * Unidirectional Stream Type
-	 */
+	// Uni-directional Stream Types
 	StreamTypeGroup StreamType = 0x0
 )
 

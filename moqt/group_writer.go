@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 func newGroupWriter(stream SendStream, sequence GroupSequence, groupManager *groupWriterManager) *GroupWriter {
@@ -63,7 +64,7 @@ func (sgs *GroupWriter) SetWriteDeadline(t time.Time) error {
 
 // CancelWrite cancels the group with the specified GroupErrorCode and triggers callbacks.
 func (sgs *GroupWriter) CancelWrite(code GroupErrorCode) {
-	sgs.stream.CancelWrite(StreamErrorCode(code))
+	sgs.stream.CancelWrite(transport.StreamErrorCode(code))
 
 	if sgs.groupManager != nil {
 		sgs.groupManager.removeGroup(sgs)

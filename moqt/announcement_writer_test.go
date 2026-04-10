@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -215,9 +216,9 @@ func TestAnnouncementWriter_Init_StreamError(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	ctx := context.Background()
 
-	streamError := &StreamError{
+	streamError := &transport.StreamError{
 		StreamID:  StreamID(123),
-		ErrorCode: StreamErrorCode(42),
+		ErrorCode: transport.StreamErrorCode(42),
 	}
 
 	mockStream.On("Context").Return(ctx)
@@ -421,9 +422,9 @@ func TestAnnouncementWriter_SendAnnouncement_WriteError(t *testing.T) {
 		expectAnnErr bool
 	}{
 		"stream error": {
-			writeError: &StreamError{
+			writeError: &transport.StreamError{
 				StreamID:  StreamID(123),
-				ErrorCode: StreamErrorCode(42),
+				ErrorCode: transport.StreamErrorCode(42),
 			},
 			expectAnnErr: true,
 		},
@@ -540,10 +541,10 @@ func TestAnnouncementWriter_CloseWithError(t *testing.T) {
 			errorCode AnnounceErrorCode
 		}{
 			"internal error": {
-				errorCode: InternalAnnounceErrorCode,
+				errorCode: AnnounceErrorCodeInternal,
 			},
 			"duplicated announce error": {
-				errorCode: DuplicatedAnnounceErrorCode,
+				errorCode: AnnounceErrorCodeDuplicated,
 			},
 		}
 
@@ -553,8 +554,8 @@ func TestAnnouncementWriter_CloseWithError(t *testing.T) {
 				ctx := context.Background()
 
 				mockStream.On("Context").Return(ctx)
-				mockStream.On("CancelWrite", StreamErrorCode(tt.errorCode)).Return()
-				mockStream.On("CancelRead", StreamErrorCode(tt.errorCode)).Return()
+				mockStream.On("CancelWrite", transport.StreamErrorCode(tt.errorCode)).Return()
+				mockStream.On("CancelRead", transport.StreamErrorCode(tt.errorCode)).Return()
 
 				sas := newAnnouncementWriter(mockStream, "/test/")
 
@@ -575,8 +576,8 @@ func TestAnnouncementWriter_CloseWithError(t *testing.T) {
 
 		mockStream.On("Context").Return(ctx)
 		mockStream.On("Write", mock.Anything).Return(0, nil).Maybe()
-		mockStream.On("CancelWrite", StreamErrorCode(InternalAnnounceErrorCode)).Return()
-		mockStream.On("CancelRead", StreamErrorCode(InternalAnnounceErrorCode)).Return()
+		mockStream.On("CancelWrite", transport.StreamErrorCode(AnnounceErrorCodeInternal)).Return()
+		mockStream.On("CancelRead", transport.StreamErrorCode(AnnounceErrorCodeInternal)).Return()
 
 		sas := newAnnouncementWriter(mockStream, "/test/")
 
@@ -594,7 +595,7 @@ func TestAnnouncementWriter_CloseWithError(t *testing.T) {
 		assert.Len(t, sas.actives, 1)
 		assert.True(t, ann.IsActive(), "announcement should be active initially")
 
-		err = sas.CloseWithError(InternalAnnounceErrorCode)
+		err = sas.CloseWithError(AnnounceErrorCodeInternal)
 
 		assert.NoError(t, err)
 		assert.Nil(t, sas.actives)
