@@ -456,12 +456,6 @@ func (sess *Session) Probe(bitrate uint64) (uint64, error) {
 	return resp.Bitrate, nil
 }
 
-func goAway(conn StreamConn) {
-	// goAway is a no-op in MOQT. Graceful shutdown is handled by the
-	// underlying QUIC connection close. This method exists for API
-	// compatibility with server/client shutdown logic.
-}
-
 // listenBiStreams accepts bidirectional streams and handles them based on their type.
 // It listens for incoming streams and processes them in separate goroutines.
 // The function handles announce, subscribe, and info streams, and terminates the session

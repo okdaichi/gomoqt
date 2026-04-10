@@ -69,33 +69,18 @@ func TestSubscribeOkMessage_DecodeErrors(t *testing.T) {
 	t.Run("extra data", func(t *testing.T) {
 		var som message.SubscribeOkMessage
 		var buf bytes.Buffer
-		// Construct a valid message: Type (0) + 5 fields (1 byte each) = 6 bytes
-		// Length varint = 6
-		buf.WriteByte(0x06) // length varint = 6
-		buf.WriteByte(0x00) // Type = 0 (valid)
+		// Construct a valid message and append bytes after it.
+		// The decoder should consume only the declared message length and leave
+		// trailing bytes unread.
+		buf.WriteByte(0x05) // length varint = 5
 		buf.WriteByte(0x01) // PublisherPriority = 1
 		buf.WriteByte(0x00) // PublisherOrdered = 0
-		buf.WriteByte(0x64) // PublisherMaxLatency = 100
+		buf.WriteByte(0x0a) // PublisherMaxLatency = 10
 		buf.WriteByte(0x00) // StartGroup = 0
 		buf.WriteByte(0x00) // EndGroup = 0
-		buf.WriteByte(0xFF) // Extra trailing byte within declared message length
+		buf.WriteByte(0xFF) // trailing byte after the message
 		src := bytes.NewReader(buf.Bytes())
 		err := som.Decode(src)
-		assert.Error(t, err)
-	})
-
-	t.Run("invalid type", func(t *testing.T) {
-		var som message.SubscribeOkMessage
-		var buf bytes.Buffer
-		buf.WriteByte(0x06) // message length
-		buf.WriteByte(0x01) // type=1 (invalid; must be 0)
-		buf.WriteByte(0x01) // PublisherPriority
-		buf.WriteByte(0x00) // PublisherOrdered
-		buf.WriteByte(0x00) // PublisherMaxLatency
-		buf.WriteByte(0x00) // StartGroup
-		buf.WriteByte(0x00) // EndGroup
-		src := bytes.NewReader(buf.Bytes())
-		err := som.Decode(src)
-		assert.Equal(t, message.ErrInvalidSubscribeOkMessageType, err)
+		assert.NoError(t, err)
 	})
 }

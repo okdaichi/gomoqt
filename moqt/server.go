@@ -428,9 +428,9 @@ func (s *Server) Close() error {
 	return nil
 }
 
-// Shutdown gracefully shuts down the server. It stops accepting new
-// connections, sends goaway to sessions and waits for active sessions to
-// close, respecting the provided context for timeouts.
+// Shutdown gracefully shuts down the server.
+// It stops accepting new connections, asks active connections to go away,
+// and waits for all tracked connections to close.
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.shuttingDown() {
 		return ErrServerClosed
@@ -452,25 +452,12 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	for conn := range connManager.connections {
 		// Send goaway to sessions concurrently; log potential errors.
 		go func(conn StreamConn) {
-			goAway(conn)
+			goAway(ctx, conn)
 		}(conn)
 	}
 
-	// Wait for sessions to close or context timeout
-	select {
-	case <-connManager.Done():
-		// All sessions closed gracefully
-	case <-ctx.Done():
-		// Context canceled, terminate all sessions forcefully
-		for conn := range connManager.connections {
-			go func(conn StreamConn) {
-				conn.CloseWithError(transport.ConnErrorCode(GoAwayTimeoutErrorCode), SessionErrorText(GoAwayTimeoutErrorCode))
-			}(conn)
-		}
-
-		// Wait for all sessions to close
-		<-connManager.Done()
-	}
+	// Wait for all sessions to close
+	<-connManager.Done()
 
 	// Close WebTransport server (guard against panics from underlying implementations)
 	if s.WebTransportServer != nil {
@@ -496,6 +483,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.listenerMu.Unlock()
 
 	return nil
+}
+
+// goAway waits for either the connection to close naturally or the shutdown
+// context to be canceled, then closes the connection with a timeout error.
+func goAway(ctx context.Context, conn StreamConn) {
+	select {
+	case <-conn.Context().Done():
+		// Connection already closed; nothing to do
+	case <-ctx.Done():
+		// Context canceled, close connection with error
+		conn.CloseWithError(transport.ConnErrorCode(GoAwayTimeoutErrorCode), SessionErrorText(GoAwayTimeoutErrorCode))
+	}
 }
 
 func (s *Server) addListener(ln QUICListener) {
