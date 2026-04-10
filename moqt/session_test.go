@@ -304,6 +304,49 @@ func TestSession_Subscribe(t *testing.T) {
 	}
 }
 
+func TestSession_Subscribe_SubscribeDropAsFirstResponse(t *testing.T) {
+	conn := &MockStreamConn{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+
+	session := newTestSession(conn)
+
+	requestStream := &MockQUICStream{}
+	requestStream.On("Context").Return(context.Background())
+	requestStream.On("Write", mock.Anything).Return(0, nil)
+	requestStream.On("Close").Return(nil)
+	requestStream.On("CancelRead", transport.StreamErrorCode(SubscribeErrorCodeInternal)).Return()
+	requestStream.On("CancelWrite", transport.StreamErrorCode(SubscribeErrorCodeInternal)).Return()
+
+	var response bytes.Buffer
+	require.NoError(t, message.SubscribeDropMessage{
+		StartGroup: 1,
+		EndGroup:   2,
+		ErrorCode:  0,
+	}.Encode(&response))
+	responseData := append([]byte{byte(message.MessageTypeSubscribeDrop)}, response.Bytes()...)
+	requestStream.ReadFunc = func(p []byte) (int, error) {
+		if len(responseData) == 0 {
+			return 0, io.EOF
+		}
+		n := copy(p, responseData)
+		responseData = responseData[n:]
+		return n, nil
+	}
+
+	conn.On("OpenStream").Return(requestStream, nil)
+
+	reader, err := session.Subscribe(context.Background(), testSubscribeRequest(t, &SubscribeConfig{}))
+	require.Error(t, err)
+	assert.Nil(t, reader)
+	assert.ErrorContains(t, err, "unexpected SUBSCRIBE_DROP message received")
+
+	_ = session.CloseWithError(NoError, "")
+}
+
 func TestSession_Subscribe_NilRequest(t *testing.T) {
 	conn := &MockStreamConn{}
 	conn.On("Context").Return(context.Background())
@@ -1276,10 +1319,9 @@ func TestSession_ProcessBiStream_InvalidStreamType(t *testing.T) {
 
 	// Create a mock stream with invalid stream type
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(3))
-	mockStream.On("Close").Return(nil).Maybe()
-	mockStream.On("CancelRead", mock.Anything).Return()
-	mockStream.On("CancelWrite", mock.Anything).Return()
+	mockStream.On("CancelRead", transport.StreamErrorCode(InternalSessionErrorCode)).Return()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(InternalSessionErrorCode)).Return()
+	mockStream.On("Close").Return(nil)
 
 	// Prepare invalid StreamType (255)
 	var buf bytes.Buffer
@@ -1309,6 +1351,7 @@ func TestSession_ProcessBiStream_InvalidStreamType(t *testing.T) {
 	}
 
 	assert.False(t, session.terminating(), "Session should not terminate after invalid bi-stream type")
+	mockStream.AssertExpectations(t)
 }
 
 func TestSession_ProcessBiStream_DecodeStreamTypeError(t *testing.T) {
@@ -1839,7 +1882,6 @@ func TestSession_ProcessUniStream_InvalidStreamType(t *testing.T) {
 
 	// Create a mock receive stream with invalid stream type
 	mockRecvStream := &MockQUICReceiveStream{}
-	mockRecvStream.On("StreamID").Return(transport.StreamID(6))
 	mockRecvStream.On("CancelRead", mock.Anything).Return()
 
 	// Prepare invalid StreamType (254)
@@ -1870,6 +1912,7 @@ func TestSession_ProcessUniStream_InvalidStreamType(t *testing.T) {
 	}
 
 	assert.False(t, session.terminating(), "Session should not terminate after invalid uni-stream type")
+	mockRecvStream.AssertExpectations(t)
 }
 
 func TestSession_ProcessUniStream_DecodeStreamTypeError(t *testing.T) {
