@@ -21,12 +21,23 @@ func newEOFMockStream() *MockQUICStream {
 	}
 }
 
+func newEOFMockStreamWithCleanup(tb testing.TB) *MockQUICStream {
+	tb.Helper()
+	mockStream := newEOFMockStream()
+	tb.Cleanup(func() {
+		mockStream.AssertExpectations(tb)
+	})
+	return mockStream
+}
+
 func newTestSendSubscribeStream(stream transport.Stream, config *SubscribeConfig) *sendSubscribeStream {
 	if config == nil {
 		config = &SubscribeConfig{}
 	}
 
-	return newSendSubscribeStream(SubscribeID(1), stream, config, nil)
+	substr := newSendSubscribeStream(SubscribeID(1), stream, config, nil)
+	substr.startResponseLoop()
+	return substr
 }
 
 func TestNewSendSubscribeStream(t *testing.T) {
@@ -85,7 +96,7 @@ func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 	config := &SubscribeConfig{
 		Priority: TrackPriority(1),
 	}
-	mockStream := newEOFMockStream()
+	mockStream := newEOFMockStreamWithCleanup(t)
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
 	sss := newTestSendSubscribeStream(mockStream, config)
@@ -102,7 +113,6 @@ func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 	updatedConfig := sss.TrackConfig()
 	assert.Equal(t, newConfig.Priority, updatedConfig.Priority, "TrackPriority should be updated")
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestSendSubscribeStream_UpdateSubscribe_NilConfigNoOp(t *testing.T) {
@@ -250,7 +260,7 @@ func TestSendSubscribeStream_UpdateSubscribeWriteError(t *testing.T) {
 	config := &SubscribeConfig{
 		Priority: TrackPriority(1),
 	}
-	mockStream := newEOFMockStream()
+	mockStream := newEOFMockStreamWithCleanup(t)
 
 	// Mock Write to return an error
 	mockStream.On("Write", mock.Anything).Return(0, assert.AnError)
@@ -266,12 +276,11 @@ func TestSendSubscribeStream_UpdateSubscribeWriteError(t *testing.T) {
 	err := sss.updateSubscribe(newConfig)
 	assert.Error(t, err, "updateSubscribe() should return error when Write fails")
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestSendSubscribeStream_UpdateSubscribeClosedStream(t *testing.T) {
 	config := &SubscribeConfig{}
-	mockStream := newEOFMockStream()
+	mockStream := newEOFMockStreamWithCleanup(t)
 
 	mockStream.On("Write", mock.Anything).Return(0, io.EOF)
 	mockStream.On("CancelWrite", transport.StreamErrorCode(SubscribeErrorCodeInternal)).Return()
@@ -292,7 +301,6 @@ func TestSendSubscribeStream_UpdateSubscribeClosedStream(t *testing.T) {
 	err = sss.updateSubscribe(newConfig)
 	assert.Error(t, err, "updateSubscribe() should return error on closed stream")
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestSendSubscribeStream_CloseAlreadyClosed(t *testing.T) {
@@ -357,7 +365,7 @@ func TestSendSubscribeStream_UpdateSubscribeValidRangeTransitions(t *testing.T) 
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := newEOFMockStream()
+			mockStream := newEOFMockStreamWithCleanup(t)
 
 			if !tt.expectError {
 				mockStream.On("Write", mock.Anything).Return(0, nil)
@@ -375,7 +383,6 @@ func TestSendSubscribeStream_UpdateSubscribeValidRangeTransitions(t *testing.T) 
 				assert.Equal(t, tt.newConfig.Priority, updatedConfig.Priority, "config should be updated")
 			}
 
-			mockStream.AssertExpectations(t)
 		})
 	}
 }

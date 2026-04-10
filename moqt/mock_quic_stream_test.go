@@ -15,8 +15,11 @@ var _ transport.Stream = (*MockQUICStream)(nil)
 // MockQUICStream is a mock implementation of Stream using testify/mock
 type MockQUICStream struct {
 	mock.Mock
-	ReadFunc  func(p []byte) (n int, err error)
-	WriteFunc func(p []byte) (n int, err error)
+	ReadFunc             func(p []byte) (n int, err error)
+	WriteFunc            func(p []byte) (n int, err error)
+	SetReadDeadlineFunc  func(t time.Time) error
+	SetWriteDeadlineFunc func(t time.Time) error
+	SetDeadlineFunc      func(t time.Time) error
 	// internal cancellable context returned by Context()
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -84,16 +87,24 @@ func (m *MockQUICStream) CancelWrite(code transport.StreamErrorCode) {
 }
 
 func (m *MockQUICStream) SetReadDeadline(t time.Time) error {
-	args := m.Called(t)
-	return args.Error(0)
+	if m.SetReadDeadlineFunc != nil {
+		return m.SetReadDeadlineFunc(t)
+	}
+	return nil
 }
 
 func (m *MockQUICStream) SetWriteDeadline(t time.Time) error {
+	if m.SetWriteDeadlineFunc != nil {
+		return m.SetWriteDeadlineFunc(t)
+	}
 	args := m.Called(t)
 	return args.Error(0)
 }
 
 func (m *MockQUICStream) SetDeadline(t time.Time) error {
+	if m.SetDeadlineFunc != nil {
+		return m.SetDeadlineFunc(t)
+	}
 	args := m.Called(t)
 	return args.Error(0)
 }

@@ -9,18 +9,22 @@ import (
 
 func newSendSubscribeStream(id SubscribeID, stream transport.Stream, initConfig *SubscribeConfig, dropHandler func(SubscribeDrop)) *sendSubscribeStream {
 	substr := &sendSubscribeStream{
-		id:            id,
-		config:        initConfig,
-		stream:        stream,
-		wroteInfoChan: make(chan struct{}, 1),
-		dropHandler:   dropHandler,
+		id:          id,
+		config:      initConfig,
+		stream:      stream,
+		dropHandler: dropHandler,
 	}
 
+	return substr
+}
+
+func (substr *sendSubscribeStream) startResponseLoop() {
 	go func() {
 		for {
-			ok, drop, err := readSubscribeResponse(stream)
+			ok, drop, err := readSubscribeResponse(substr.stream)
 			if err != nil {
-				// Handle error (e.g., log it, close the stream, etc.)
+				// errors are ignored after first SUBSCRIBE_OK has been consumed
+				// by Session.Subscribe.
 				return
 			}
 
@@ -29,26 +33,23 @@ func newSendSubscribeStream(id SubscribeID, stream transport.Stream, initConfig 
 					Priority:   TrackPriority(ok.PublisherPriority),
 					Ordered:    boolFromWireFlag(ok.PublisherOrdered),
 					MaxLatency: ok.PublisherMaxLatency,
-					StartGroup: GroupSequence(ok.StartGroup),
-					EndGroup:   GroupSequence(ok.EndGroup),
+					StartGroup: groupSequenceFromWire(ok.StartGroup),
+					EndGroup:   groupSequenceFromWire(ok.EndGroup),
 				})
 				continue
 			}
 
 			if drop != nil {
-				converted := SubscribeDrop{
-					ErrorCode: SubscribeErrorCode(drop.ErrorCode),
-				}
-				converted.StartGroup = groupSequenceFromWire(drop.StartGroup)
-				converted.EndGroup = groupSequenceFromWire(drop.EndGroup)
-				substr.notifyDrop(converted)
+				substr.notifyDrop(SubscribeDrop{
+					StartGroup: groupSequenceFromWire(drop.StartGroup),
+					EndGroup:   groupSequenceFromWire(drop.EndGroup),
+					ErrorCode:  SubscribeErrorCode(drop.ErrorCode),
+				})
 				return
 			}
 		}
 
 	}()
-
-	return substr
 }
 
 type sendSubscribeStream struct {
@@ -56,9 +57,7 @@ type sendSubscribeStream struct {
 
 	config *SubscribeConfig
 
-	info *PublishInfo
-
-	wroteInfoChan chan struct{}
+	info PublishInfo
 
 	mu     sync.Mutex
 	dropMu sync.Mutex
@@ -86,11 +85,7 @@ func (substr *sendSubscribeStream) updateInfo(newInfo PublishInfo) {
 	substr.mu.Lock()
 	defer substr.mu.Unlock()
 
-	substr.info = &newInfo
-	select {
-	case substr.wroteInfoChan <- struct{}{}:
-	default:
-	}
+	substr.info = newInfo
 }
 
 func (substr *sendSubscribeStream) updateSubscribe(newConfig *SubscribeConfig) error {
@@ -162,7 +157,7 @@ func (substr *sendSubscribeStream) setDropHandler(handler func(SubscribeDrop)) {
 }
 
 func (substr *sendSubscribeStream) ReadInfo() PublishInfo {
-	return *substr.info
+	return substr.info
 }
 
 func (substr *sendSubscribeStream) close() error {

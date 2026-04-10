@@ -219,15 +219,39 @@ func (s *Session) Subscribe(ctx context.Context, req *SubscribeRequest) (*TrackR
 
 	track := newTrackReader(req, substr, func() { s.removeTrackReader(id) })
 	s.addTrackReader(id, track)
-
 	ctx, cancel := context.WithTimeout(ctx, s.timeout())
 	defer cancel()
-	select {
-	case <-substr.wroteInfoChan:
-	case <-ctx.Done():
-		track.CloseWithError(SubscribeErrorCodeTimeout)
-		return nil, fmt.Errorf("subscription timed out: %w", ctx.Err())
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = stream.SetReadDeadline(deadline)
+		defer stream.SetReadDeadline(time.Time{})
 	}
+
+	okMsg, dropMsg, err := readSubscribeResponse(stream)
+	if err != nil {
+		if ctx.Err() != nil {
+			cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeTimeout))
+			return nil, fmt.Errorf("subscription timed out: %w", ctx.Err())
+		}
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
+			return nil, &SubscribeError{StreamError: strErr}
+		}
+		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
+		return nil, fmt.Errorf("failed to read SUBSCRIBE response: %w", err)
+	}
+
+	if dropMsg != nil {
+		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
+		return nil, fmt.Errorf("moqt: unexpected SUBSCRIBE_DROP message received")
+	}
+
+	substr.updateInfo(PublishInfo{
+		Priority:   TrackPriority(okMsg.PublisherPriority),
+		Ordered:    boolFromWireFlag(okMsg.PublisherOrdered),
+		MaxLatency: okMsg.PublisherMaxLatency,
+		StartGroup: groupSequenceFromWire(okMsg.StartGroup),
+		EndGroup:   groupSequenceFromWire(okMsg.EndGroup),
+	})
+	substr.startResponseLoop()
 
 	return track, nil
 }
@@ -541,10 +565,6 @@ func (sess *Session) processBiStream(stream transport.Stream) {
 		}
 
 		handler := sess.fetchHandler
-		if handler == nil {
-			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
-			return
-		}
 
 		req := &FetchRequest{
 			BroadcastPath: BroadcastPath(fm.BroadcastPath),
@@ -554,8 +574,10 @@ func (sess *Session) processBiStream(stream transport.Stream) {
 		}
 
 		w := newGroupWriter(stream, req.GroupSequence, nil)
-
-		handler.ServeFetch(w, req)
+		if safeServeFetch(handler, w, req) {
+			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
+			return
+		}
 	case message.StreamTypeProbe:
 		if err := sess.handleProbeStream(stream); err != nil {
 			cancelStreamWithError(stream, transport.StreamErrorCode(ProbeErrorCodeInternal))

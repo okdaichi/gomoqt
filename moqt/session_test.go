@@ -1484,6 +1484,100 @@ func TestSession_ProcessBiStream_Fetch(t *testing.T) {
 	_ = session.CloseWithError(NoError, "")
 }
 
+func TestSession_ProcessBiStream_FetchTypedNilHandler(t *testing.T) {
+	conn := &MockStreamConn{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil).Maybe()
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	session := newTestSession(conn)
+
+	var f FetchHandlerFunc
+	session.fetchHandler = f
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background()).Maybe()
+	mockStream.On("Close").Return(nil).Maybe()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(FetchErrorCodeInternal)).Return().Once()
+	mockStream.On("CancelRead", transport.StreamErrorCode(FetchErrorCodeInternal)).Return().Once()
+
+	var buf bytes.Buffer
+	require.NoError(t, message.StreamTypeFetch.Encode(&buf))
+	req := message.FetchMessage{
+		BroadcastPath: "/test/path",
+		TrackName:     "video",
+		Priority:      3,
+		GroupSequence: 42,
+	}
+	require.NoError(t, req.Encode(&buf))
+
+	data := buf.Bytes()
+	mockStream.ReadFunc = func(p []byte) (int, error) {
+		if len(data) == 0 {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		data = data[n:]
+		return n, nil
+	}
+
+	session.processBiStream(mockStream)
+
+	mockStream.AssertExpectations(t)
+	_ = session.CloseWithError(NoError, "")
+}
+
+func TestSession_ProcessBiStream_FetchHandlerPanic(t *testing.T) {
+	conn := &MockStreamConn{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil).Maybe()
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	session := newTestSession(conn)
+
+	called := false
+	session.fetchHandler = FetchHandlerFunc(func(w *GroupWriter, r *FetchRequest) {
+		called = true
+		panic("boom")
+	})
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Close").Return(nil).Maybe()
+	mockStream.On("CancelWrite", transport.StreamErrorCode(FetchErrorCodeInternal)).Return().Once()
+	mockStream.On("CancelRead", transport.StreamErrorCode(FetchErrorCodeInternal)).Return().Once()
+
+	var buf bytes.Buffer
+	require.NoError(t, message.StreamTypeFetch.Encode(&buf))
+	req := message.FetchMessage{
+		BroadcastPath: "/test/path",
+		TrackName:     "video",
+		Priority:      3,
+		GroupSequence: 42,
+	}
+	require.NoError(t, req.Encode(&buf))
+
+	data := buf.Bytes()
+	mockStream.ReadFunc = func(p []byte) (int, error) {
+		if len(data) == 0 {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		data = data[n:]
+		return n, nil
+	}
+
+	session.processBiStream(mockStream)
+
+	assert.True(t, called, "fetch handler should be called")
+	mockStream.AssertExpectations(t)
+	_ = session.CloseWithError(NoError, "")
+}
+
 func TestSession_Probe(t *testing.T) {
 	conn := &MockStreamConn{}
 	conn.On("Context").Return(context.Background())

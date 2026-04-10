@@ -12,6 +12,15 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+func newMockReceiveStreamWithCleanup(tb testing.TB) *MockQUICReceiveStream {
+	tb.Helper()
+	mockStream := &MockQUICReceiveStream{}
+	tb.Cleanup(func() {
+		mockStream.AssertExpectations(tb)
+	})
+	return mockStream
+}
+
 func TestNewReceiveGroupStream(t *testing.T) {
 	tests := map[string]struct {
 		sequence    GroupSequence
@@ -33,7 +42,7 @@ func TestNewReceiveGroupStream(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICReceiveStream{}
+			mockStream := newMockReceiveStreamWithCleanup(t)
 
 			rgs := newGroupReader(tt.sequence, mockStream, nil)
 
@@ -68,7 +77,7 @@ func TestReceiveGroupStream_GroupSequence(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICReceiveStream{}
+			mockStream := newMockReceiveStreamWithCleanup(t)
 			rgs := newGroupReader(tt.sequence, mockStream, nil)
 
 			result := rgs.GroupSequence()
