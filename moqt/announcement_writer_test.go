@@ -217,7 +217,7 @@ func TestAnnouncementWriter_Init_StreamError(t *testing.T) {
 	ctx := context.Background()
 
 	streamError := &transport.StreamError{
-		StreamID:  StreamID(123),
+		StreamID:  transport.StreamID(123),
 		ErrorCode: transport.StreamErrorCode(42),
 	}
 
@@ -423,7 +423,7 @@ func TestAnnouncementWriter_SendAnnouncement_WriteError(t *testing.T) {
 	}{
 		"stream error": {
 			writeError: &transport.StreamError{
-				StreamID:  StreamID(123),
+				StreamID:  transport.StreamID(123),
 				ErrorCode: transport.StreamErrorCode(42),
 			},
 			expectAnnErr: true,

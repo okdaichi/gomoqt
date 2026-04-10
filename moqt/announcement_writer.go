@@ -10,7 +10,7 @@ import (
 )
 
 // newAnnouncementWriter creates a new AnnouncementWriter for the given stream and prefix.
-func newAnnouncementWriter(stream Stream, prefix prefix) *AnnouncementWriter {
+func newAnnouncementWriter(stream transport.Stream, prefix prefix) *AnnouncementWriter {
 	if !isValidPrefix(prefix) {
 		panic("invalid prefix for AnnouncementWriter")
 	}
@@ -30,7 +30,7 @@ func newAnnouncementWriter(stream Stream, prefix prefix) *AnnouncementWriter {
 // It handles initialization, sending active announcements, and cleanup.
 type AnnouncementWriter struct {
 	prefix prefix
-	stream Stream
+	stream transport.Stream
 	ctx    context.Context
 
 	mu      sync.RWMutex

@@ -178,7 +178,7 @@ func TestGroupWriter_CloseWithStreamError(t *testing.T) {
 		mockStream := &MockQUICSendStream{}
 		mockStream.On("Context").Return(context.Background())
 
-		streamID := StreamID(123)
+		streamID := transport.StreamID(123)
 		streamErr := &transport.StreamError{
 			StreamID:  streamID,
 			ErrorCode: transport.StreamErrorCode(42),

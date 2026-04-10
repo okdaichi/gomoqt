@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-var _ Stream = (*MockQUICStream)(nil)
+var _ transport.Stream = (*MockQUICStream)(nil)
 
 // MockQUICStream is a mock implementation of Stream using testify/mock
 type MockQUICStream struct {
@@ -23,20 +23,20 @@ type MockQUICStream struct {
 	mu     sync.Mutex
 }
 
-func (m *MockQUICStream) StreamID() (id StreamID) {
+func (m *MockQUICStream) StreamID() (id transport.StreamID) {
 	// Recover from testify/mock panic when method is called without an expectation.
 	// This makes tests more resilient to logging calls that reference StreamID().
 	defer func() {
 		if r := recover(); r != nil {
-			id = StreamID(0)
+			id = transport.StreamID(0)
 		}
 	}()
 
 	args := m.Called()
 	if len(args) == 0 || args.Get(0) == nil {
-		return StreamID(0)
+		return transport.StreamID(0)
 	}
-	return args.Get(0).(StreamID)
+	return args.Get(0).(transport.StreamID)
 }
 
 func (m *MockQUICStream) Read(p []byte) (n int, err error) {

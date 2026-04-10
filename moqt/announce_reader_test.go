@@ -239,7 +239,7 @@ func TestAnnouncementReader_CloseWithError(t *testing.T) {
 	// Add the stream type to the context like newAnnouncementReader does
 	ctx = context.WithValue(ctx, biStreamTypeCtxKey, message.StreamTypeAnnounce)
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(StreamID(123))
+	mockStream.On("StreamID").Return(transport.StreamID(123))
 	mockStream.On("Context").Return(ctx)
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("CancelRead", mock.Anything).Return()
@@ -268,7 +268,7 @@ func TestAnnouncementReader_CloseWithError(t *testing.T) {
 func TestAnnouncementReader_CloseWithError_MultipleClose(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(StreamID(123))
+	mockStream.On("StreamID").Return(transport.StreamID(123))
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Run(func(args mock.Arguments) {
@@ -919,7 +919,7 @@ func TestAnnouncementReader_StreamErrors(t *testing.T) {
 		"quic_stream_error": {
 			setupError: func() error {
 				return &transport.StreamError{
-					StreamID:  StreamID(123),
+					StreamID:  transport.StreamID(123),
 					ErrorCode: transport.StreamErrorCode(42),
 				}
 			},

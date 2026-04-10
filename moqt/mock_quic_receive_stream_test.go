@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-var _ ReceiveStream = (*MockQUICReceiveStream)(nil)
+var _ transport.ReceiveStream = (*MockQUICReceiveStream)(nil)
 
 // MockQUICReceiveStream is a mock implementation of ReceiveStream using testify/mock
 type MockQUICReceiveStream struct {
@@ -15,7 +15,7 @@ type MockQUICReceiveStream struct {
 	ReadFunc func(p []byte) (n int, err error)
 }
 
-func (m *MockQUICReceiveStream) StreamID() StreamID {
+func (m *MockQUICReceiveStream) StreamID() transport.StreamID {
 	// Prevent panic when no expectation was provided for StreamID() calls.
 	defer func() {
 		if r := recover(); r != nil {
@@ -24,9 +24,9 @@ func (m *MockQUICReceiveStream) StreamID() StreamID {
 	}()
 	args := m.Called()
 	if len(args) == 0 || args.Get(0) == nil {
-		return StreamID(0)
+		return transport.StreamID(0)
 	}
-	return args.Get(0).(StreamID)
+	return args.Get(0).(transport.StreamID)
 }
 
 func (m *MockQUICReceiveStream) Read(p []byte) (n int, err error) {

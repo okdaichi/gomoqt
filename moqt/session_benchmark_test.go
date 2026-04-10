@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -29,9 +30,9 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 
 			// Mock OpenStream to return streams that will complete the subscribe handshake
 			streamIndex := 0
-			conn.OpenStreamFunc = func() (Stream, error) {
+			conn.OpenStreamFunc = func() (transport.Stream, error) {
 				mockBiStream := &MockQUICStream{}
-				mockBiStream.On("StreamID").Return(StreamID(streamIndex))
+				mockBiStream.On("StreamID").Return(transport.StreamID(streamIndex))
 				streamIndex++
 				mockBiStream.On("Context").Return(context.Background())
 
@@ -106,12 +107,12 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 
 			var streamMu sync.Mutex
 			streamIndex := 0
-			conn.OpenStreamFunc = func() (Stream, error) {
+			conn.OpenStreamFunc = func() (transport.Stream, error) {
 				streamMu.Lock()
 				defer streamMu.Unlock()
 
 				mockBiStream := &MockQUICStream{}
-				mockBiStream.On("StreamID").Return(StreamID(streamIndex))
+				mockBiStream.On("StreamID").Return(transport.StreamID(streamIndex))
 				streamIndex++
 				mockBiStream.On("Context").Return(context.Background())
 				mockBiStream.WriteFunc = func(b []byte) (int, error) {
@@ -181,7 +182,7 @@ func BenchmarkSession_TrackReaderOperations(b *testing.B) {
 		// Create mock subscribe stream
 		mockSubStream := &MockQUICStream{}
 		mockSubStream.On("Context").Return(context.Background())
-		mockSubStream.On("StreamID").Return(StreamID(i))
+		mockSubStream.On("StreamID").Return(transport.StreamID(i))
 
 		substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{}, nil)
 		req := testSubscribeRequest(b, nil)
@@ -218,14 +219,14 @@ func BenchmarkSession_TrackWriterOperations(b *testing.B) {
 		// Create mock subscribe stream
 		mockSubStream := &MockQUICStream{}
 		mockSubStream.On("Context").Return(context.Background())
-		mockSubStream.On("StreamID").Return(StreamID(i))
+		mockSubStream.On("StreamID").Return(transport.StreamID(i))
 
 		substr := newReceiveSubscribeStream(id, mockSubStream, &SubscribeConfig{})
 		trackWriter := newTrackWriter(
 			BroadcastPath("/test"),
 			TrackName("track"),
 			substr,
-			func() (SendStream, error) { return nil, nil },
+			func() (transport.SendStream, error) { return nil, nil },
 			func() {},
 		)
 
@@ -261,7 +262,7 @@ func BenchmarkSession_MapLookup(b *testing.B) {
 				id := SubscribeID(i)
 				mockSubStream := &MockQUICStream{}
 				mockSubStream.On("Context").Return(context.Background())
-				mockSubStream.On("StreamID").Return(StreamID(i))
+				mockSubStream.On("StreamID").Return(transport.StreamID(i))
 
 				substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{}, nil)
 				req := testSubscribeRequest(b, nil)
@@ -314,7 +315,7 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 					id := SubscribeID(j)
 					mockSubStream := &MockQUICStream{}
 					mockSubStream.On("Context").Return(context.Background())
-					mockSubStream.On("StreamID").Return(StreamID(j))
+					mockSubStream.On("StreamID").Return(transport.StreamID(j))
 
 					substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{}, PublishInfo{}, nil)
 					req := testSubscribeRequest(b, nil)

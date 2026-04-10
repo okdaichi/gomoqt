@@ -7,7 +7,7 @@ import (
 	"github.com/okdaichi/gomoqt/transport"
 )
 
-func newReceiveSubscribeStream(id SubscribeID, stream Stream, config *SubscribeConfig) *receiveSubscribeStream {
+func newReceiveSubscribeStream(id SubscribeID, stream transport.Stream, config *SubscribeConfig) *receiveSubscribeStream {
 	substr := &receiveSubscribeStream{
 		subscribeID: id,
 		config:      config,
@@ -52,7 +52,7 @@ func newReceiveSubscribeStream(id SubscribeID, stream Stream, config *SubscribeC
 type receiveSubscribeStream struct {
 	subscribeID SubscribeID
 
-	stream Stream
+	stream transport.Stream
 
 	acceptOnce sync.Once
 	// writeInfoWG tracks active WriteInfo calls so close waits for them.

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-var _ SendStream = (*MockQUICSendStream)(nil)
+var _ transport.SendStream = (*MockQUICSendStream)(nil)
 
 // MockQUICSendStream is a mock implementation of SendStream using testify/mock
 type MockQUICSendStream struct {
@@ -16,7 +16,7 @@ type MockQUICSendStream struct {
 	WriteFunc func(p []byte) (n int, err error)
 }
 
-func (m *MockQUICSendStream) StreamID() StreamID {
+func (m *MockQUICSendStream) StreamID() transport.StreamID {
 	// Recover from testify/mock panic when no expectation is provided and
 	// default to zero StreamID which is safe for logging purposes.
 	defer func() {
@@ -26,9 +26,9 @@ func (m *MockQUICSendStream) StreamID() StreamID {
 	}()
 	args := m.Called()
 	if len(args) == 0 || args.Get(0) == nil {
-		return StreamID(0)
+		return transport.StreamID(0)
 	}
-	return args.Get(0).(StreamID)
+	return args.Get(0).(transport.StreamID)
 }
 
 func (m *MockQUICSendStream) Write(p []byte) (n int, err error) {

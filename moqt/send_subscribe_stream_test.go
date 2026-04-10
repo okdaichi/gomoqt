@@ -21,7 +21,7 @@ func newEOFMockStream() *MockQUICStream {
 	}
 }
 
-func newTestSendSubscribeStream(stream Stream, config *SubscribeConfig) *sendSubscribeStream {
+func newTestSendSubscribeStream(stream transport.Stream, config *SubscribeConfig) *sendSubscribeStream {
 	if config == nil {
 		config = &SubscribeConfig{}
 	}

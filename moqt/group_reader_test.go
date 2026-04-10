@@ -201,12 +201,12 @@ func TestReceiveGroupStream_ReadFrame_StreamError(t *testing.T) {
 	mockStream := &MockQUICReceiveStream{
 		ReadFunc: func(p []byte) (int, error) {
 			return 0, &transport.StreamError{
-				StreamID:  StreamID(123),
+				StreamID:  transport.StreamID(123),
 				ErrorCode: transport.StreamErrorCode(1),
 			}
 		},
 	}
-	mockStream.On("StreamID").Return(StreamID(123))
+	mockStream.On("StreamID").Return(transport.StreamID(123))
 
 	rgs := newGroupReader(123, mockStream, nil)
 	frame := NewFrame(0)

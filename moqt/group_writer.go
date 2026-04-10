@@ -8,7 +8,7 @@ import (
 	"github.com/okdaichi/gomoqt/transport"
 )
 
-func newGroupWriter(stream SendStream, sequence GroupSequence, groupManager *groupWriterManager) *GroupWriter {
+func newGroupWriter(stream transport.SendStream, sequence GroupSequence, groupManager *groupWriterManager) *GroupWriter {
 	w := &GroupWriter{
 		sequence:     sequence,
 		groupManager: groupManager,
@@ -29,7 +29,7 @@ type GroupWriter struct {
 	sequence GroupSequence
 
 	ctx    context.Context
-	stream SendStream
+	stream transport.SendStream
 
 	frameCount uint64 // Number of frames sent on this stream
 

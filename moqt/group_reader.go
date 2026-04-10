@@ -9,7 +9,7 @@ import (
 	"github.com/okdaichi/gomoqt/transport"
 )
 
-func newGroupReader(sequence GroupSequence, stream ReceiveStream, groupManager *groupReaderManager) *GroupReader {
+func newGroupReader(sequence GroupSequence, stream transport.ReceiveStream, groupManager *groupReaderManager) *GroupReader {
 	r := &GroupReader{
 		sequence:     sequence,
 		stream:       stream,
@@ -28,7 +28,7 @@ func newGroupReader(sequence GroupSequence, stream ReceiveStream, groupManager *
 type GroupReader struct {
 	sequence GroupSequence
 
-	stream     ReceiveStream
+	stream     transport.ReceiveStream
 	frameCount int64
 
 	groupManager *groupReaderManager

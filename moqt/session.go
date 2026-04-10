@@ -476,7 +476,7 @@ func (sess *Session) handleBiStreams() {
 	}
 }
 
-func (sess *Session) processBiStream(stream Stream) {
+func (sess *Session) processBiStream(stream transport.Stream) {
 	var streamType message.StreamType
 	err := streamType.Decode(stream)
 	if err != nil {
@@ -582,7 +582,7 @@ func (sess *Session) handleUniStreams() {
 	}
 }
 
-func (sess *Session) processUniStream(stream ReceiveStream) {
+func (sess *Session) processUniStream(stream transport.ReceiveStream) {
 	var streamType message.StreamType
 	err := streamType.Decode(stream)
 	if err != nil {
@@ -640,12 +640,12 @@ func (s *Session) removeTrackReader(id SubscribeID) {
 	delete(s.trackReaders, id)
 }
 
-func cancelStreamWithError(stream Stream, code transport.StreamErrorCode) {
+func cancelStreamWithError(stream transport.Stream, code transport.StreamErrorCode) {
 	stream.CancelRead(code)
 	stream.CancelWrite(code)
 }
 
-func (sess *Session) handleProbeStream(stream Stream) error {
+func (sess *Session) handleProbeStream(stream transport.Stream) error {
 	provider, ok := sess.probeStatsProvider()
 	if !ok {
 		return errors.New("probe unsupported")

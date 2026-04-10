@@ -56,7 +56,7 @@ func newTrackWriter(
 	broadcastPath BroadcastPath,
 	trackName TrackName,
 	subscribeStream *receiveSubscribeStream,
-	openUniStreamFunc func() (SendStream, error),
+	openUniStreamFunc func() (transport.SendStream, error),
 	onCloseTrackFunc func(),
 ) *TrackWriter {
 	streamCtx := subscribeStream.stream.Context()
@@ -90,7 +90,7 @@ type TrackWriter struct {
 	// groupSequence is atomically incremented for each OpenGroup call
 	groupSequence atomic.Uint64
 
-	openUniStreamFunc func() (SendStream, error)
+	openUniStreamFunc func() (transport.SendStream, error)
 
 	onCloseTrackFunc func()
 
@@ -124,6 +124,10 @@ func (w *TrackWriter) Close() error {
 		w.onCloseTrackFunc = nil
 	}
 
+	if w.subscribeStream == nil {
+		return nil
+	}
+
 	return w.subscribeStream.close()
 }
 
@@ -151,7 +155,9 @@ func (w *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 		w.onCloseTrackFunc = nil
 	}
 
-	w.subscribeStream.closeWithError(code)
+	if w.subscribeStream != nil {
+		w.subscribeStream.closeWithError(code)
+	}
 }
 
 // OpenGroup opens a new group with an automatically incremented sequence number
@@ -198,6 +204,10 @@ func (w *TrackWriter) WriteInfo(info PublishInfo) error {
 }
 
 func (w *TrackWriter) TrackConfig() *SubscribeConfig {
+	if w.subscribeStream == nil {
+		return &SubscribeConfig{}
+	}
+
 	return w.subscribeStream.TrackConfig()
 }
 

@@ -7,7 +7,7 @@ import (
 	"github.com/okdaichi/gomoqt/transport"
 )
 
-func newSendSubscribeStream(id SubscribeID, stream Stream, initConfig *SubscribeConfig, info PublishInfo, dropHandler func(SubscribeDrop)) *sendSubscribeStream {
+func newSendSubscribeStream(id SubscribeID, stream transport.Stream, initConfig *SubscribeConfig, info PublishInfo, dropHandler func(SubscribeDrop)) *sendSubscribeStream {
 
 	substr := &sendSubscribeStream{
 		id:            id,
@@ -54,7 +54,7 @@ func newSendSubscribeStream(id SubscribeID, stream Stream, initConfig *Subscribe
 }
 
 type sendSubscribeStream struct {
-	stream Stream
+	stream transport.Stream
 
 	config *SubscribeConfig
 

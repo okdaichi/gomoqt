@@ -43,7 +43,7 @@ func newTrackReader(request *SubscribeRequest, subscribeStream *sendSubscribeStr
 		queuedCh:            make(chan struct{}, 1),
 		queueing: make([]struct {
 			sequence GroupSequence
-			stream   ReceiveStream
+			stream   transport.ReceiveStream
 		}, 0, 1<<3),
 		dequeued:     make(map[*GroupReader]struct{}),
 		groupManager: newGroupReaderManager(),
@@ -65,7 +65,7 @@ type TrackReader struct {
 
 	queueing []struct {
 		sequence GroupSequence
-		stream   ReceiveStream
+		stream   transport.ReceiveStream
 	}
 	queuedCh chan struct{}
 	trackMu  sync.Mutex
@@ -198,7 +198,7 @@ func (r *TrackReader) Update(config *SubscribeConfig) error {
 	return r.sendSubscribeStream.updateSubscribe(config)
 }
 
-func (r *TrackReader) enqueueGroup(sequence GroupSequence, stream ReceiveStream) {
+func (r *TrackReader) enqueueGroup(sequence GroupSequence, stream transport.ReceiveStream) {
 	if stream == nil {
 		return
 	}
@@ -213,7 +213,7 @@ func (r *TrackReader) enqueueGroup(sequence GroupSequence, stream ReceiveStream)
 
 	entry := struct {
 		sequence GroupSequence
-		stream   ReceiveStream
+		stream   transport.ReceiveStream
 	}{
 		sequence: sequence,
 		stream:   stream,

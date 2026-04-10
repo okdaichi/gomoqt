@@ -135,7 +135,7 @@ func TestMux_Announce_WithNilHandler_ClosesTrack(t *testing.T) {
 	mockStream.On("CancelRead", transport.StreamErrorCode(SubscribeErrorCodeNotFound)).Return().Once()
 	mockStream.On("Close").Return(nil).Maybe()
 
-	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() Stream { return mockStream }(), &SubscribeConfig{}), func() (SendStream, error) {
+	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream { return mockStream }(), &SubscribeConfig{}), func() (transport.SendStream, error) {
 		return &MockQUICSendStream{}, nil
 	}, func() {})
 
@@ -159,7 +159,7 @@ func TestMux_ServeTrack_NotFound_ClosesWithError(t *testing.T) {
 	mockStream.On("CancelRead", transport.StreamErrorCode(SubscribeErrorCodeNotFound)).Return().Once()
 	mockStream.On("Close").Return(nil).Maybe()
 
-	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() Stream { return mockStream }(), &SubscribeConfig{}), func() (SendStream, error) {
+	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream { return mockStream }(), &SubscribeConfig{}), func() (transport.SendStream, error) {
 		return &MockQUICSendStream{}, nil
 	}, func() {})
 
@@ -675,7 +675,7 @@ func TestNotFound(t *testing.T) {
 		},
 		"track writer with mock TrackWriter": {
 			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"),
-				newReceiveSubscribeStream(SubscribeID(1), func() Stream {
+				newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream {
 					mockStream := &MockQUICStream{}
 					mockStream.On("Context").Return(context.Background())
 					mockStream.On("Read", mock.Anything).Return(0, io.EOF)
@@ -683,7 +683,7 @@ func TestNotFound(t *testing.T) {
 					mockStream.On("CancelRead", mock.Anything).Return()
 					return mockStream
 				}(), &SubscribeConfig{}),
-				func() (SendStream, error) {
+				func() (transport.SendStream, error) {
 					return &MockQUICSendStream{}, nil
 				}, func() {}),
 			expectPanic: false,
@@ -713,7 +713,7 @@ func TestNotFoundHandler(t *testing.T) {
 		},
 		"track writer with mock TrackWriter": {
 			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"),
-				newReceiveSubscribeStream(SubscribeID(1), func() Stream {
+				newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream {
 					mockStream := &MockQUICStream{}
 					mockStream.On("Context").Return(context.Background())
 					mockStream.On("Read", mock.Anything).Return(0, io.EOF)
@@ -721,7 +721,7 @@ func TestNotFoundHandler(t *testing.T) {
 					mockStream.On("CancelRead", mock.Anything).Return()
 					return mockStream
 				}(), &SubscribeConfig{}),
-				func() (SendStream, error) {
+				func() (transport.SendStream, error) {
 					return &MockQUICSendStream{}, nil
 				}, func() {}),
 			expectPanic: false,
@@ -749,13 +749,13 @@ func TestTrackHandlerFunc(t *testing.T) {
 
 	// Create a proper TrackWriter with a valid receiveSubscribeStream
 	testTrackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"),
-		newReceiveSubscribeStream(SubscribeID(1), func() Stream {
+		newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream {
 			mockStream := &MockQUICStream{}
 			mockStream.On("Context").Return(context.Background())
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 			return mockStream
 		}(), &SubscribeConfig{}),
-		func() (SendStream, error) {
+		func() (transport.SendStream, error) {
 			return &MockQUICSendStream{}, nil
 		}, func() {})
 
@@ -774,13 +774,13 @@ func TestTrackHandlerFuncServeTrack(t *testing.T) {
 
 	// Create a proper TrackWriter with a valid receiveSubscribeStream
 	trackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"),
-		newReceiveSubscribeStream(SubscribeID(1), func() Stream {
+		newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream {
 			mockStream := &MockQUICStream{}
 			mockStream.On("Context").Return(context.Background())
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 			return mockStream
 		}(), &SubscribeConfig{}),
-		func() (SendStream, error) {
+		func() (transport.SendStream, error) {
 			return &MockQUICSendStream{}, nil
 		}, func() {})
 
@@ -1150,7 +1150,7 @@ func TestMux_ServeAnnouncements_InitWriteError_ClosesWithInternalError(t *testin
 		mockStream.On("Close").Return(nil).Maybe()
 
 		streamError := &transport.StreamError{
-			StreamID:  StreamID(1),
+			StreamID:  transport.StreamID(1),
 			ErrorCode: transport.StreamErrorCode(42),
 		}
 
@@ -1221,7 +1221,7 @@ func TestMux_ServeAnnouncements_SendAnnouncementWriteError_ClosesWithInternalErr
 		mockStream.On("Close").Return(nil).Maybe()
 
 		// Make the first Write (SendAnnouncement) fail with StreamError
-		streamErr := &transport.StreamError{StreamID: StreamID(2), ErrorCode: transport.StreamErrorCode(99)}
+		streamErr := &transport.StreamError{StreamID: transport.StreamID(2), ErrorCode: transport.StreamErrorCode(99)}
 		writeCh := make(chan struct{}, 1)
 		mockStream.On("Write", mock.Anything).Return(0, streamErr).Once().Run(func(args mock.Arguments) {
 			select {
@@ -2014,7 +2014,7 @@ func TestMux_ServeTrack_ClosesWhenAnnouncementEnds(t *testing.T) {
 	// Close should cancel read (and maybe write) with an error code; we accept any code here
 	mockStream.On("CancelRead", mock.Anything).Return().Once()
 
-	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() Stream { return mockStream }(), &SubscribeConfig{}), func() (SendStream, error) {
+	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream { return mockStream }(), &SubscribeConfig{}), func() (transport.SendStream, error) {
 		return &MockQUICSendStream{}, nil
 	}, func() {})
 
@@ -2336,7 +2336,7 @@ func TestMux_Publish_WithNilHandler_ClosesTrack(t *testing.T) {
 	mockStream.On("CancelRead", transport.StreamErrorCode(SubscribeErrorCodeNotFound)).Return().Once()
 	mockStream.On("Close").Return(nil).Maybe()
 
-	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() Stream { return mockStream }(), &SubscribeConfig{}), func() (SendStream, error) {
+	tw := newTrackWriter(path, TrackName("test"), newReceiveSubscribeStream(SubscribeID(1), func() transport.Stream { return mockStream }(), &SubscribeConfig{}), func() (transport.SendStream, error) {
 		return &MockQUICSendStream{}, nil
 	}, func() {})
 
