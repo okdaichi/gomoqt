@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -67,16 +68,16 @@ func TestValidateFetchHandler(t *testing.T) {
 
 func TestSafeServeFetch(t *testing.T) {
 	t.Run("fails on nil handler", func(t *testing.T) {
-		failed := safeServeFetch(nil, nil, nil)
-		assert.True(t, failed)
+		err := safeServeFetch(nil, nil, nil)
+		assert.NotNil(t, err)
 	})
 
 	t.Run("fails on typed nil function handler", func(t *testing.T) {
 		var f FetchHandlerFunc
 		var h FetchHandler = f
 
-		failed := safeServeFetch(h, nil, nil)
-		assert.True(t, failed)
+		err := safeServeFetch(h, nil, nil)
+		assert.NotNil(t, err)
 	})
 
 	t.Run("fails when handler panics", func(t *testing.T) {
@@ -86,8 +87,8 @@ func TestSafeServeFetch(t *testing.T) {
 			panic("boom")
 		})
 
-		failed := safeServeFetch(h, &GroupWriter{}, &FetchRequest{})
-		assert.True(t, failed)
+		err := safeServeFetch(h, &GroupWriter{}, &FetchRequest{})
+		assert.NotNil(t, err)
 		assert.True(t, called)
 	})
 
@@ -96,10 +97,66 @@ func TestSafeServeFetch(t *testing.T) {
 		w := &GroupWriter{}
 		r := &FetchRequest{BroadcastPath: "/ok", TrackName: "audio"}
 
-		failed := safeServeFetch(h, w, r)
-		assert.False(t, failed)
+		err := safeServeFetch(h, w, r)
+		assert.Nil(t, err)
 		assert.True(t, h.called)
 		assert.Equal(t, w, h.gotW)
 		assert.Equal(t, r, h.gotR)
+	})
+}
+
+func TestFetchRequest_Context(t *testing.T) {
+	t.Run("returns background context by default", func(t *testing.T) {
+		r := &FetchRequest{}
+		assert.Equal(t, context.Background(), r.Context())
+	})
+
+	t.Run("returns set context", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), "key", "value")
+		r := &FetchRequest{ctx: ctx}
+		assert.Equal(t, ctx, r.Context())
+	})
+}
+
+func TestFetchRequest_WithContext(t *testing.T) {
+	t.Run("returns shallow copy with new context", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), "key", "value")
+		r := &FetchRequest{BroadcastPath: "/test", TrackName: "video"}
+		r2 := r.WithContext(ctx)
+
+		assert.Equal(t, ctx, r2.Context())
+		assert.Equal(t, r.BroadcastPath, r2.BroadcastPath)
+		assert.Equal(t, r.TrackName, r2.TrackName)
+		// Original unchanged
+		assert.Equal(t, context.Background(), r.Context())
+	})
+
+	t.Run("panics on nil context", func(t *testing.T) {
+		r := &FetchRequest{}
+		assert.Panics(t, func() { r.WithContext(nil) })
+	})
+}
+
+func TestFetchRequest_Clone(t *testing.T) {
+	t.Run("returns deep copy with new context", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), "key", "value")
+		r := &FetchRequest{
+			BroadcastPath: "/test",
+			TrackName:     "video",
+			Priority:      3,
+			GroupSequence: 42,
+		}
+		r2 := r.Clone(ctx)
+
+		assert.Equal(t, ctx, r2.Context())
+		assert.Equal(t, r.BroadcastPath, r2.BroadcastPath)
+		assert.Equal(t, r.TrackName, r2.TrackName)
+		assert.Equal(t, r.Priority, r2.Priority)
+		assert.Equal(t, r.GroupSequence, r2.GroupSequence)
+	})
+
+	t.Run("panics on nil context", func(t *testing.T) {
+		r := &FetchRequest{}
+		assert.Panics(t, func() { r.Clone(nil) })
 	})
 }
