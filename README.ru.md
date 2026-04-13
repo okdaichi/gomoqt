@@ -63,8 +63,6 @@ mage interop:go
 ## Компоненты
 - `moqt` — основной Go-пакет для протокола Media over QUIC (MOQ).
 - `moq-web` — реализация для веб-клиента на TypeScript.
-- `quic` — вспомогательные обёртки QUIC, используемые ядром и примерами.
-- `webtransport` — серверные обёртки WebTransport (включая `webtransportgo`).
 - `cmd/interop` — сервер и клиенты для тестирования совместимости (Go/TypeScript).
 - `examples` — демонстрационные приложения (broadcast, echo, native_quic, relay).
 

@@ -62,8 +62,6 @@ mage interop:go
 - `moqt` — Core Go package for Media over QUIC (MOQ) protocol.
 - `msf` — MOQT Streaming Format catalog, delta, and timeline modeling package.
 - `moq-web` — TypeScript implementation for the web client side.
-- `quic` — QUIC wrapper utilities used by the core library and examples.
-- `webtransport` — WebTransport server wrappers (plus `webtransportgo`).
 - `cmd/interop` — Interoperability server and clients (Go/TypeScript).
 - `examples` — Demonstration apps (broadcast, echo, native_quic, relay).
 

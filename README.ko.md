@@ -61,8 +61,6 @@ mage interop:go
 ## 구성 요소
 - `moqt` — Media over QUIC (MOQ) 프로토콜의 핵심 Go 패키지
 - `moq-web` — 웹 클라이언트용 TypeScript 구현
-- `quic` — 핵심 및 예제에서 사용하는 QUIC 래퍼
-- `webtransport` — WebTransport 서버 래퍼 (`webtransportgo` 포함)
 - `cmd/interop` — 상호 운용성 서버 및 클라이언트 (Go/TypeScript)
 - `examples` — 데모 애플리케이션 (broadcast, echo, native_quic, relay)
 

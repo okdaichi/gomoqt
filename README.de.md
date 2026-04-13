@@ -38,7 +38,6 @@ go install github.com/magefile/mage@latest
 mage interop:ts    # TypeScript-Client + Server
 mage interop:go    # Go-Client + Server
 ```
-```
 
 ## Funktionen
 - **MOQ Lite-Protokoll** — Leichtgewichtige Version der MoQ-Spezifikation
@@ -61,8 +60,6 @@ mage interop:go    # Go-Client + Server
 ## Komponenten
 - `moqt` — zentrales Go-Paket für das Media over QUIC (MOQ)-Protokoll.
 - `moq-web` — TypeScript-Implementierung für Web-Clients.
-- `quic` — QUIC-Hilfsbibliothek, genutzt vom Kern und den Beispielen.
-- `webtransport` — WebTransport-Server-Hüllen (inkl. `webtransportgo`).
 - `cmd/interop` — Interop-Server und -Clients (Go/TypeScript).
 - `examples` — Beispielanwendungen (broadcast, echo, native_quic, relay).
 

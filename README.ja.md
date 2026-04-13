@@ -61,8 +61,6 @@ mage interop:go
 ## コンポーネント
 - `moqt` — Media over QUIC (MOQ) プロトコルの Go 実装パッケージ
 - `moq-web` — Web クライアント向け TypeScript 実装
-- `quic` — コアとサンプルで使う QUIC ラッパー
-- `webtransport` — WebTransport サーバー向けラッパー (`webtransportgo` を含む)
 - `cmd/interop` — Interop サーバー/クライアント (Go/TypeScript)
 - `examples` — デモアプリ (broadcast, echo, native_quic, relay)
 

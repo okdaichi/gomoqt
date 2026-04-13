@@ -61,8 +61,6 @@ mage interop:go
 ## 组件
 - `moqt` — 用于媒体传输(MOQ)协议的核心 Go 包。
 - `moq-web` — Web 客户端的 TypeScript 实现。
-- `quic` — 核心库和示例使用的 QUIC 包装器工具。
-- `webtransport` — WebTransport 服务器包装器(包括 `webtransportgo`)。
 - `cmd/interop` — 互操作性服务器和客户端(Go/TypeScript)。
 - `examples` — 演示应用(广播、回显、原生 QUIC、中继)。
 
