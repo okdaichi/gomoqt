@@ -40,9 +40,9 @@ const (
 	AnnounceErrorCodeInvalidPrefix AnnounceErrorCode = 0x5
 )
 
-// AnnounceErrorText returns a text for the announce error code.
+// String returns a text for the announce error code.
 // It returns an empty string if the code is unknown.
-func AnnounceErrorText(code AnnounceErrorCode) string {
+func (code AnnounceErrorCode) String() string {
 	switch code {
 	case AnnounceErrorCodeInternal:
 		return "moqt: internal error"
@@ -65,7 +65,7 @@ func AnnounceErrorText(code AnnounceErrorCode) string {
 type AnnounceError struct{ *transport.StreamError }
 
 func (err AnnounceError) Error() string {
-	text := AnnounceErrorText(err.AnnounceErrorCode())
+	text := err.AnnounceErrorCode().String()
 	if text != "" {
 		return text
 	}
@@ -97,9 +97,9 @@ const (
 	SubscribeErrorCodeTimeout SubscribeErrorCode = 0x05
 )
 
-// SubscribeErrorText returns a text for the subscribe error code.
+// String returns a text for the subscribe error code.
 // It returns an empty string if the code is unknown.
-func SubscribeErrorText(code SubscribeErrorCode) string {
+func (code SubscribeErrorCode) String() string {
 	switch code {
 	case SubscribeErrorCodeInternal:
 		return "moqt: internal error"
@@ -122,7 +122,7 @@ func SubscribeErrorText(code SubscribeErrorCode) string {
 type SubscribeError struct{ *transport.StreamError }
 
 func (err SubscribeError) Error() string {
-	text := SubscribeErrorText(err.SubscribeErrorCode())
+	text := err.SubscribeErrorCode().String()
 	if text != "" {
 		return text
 	}
@@ -140,7 +140,9 @@ const (
 	FetchErrorCodeTimeout  FetchErrorCode = 0x01
 )
 
-func FetchErrorText(code FetchErrorCode) string {
+// String returns a text for the fetch error code.
+// It returns an empty string if the code is unknown.
+func (code FetchErrorCode) String() string {
 	switch code {
 	case FetchErrorCodeInternal:
 		return "moqt: internal error"
@@ -154,7 +156,7 @@ func FetchErrorText(code FetchErrorCode) string {
 type FetchError struct{ *transport.StreamError }
 
 func (err FetchError) Error() string {
-	text := FetchErrorText(err.FetchErrorCode())
+	text := err.FetchErrorCode().String()
 	if text != "" {
 		return text
 	}
@@ -173,7 +175,9 @@ const (
 	ProbeErrorCodeNotSupported ProbeErrorCode = 0x02
 )
 
-func ProbeErrorText(code ProbeErrorCode) string {
+// String returns a text for the probe error code.
+// It returns an empty string if the code is unknown.
+func (code ProbeErrorCode) String() string {
 	switch code {
 	case ProbeErrorCodeInternal:
 		return "moqt: internal error"
@@ -189,7 +193,7 @@ func ProbeErrorText(code ProbeErrorCode) string {
 type ProbeError struct{ *transport.StreamError }
 
 func (err ProbeError) Error() string {
-	text := ProbeErrorText(err.ProbeErrorCode())
+	text := err.ProbeErrorCode().String()
 	if text != "" {
 		return text
 	}
@@ -222,9 +226,9 @@ const (
 	SetupFailedErrorCode SessionErrorCode = 0x13
 )
 
-// SessionErrorText returns a text for the session error code.
+// String returns a text for the session error code.
 // It returns an empty string if the code is unknown.
-func SessionErrorText(code SessionErrorCode) string {
+func (code SessionErrorCode) String() string {
 	switch code {
 	case NoError:
 		return "moqt: no error"
@@ -259,7 +263,7 @@ func (err SessionError) Error() string {
 	} else {
 		role = "local"
 	}
-	text := SessionErrorText(err.SessionErrorCode())
+	text := err.SessionErrorCode().String()
 	if text != "" {
 		return fmt.Sprintf("%s (%s)", text, role)
 	}
@@ -288,9 +292,9 @@ const (
 	InvalidSubscribeIDErrorCode GroupErrorCode = 0x07
 )
 
-// GroupErrorText returns a text for the group error code.
+// String returns a text for the group error code.
 // It returns an empty string if the code is unknown.
-func GroupErrorText(code GroupErrorCode) string {
+func (code GroupErrorCode) String() string {
 	switch code {
 	case InternalGroupErrorCode:
 		return "moqt: internal error"
@@ -315,7 +319,7 @@ func GroupErrorText(code GroupErrorCode) string {
 type GroupError struct{ *transport.StreamError }
 
 func (err GroupError) Error() string {
-	text := GroupErrorText(err.GroupErrorCode())
+	text := err.GroupErrorCode().String()
 	if text != "" {
 		return text
 	}

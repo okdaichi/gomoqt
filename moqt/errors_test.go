@@ -34,8 +34,8 @@ func TestStandardErrors(t *testing.T) {
 	}
 }
 
-// Test for AnnounceErrorText function
-func TestAnnounceErrorText(t *testing.T) {
+// Test for AnnounceErrorCode.String method
+func TestAnnounceErrorCode_String(t *testing.T) {
 	tests := map[string]struct {
 		code   AnnounceErrorCode
 		expect string
@@ -72,7 +72,7 @@ func TestAnnounceErrorText(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := AnnounceErrorText(tt.code)
+			result := tt.code.String()
 			assert.Equal(t, tt.expect, result)
 
 			// Verify that defined codes always return non-empty strings
@@ -83,8 +83,8 @@ func TestAnnounceErrorText(t *testing.T) {
 	}
 }
 
-// Test for SubscribeErrorText function
-func TestSubscribeErrorText(t *testing.T) {
+// Test for SubscribeErrorCode.String method
+func TestSubscribeErrorCode_String(t *testing.T) {
 	tests := map[string]struct {
 		code   SubscribeErrorCode
 		expect string
@@ -121,7 +121,7 @@ func TestSubscribeErrorText(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := SubscribeErrorText(tt.code)
+			result := tt.code.String()
 			assert.Equal(t, tt.expect, result)
 
 			// Verify that defined codes always return non-empty strings
@@ -132,8 +132,8 @@ func TestSubscribeErrorText(t *testing.T) {
 	}
 }
 
-// Test for SessionErrorText function
-func TestSessionErrorText(t *testing.T) {
+// Test for SessionErrorCode.String method
+func TestSessionErrorCode_String(t *testing.T) {
 	tests := map[string]struct {
 		code   SessionErrorCode
 		expect string
@@ -182,7 +182,7 @@ func TestSessionErrorText(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := SessionErrorText(tt.code)
+			result := tt.code.String()
 			assert.Equal(t, tt.expect, result)
 
 			// Verify that defined codes always return non-empty strings
@@ -193,8 +193,8 @@ func TestSessionErrorText(t *testing.T) {
 	}
 }
 
-// Test for GroupErrorText function
-func TestGroupErrorText(t *testing.T) {
+// Test for GroupErrorCode.String method
+func TestGroupErrorCode_String(t *testing.T) {
 	tests := map[string]struct {
 		code   GroupErrorCode
 		expect string
@@ -235,7 +235,7 @@ func TestGroupErrorText(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := GroupErrorText(tt.code)
+			result := tt.code.String()
 			assert.Equal(t, tt.expect, result)
 
 			// Verify that defined codes always return non-empty strings
@@ -669,13 +669,13 @@ func TestErrorTextConsistency(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := AnnounceErrorText(code)
+			text := code.String()
 			err := AnnounceError{
 				&transport.StreamError{
 					ErrorCode: transport.StreamErrorCode(code),
 				},
 			}
-			assert.Equal(t, text, err.Error(), "AnnounceErrorText and AnnounceError.Error() should return the same text for code %v", code)
+			assert.Equal(t, text, err.Error(), "AnnounceErrorCode.String and AnnounceError.Error() should return the same text for code %v", code)
 		}
 	})
 
@@ -691,13 +691,13 @@ func TestErrorTextConsistency(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := SubscribeErrorText(code)
+			text := code.String()
 			err := SubscribeError{
 				&transport.StreamError{
 					ErrorCode: transport.StreamErrorCode(code),
 				},
 			}
-			assert.Equal(t, text, err.Error(), "SubscribeErrorText and SubscribeError.Error() should return the same text for code %v", code)
+			assert.Equal(t, text, err.Error(), "SubscribeErrorCode.String and SubscribeError.Error() should return the same text for code %v", code)
 		}
 	})
 
@@ -716,7 +716,7 @@ func TestErrorTextConsistency(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := SessionErrorText(code)
+			text := code.String()
 
 			// Test both local and remote
 			for _, remote := range []bool{false, true} {
@@ -751,20 +751,20 @@ func TestErrorTextConsistency(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := GroupErrorText(code)
+			text := code.String()
 			err := GroupError{
 				&transport.StreamError{
 					ErrorCode: transport.StreamErrorCode(code),
 				},
 			}
-			assert.Equal(t, text, err.Error(), "GroupErrorText and GroupError.Error() should return the same text for code %v", code)
+			assert.Equal(t, text, err.Error(), "GroupErrorCode.String and GroupError.Error() should return the same text for code %v", code)
 		}
 	})
 }
 
 // Test that all error codes return non-empty text
 func TestErrorText_NonEmpty(t *testing.T) {
-	t.Run("AnnounceErrorText returns non-empty for all defined codes", func(t *testing.T) {
+	t.Run("AnnounceErrorCode.String returns non-empty for all defined codes", func(t *testing.T) {
 		codes := []AnnounceErrorCode{
 			AnnounceErrorCodeInternal,
 			AnnounceErrorCodeDuplicated,
@@ -775,12 +775,12 @@ func TestErrorText_NonEmpty(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := AnnounceErrorText(code)
-			assert.NotEmpty(t, text, "AnnounceErrorText should return non-empty text for code %v", code)
+			text := code.String()
+			assert.NotEmpty(t, text, "AnnounceErrorCode.String should return non-empty text for code %v", code)
 		}
 	})
 
-	t.Run("SubscribeErrorText returns non-empty for all defined codes", func(t *testing.T) {
+	t.Run("SubscribeErrorCode.String returns non-empty for all defined codes", func(t *testing.T) {
 		codes := []SubscribeErrorCode{
 			SubscribeErrorCodeInternal,
 			SubscribeErrorCodeInvalidRange,
@@ -791,12 +791,12 @@ func TestErrorText_NonEmpty(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := SubscribeErrorText(code)
-			assert.NotEmpty(t, text, "SubscribeErrorText should return non-empty text for code %v", code)
+			text := code.String()
+			assert.NotEmpty(t, text, "SubscribeErrorCode.String should return non-empty text for code %v", code)
 		}
 	})
 
-	t.Run("SessionErrorText returns non-empty for all defined codes", func(t *testing.T) {
+	t.Run("SessionErrorCode.String returns non-empty for all defined codes", func(t *testing.T) {
 		codes := []SessionErrorCode{
 			NoError,
 			InternalSessionErrorCode,
@@ -810,12 +810,12 @@ func TestErrorText_NonEmpty(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := SessionErrorText(code)
-			assert.NotEmpty(t, text, "SessionErrorText should return non-empty text for code %v", code)
+			text := code.String()
+			assert.NotEmpty(t, text, "SessionErrorCode.String should return non-empty text for code %v", code)
 		}
 	})
 
-	t.Run("GroupErrorText returns non-empty for all defined codes", func(t *testing.T) {
+	t.Run("GroupErrorCode.String returns non-empty for all defined codes", func(t *testing.T) {
 		codes := []GroupErrorCode{
 			InternalGroupErrorCode,
 			OutOfRangeErrorCode,
@@ -827,8 +827,8 @@ func TestErrorText_NonEmpty(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := GroupErrorText(code)
-			assert.NotEmpty(t, text, "GroupErrorText should return non-empty text for code %v", code)
+			text := code.String()
+			assert.NotEmpty(t, text, "GroupErrorCode.String should return non-empty text for code %v", code)
 		}
 	})
 }
