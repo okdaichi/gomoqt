@@ -56,12 +56,14 @@ mage interop:go
 
 ### Также см.
 - [moqt/](moqt/) — основной пакет (фреймы, сессии, мультиплексирование треков)
+- [msf/](msf/) — пакет MSF: каталог, дельта, таймлайн и вспомогательные функции каталог-трек
 - [quic/](quic/) — обёртки над QUIC и пример `examples/native_quic`
 - [webtransport/](webtransport/), [webtransport/webtransportgo/](webtransport/webtransportgo/), [moq-web/](moq-web/) — WebTransport и клиентская часть
 - [examples/](examples/) — образцы (broadcast, echo, native_quic, relay)
 
 ## Компоненты
 - `moqt` — основной Go-пакет для протокола Media over QUIC (MOQ).
+- `msf` — пакет моделирования каталогов, дельт и таймлайнов MOQT Streaming Format.
 - `moq-web` — реализация для веб-клиента на TypeScript.
 - `cmd/interop` — сервер и клиенты для тестирования совместимости (Go/TypeScript).
 - `examples` — демонстрационные приложения (broadcast, echo, native_quic, relay).
@@ -77,6 +79,7 @@ mage interop:go
 ## Документация
 - [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 - [Спецификация MOQ Lite](https://www.ietf.org/archive/id/draft-lcurley-moq-lite-03.html)
+- [README пакета MSF](msf/README.md)
 - [Статус реализации](moqt/README.md) — подробное отслеживание прогресса
 
 ## Соответствие спецификации

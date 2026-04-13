@@ -54,12 +54,14 @@ mage interop:go
 
 ### 함께 보기
 - [moqt/](moqt/) — 핵심 패키지 (프레임, 세션, 트랙 멀티플렉싱)
+- [msf/](msf/) — MSF 카탈로그, 델타, 타임라인 및 카탈로그-트랙 헬퍼 패키지
 - [quic/](quic/) — QUIC 래퍼 및 `examples/native_quic`
 - [webtransport/](webtransport/), [webtransport/webtransportgo/](webtransport/webtransportgo/), [moq-web/](moq-web/) — WebTransport 및 클라이언트 코드
 - [examples/](examples/) — 샘플 앱 (broadcast, echo, native_quic, relay)
 
 ## 구성 요소
 - `moqt` — Media over QUIC (MOQ) 프로토콜의 핵심 Go 패키지
+- `msf` — MOQT Streaming Format 카탈로그, 델타 및 타임라인 모델링 패키지
 - `moq-web` — 웹 클라이언트용 TypeScript 구현
 - `cmd/interop` — 상호 운용성 서버 및 클라이언트 (Go/TypeScript)
 - `examples` — 데모 애플리케이션 (broadcast, echo, native_quic, relay)
@@ -75,6 +77,7 @@ mage interop:go
 ## 문서
 - [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 - [MOQ Lite 사양](https://www.ietf.org/archive/id/draft-lcurley-moq-lite-03.html)
+- [MSF 패키지 README](msf/README.md)
 - [구현 현황](moqt/README.md) — 상세한 구현 진행 상황
 
 ## 사양 준수

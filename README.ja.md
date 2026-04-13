@@ -54,12 +54,14 @@ mage interop:go
 
 ### あわせて参照
 - [moqt/](moqt/) — コアパッケージ (フレーム、セッション、トラック多重化)
+- [msf/](msf/) — MSF カタログ、デルタ、タイムライン、カタログ-トラック ヘルパーパッケージ
 - [quic/](quic/) — QUIC ラッパーと `examples/native_quic`
 - [webtransport/](webtransport/), [webtransport/webtransportgo/](webtransport/webtransportgo/), [moq-web/](moq-web/) — WebTransport とクライアントコード
 - [examples/](examples/) — サンプル (broadcast, echo, native_quic, relay)
 
 ## コンポーネント
 - `moqt` — Media over QUIC (MOQ) プロトコルの Go 実装パッケージ
+- `msf` — MOQT Streaming Format のカタログ、デルタ、タイムラインモデリングパッケージ
 - `moq-web` — Web クライアント向け TypeScript 実装
 - `cmd/interop` — Interop サーバー/クライアント (Go/TypeScript)
 - `examples` — デモアプリ (broadcast, echo, native_quic, relay)
@@ -75,6 +77,7 @@ mage interop:go
 ## ドキュメント
 - [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 - [MOQ Lite 仕様](https://www.ietf.org/archive/id/draft-lcurley-moq-lite-03.html)
+- [MSF パッケージ README](msf/README.md)
 - [実装状況](moqt/README.md) — 実装進捗の詳細
 
 ## 仕様準拠

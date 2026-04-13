@@ -54,12 +54,14 @@ mage interop:go
 
 ### 另请参阅
 - [moqt/](moqt/) — 核心包(帧、会话、轨道复用)
+- [msf/](msf/) — MSF 目录、增量、时间线及目录-轨道辅助包
 - [quic/](quic/) — QUIC 包装器和 `examples/native_quic`
 - [webtransport/](webtransport/)、[webtransport/webtransportgo/](webtransport/webtransportgo/)、[moq-web/](moq-web/) — WebTransport 和客户端代码
 - [examples/](examples/) — 示例应用(广播、回显、原生 QUIC、中继)
 
 ## 组件
 - `moqt` — 用于媒体传输(MOQ)协议的核心 Go 包。
+- `msf` — MOQT Streaming Format 目录、增量和时间线建模包。
 - `moq-web` — Web 客户端的 TypeScript 实现。
 - `cmd/interop` — 互操作性服务器和客户端(Go/TypeScript)。
 - `examples` — 演示应用(广播、回显、原生 QUIC、中继)。
@@ -75,6 +77,7 @@ mage interop:go
 ## 文档
 - [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 - [MOQ Lite 规范](https://www.ietf.org/archive/id/draft-lcurley-moq-lite-03.html)
+- [MSF 包 README](msf/README.md)
 - [实现状态](moqt/README.md) — 详细的实现进度
 
 ## 规范合规性

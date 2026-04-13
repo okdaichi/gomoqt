@@ -53,12 +53,14 @@ mage interop:go    # Go-Client + Server
 
 ### Siehe auch
 - [moqt/](moqt/) — Kernpaket (Frames, Sessions, Track-Muxing)
+- [msf/](msf/) — MSF-Katalog, Delta, Timeline und Katalog-Track-Hilfspaket
 - [quic/](quic/) — QUIC-Hilfen und Beispiel `examples/native_quic`
 - [webtransport/](webtransport/), [webtransport/webtransportgo/](webtransport/webtransportgo/), [moq-web/](moq-web/) — WebTransport und Client-Code
 - [examples/](examples/) — Beispiel-Apps (broadcast, echo, native_quic, relay)
 
 ## Komponenten
 - `moqt` — zentrales Go-Paket für das Media over QUIC (MOQ)-Protokoll.
+- `msf` — MOQT Streaming Format: Katalog-, Delta- und Timeline-Modellierungspaket.
 - `moq-web` — TypeScript-Implementierung für Web-Clients.
 - `cmd/interop` — Interop-Server und -Clients (Go/TypeScript).
 - `examples` — Beispielanwendungen (broadcast, echo, native_quic, relay).
@@ -74,6 +76,7 @@ Das Verzeichnis [examples](examples) enthält Beispielanwendungen zur Nutzung vo
 ## Dokumentation
 - [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 - [MOQ Lite-Spezifikation](https://www.ietf.org/archive/id/draft-lcurley-moq-lite-03.html)
+- [MSF-Paket README](msf/README.md)
 - [Implementierungsstatus](moqt/README.md) — Detaillierter Fortschritt der Umsetzung
 
 ## Spezifikationskonformität
