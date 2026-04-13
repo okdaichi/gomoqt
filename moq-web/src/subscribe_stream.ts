@@ -236,7 +236,7 @@ export class ReceiveSubscribeStream {
 		const i = info ??
 			{ priority: 0, ordered: false, maxLatency: 0, startGroup: 0, endGroup: 0 };
 		// Write type byte for SUBSCRIBE_OK
-		let [, writeErr] = await writeVarint(this.#stream.writable, MESSAGE_TYPE_SUBSCRIBE_OK);
+		const [, writeErr] = await writeVarint(this.#stream.writable, MESSAGE_TYPE_SUBSCRIBE_OK);
 		if (writeErr) {
 			return new Error(`moq: failed to write SUBSCRIBE_OK type: ${writeErr}`);
 		}
@@ -272,7 +272,7 @@ export class ReceiveSubscribeStream {
 		}
 
 		// Write type byte for SUBSCRIBE_DROP
-		let [, typeErr] = await writeVarint(this.#stream.writable, MESSAGE_TYPE_SUBSCRIBE_DROP);
+		const [, typeErr] = await writeVarint(this.#stream.writable, MESSAGE_TYPE_SUBSCRIBE_DROP);
 		if (typeErr) {
 			return new Error(`moq: failed to write SUBSCRIBE_DROP type: ${typeErr}`);
 		}
