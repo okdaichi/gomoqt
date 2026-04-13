@@ -231,7 +231,8 @@ Deno.test("TrackReader", async (t) => {
 			// Append a drop before iterating
 			sss.appendDrop({ startGroup: 1, endGroup: 5, errorCode: 0x03 });
 
-			const collected: Array<{ startGroup: number; endGroup: number; errorCode: number }> = [];
+			const collected: Array<{ startGroup: number; endGroup: number; errorCode: number }> =
+				[];
 
 			// Cancel context after first yield to exit the generator
 			const signal = new Promise<void>(() => {});
