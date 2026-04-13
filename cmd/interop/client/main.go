@@ -91,6 +91,34 @@ func main() {
 	}
 	fmt.Printf("ok (payload: %s)\n", string(frame.Body()))
 
+	// Step 3: Fetch a single group from the server
+	fmt.Print("Fetching group from server...")
+	gr, err := sess.Fetch(&moqt.FetchRequest{
+		BroadcastPath: ann.BroadcastPath(),
+		TrackName:     "",
+		Priority:      0,
+		GroupSequence: 0,
+	})
+	if err != nil {
+		fmt.Printf("failed\n  Error: %v\n", err)
+		return
+	}
+	fetchFrame := moqt.NewFrame(1024)
+	if err = gr.ReadFrame(fetchFrame); err != nil {
+		fmt.Printf("failed\n  Error: %v\n", err)
+		return
+	}
+	fmt.Printf("ok (payload: %s)\n", string(fetchFrame.Body()))
+
+	// Step 4: Probe the server bitrate
+	fmt.Print("Probing server bitrate...")
+	measuredBitrate, err := sess.Probe(1_000_000)
+	if err != nil {
+		fmt.Printf("failed\n  Error: %v\n", err)
+		return
+	}
+	fmt.Printf("ok (measured: %d bps)\n", measuredBitrate)
+
 	// Channel to signal that the publish handler has completed
 	doneCh := make(chan struct{}, 1)
 
