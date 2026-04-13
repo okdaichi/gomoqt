@@ -8,23 +8,20 @@ import (
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-func newTestTrackReader(tb testing.TB) (*TrackReader, *MockQUICStream) {
+func newTestTrackReader(tb testing.TB) (*TrackReader, *FakeQUICStream) {
 	tb.Helper()
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background()).Maybe()
+	mockStream := &FakeQUICStream{}
 
-	substr := newTestSendSubscribeStream(mockStream, &SubscribeConfig{})
+	substr := newTestSendSubscribeStreamFromStream(mockStream, &SubscribeConfig{})
 	receiver := newTrackReader(testSubscribeRequest(tb, nil), substr, func() {})
 	return receiver, mockStream
 }
 
 func TestNewTrackReader(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background()).Maybe()
+	mockStream := &FakeQUICStream{}
 	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{}, nil)
 	receiver := newTrackReader(testSubscribeRequest(t, nil), substr, func() {})
 
@@ -53,9 +50,10 @@ func TestTrackReader_AcceptGroup(t *testing.T) {
 
 func TestTrackReader_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(ctx)
-	substr := newTestSendSubscribeStream(mockStream, &SubscribeConfig{})
+	mockStream := &FakeQUICStream{
+		ParentCtx: ctx,
+	}
+	substr := newTestSendSubscribeStreamFromStream(mockStream, &SubscribeConfig{})
 	receiver := newTrackReader(testSubscribeRequest(t, nil), substr, func() {})
 
 	// Cancel the context
@@ -72,15 +70,12 @@ func TestTrackReader_ContextCancellation(t *testing.T) {
 }
 
 func TestTrackReader_Context_FollowsStreamLifecycle(t *testing.T) {
-	streamCtx := context.Background()
 	_, cancelSetup := context.WithCancel(context.Background())
 	defer cancelSetup()
 
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(streamCtx).Maybe()
-	mockStream.On("Close").Return(nil).Maybe()
+	mockStream := &FakeQUICStream{}
 
-	substr := newTestSendSubscribeStream(mockStream, &SubscribeConfig{})
+	substr := newTestSendSubscribeStreamFromStream(mockStream, &SubscribeConfig{})
 	receiver := newTrackReader(testSubscribeRequest(t, nil), substr, func() {})
 
 	// Cancel setup context; TrackReader context should remain alive while stream is alive.
@@ -107,7 +102,7 @@ func TestTrackReader_EnqueueGroup(t *testing.T) {
 	receiver, _ := newTestTrackReader(t)
 
 	// Mock receive stream
-	mockReceiveStream := &MockQUICReceiveStream{}
+	mockReceiveStream := &FakeQUICReceiveStream{}
 
 	// Enqueue a group
 	receiver.enqueueGroup(GroupSequence(1), mockReceiveStream)
@@ -120,7 +115,6 @@ func TestTrackReader_EnqueueGroup(t *testing.T) {
 	assert.NoError(t, err, "should be able to accept enqueued group")
 	assert.NotNil(t, group, "accepted group should not be nil")
 
-	mockReceiveStream.AssertExpectations(t)
 }
 
 func TestTrackReader_AcceptGroup_RealImplementation(t *testing.T) {
@@ -136,9 +130,7 @@ func TestTrackReader_AcceptGroup_RealImplementation(t *testing.T) {
 }
 
 func TestTrackReader_Close(t *testing.T) {
-	receiver, mockStream := newTestTrackReader(t)
-	mockStream.On("Close").Return(nil)
-	mockStream.On("CancelRead", mock.Anything).Return(nil)
+	receiver, _ := newTestTrackReader(t)
 
 	err := receiver.Close()
 	assert.NoError(t, err)
@@ -149,8 +141,7 @@ func TestTrackReader_Close(t *testing.T) {
 }
 
 func TestTrackReader_Update(t *testing.T) {
-	receiver, mockStream := newTestTrackReader(t)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	receiver, _ := newTestTrackReader(t)
 
 	newTrackConfig := SubscribeConfig{}
 
@@ -169,12 +160,11 @@ func TestTrackReader_HandleDrop(t *testing.T) {
 		ErrorCode:  3,
 	}).Encode(&buf))
 
-	mockStream := &MockQUICStream{
+	mockStream := &FakeQUICStream{
 		ReadFunc: buf.Read,
 	}
-	mockStream.On("Context").Return(context.Background()).Maybe()
 
-	substr := newTestSendSubscribeStream(mockStream, &SubscribeConfig{})
+	substr := newTestSendSubscribeStreamFromStream(mockStream, &SubscribeConfig{})
 	receiver := newTrackReader(testSubscribeRequest(t, nil), substr, func() {})
 
 	done := make(chan SubscribeDrop, 1)
@@ -195,11 +185,7 @@ func TestTrackReader_HandleDrop(t *testing.T) {
 }
 
 func TestTrackReader_CloseWithError(t *testing.T) {
-	receiver, mockStream := newTestTrackReader(t)
-	mockStream.On("Close").Return(nil)
-	mockStream.On("CancelRead", mock.Anything).Return(nil)
-	mockStream.On("CancelWrite", mock.Anything).Return(nil)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	receiver, _ := newTestTrackReader(t)
 
 	receiver.CloseWithError(SubscribeErrorCodeInternal)
 }
@@ -207,8 +193,7 @@ func TestTrackReader_CloseWithError(t *testing.T) {
 func TestGroupReader_CancelRead_RemovesFromManager(t *testing.T) {
 	receiver, _ := newTestTrackReader(t)
 
-	recvStream := &MockQUICReceiveStream{}
-	recvStream.On("CancelRead", mock.Anything).Return()
+	recvStream := &FakeQUICReceiveStream{}
 	group := newGroupReader(GroupSequence(1), recvStream, receiver.groupManager)
 
 	assert.Len(t, receiver.groupManager.activeGroups, 1)

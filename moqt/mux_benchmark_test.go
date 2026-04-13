@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/okdaichi/gomoqt/transport"
-	"github.com/stretchr/testify/mock"
 )
 
 // BenchmarkTrackMux_NewTrackMux benchmarks TrackMux creation
@@ -90,11 +89,7 @@ func BenchmarkTrackMux_ServeTrack(b *testing.B) {
 
 	// Create a test track writer
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
 	onCloseTrack := func() {}
@@ -133,12 +128,10 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 
 			// Benchmark announcement writer creation (not the blocking operation)
 			for b.Loop() {
-				mockStream := &MockQUICStream{}
-				mockStream.On("Context").Return(ctx)
-				mockStream.On("StreamID").Return(transport.StreamID(1))
-				mockStream.On("Write", mock.Anything).Return(0, nil)
-				mockStream.On("Close").Return(nil)
-				_ = newAnnouncementWriter(mockStream, "/room/")
+				mockStream := &FakeQUICStream{
+					ParentCtx: ctx,
+				}
+				_ = newAnnouncementWriter(mockStream, "/room/", nil)
 			}
 		})
 	}
@@ -477,11 +470,8 @@ func BenchmarkTrackMux_AnnouncementTree(b *testing.B) {
 
 			// Benchmark announcement writer creation and tree structure access
 			for b.Loop() {
-				mockStream := &MockQUICStream{}
-				mockStream.On("Context").Return(context.Background())
-				mockStream.On("Write", mock.Anything).Return(0, nil)
-				mockStream.On("Close").Return(nil)
-				_ = newAnnouncementWriter(mockStream, "/level1/")
+				mockStream := &FakeQUICStream{}
+				_ = newAnnouncementWriter(mockStream, "/level1/", nil)
 			}
 		})
 	}
@@ -599,11 +589,7 @@ func BenchmarkTrackMux_CPUProfileOptimization(b *testing.B) {
 					BroadcastPath: path,
 					TrackName:     TrackName(fmt.Sprintf("track-%d", i)),
 					openUniStreamFunc: func() (transport.SendStream, error) {
-						mockSendStream := &MockQUICSendStream{}
-						mockSendStream.On("CancelWrite", mock.Anything).Return()
-						mockSendStream.On("StreamID").Return(transport.StreamID(1))
-						mockSendStream.On("Close").Return(nil)
-						mockSendStream.On("Write", mock.Anything).Return(0, nil)
+						mockSendStream := &FakeQUICSendStream{}
 						return mockSendStream, nil
 					},
 				}

@@ -9,27 +9,24 @@ import (
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
+
+// --- construction ----------------------------------------------------------
 
 func TestNewGroupWriter(t *testing.T) {
 	tests := map[string]struct {
-		setupMock func() *MockQUICSendStream
+		setupMock func() *FakeQUICSendStream
 		sequence  GroupSequence
 	}{
 		"valid stream and sequence": {
-			setupMock: func() *MockQUICSendStream {
-				mockStream := &MockQUICSendStream{}
-				mockStream.On("Context").Return(context.Background())
-				return mockStream
+			setupMock: func() *FakeQUICSendStream {
+				return &FakeQUICSendStream{}
 			},
 			sequence: GroupSequence(123),
 		},
 		"different sequence": {
-			setupMock: func() *MockQUICSendStream {
-				mockStream := &MockQUICSendStream{}
-				mockStream.On("Context").Return(context.Background())
-				return mockStream
+			setupMock: func() *FakeQUICSendStream {
+				return &FakeQUICSendStream{}
 			},
 			sequence: GroupSequence(456),
 		},
@@ -53,8 +50,7 @@ func TestNewGroupWriter(t *testing.T) {
 }
 
 func TestGroupWriter_GroupSequence(t *testing.T) {
-	mockStream := &MockQUICSendStream{}
-	mockStream.On("Context").Return(context.Background())
+	mockStream := &FakeQUICSendStream{}
 	sequence := GroupSequence(789)
 	sgs := newGroupWriter(mockStream, sequence, newGroupWriterManager())
 
@@ -65,7 +61,7 @@ func TestGroupWriter_GroupSequence(t *testing.T) {
 func TestGroupWriter_WriteFrame(t *testing.T) {
 	tests := map[string]struct {
 		setupFrame  func() *Frame
-		setupMock   func() *MockQUICSendStream
+		setupMock   func() *FakeQUICSendStream
 		expectError bool
 	}{
 		"write valid frame": {
@@ -74,11 +70,10 @@ func TestGroupWriter_WriteFrame(t *testing.T) {
 				_, _ = frame.Write([]byte("test data"))
 				return frame
 			},
-			setupMock: func() *MockQUICSendStream {
-				mockStream := &MockQUICSendStream{}
-				mockStream.On("Context").Return(context.Background())
-				mockStream.On("Write", mock.Anything).Return(0, nil)
-				return mockStream
+			setupMock: func() *FakeQUICSendStream {
+				return &FakeQUICSendStream{
+					WriteFunc: func(p []byte) (int, error) { return 0, nil },
+				}
 			},
 			expectError: false,
 		},
@@ -86,10 +81,8 @@ func TestGroupWriter_WriteFrame(t *testing.T) {
 			setupFrame: func() *Frame {
 				return nil
 			},
-			setupMock: func() *MockQUICSendStream {
-				mockStream := &MockQUICSendStream{}
-				mockStream.On("Context").Return(context.Background())
-				return mockStream
+			setupMock: func() *FakeQUICSendStream {
+				return &FakeQUICSendStream{}
 			},
 			expectError: false,
 		},
@@ -99,11 +92,10 @@ func TestGroupWriter_WriteFrame(t *testing.T) {
 				_, _ = frame.Write([]byte("test data"))
 				return frame
 			},
-			setupMock: func() *MockQUICSendStream {
-				mockStream := &MockQUICSendStream{}
-				mockStream.On("Context").Return(context.Background())
-				mockStream.On("Write", mock.Anything).Return(0, errors.New("write error"))
-				return mockStream
+			setupMock: func() *FakeQUICSendStream {
+				return &FakeQUICSendStream{
+					WriteFunc: func(p []byte) (int, error) { return 0, errors.New("write error") },
+				}
 			},
 			expectError: true,
 		},
@@ -121,42 +113,39 @@ func TestGroupWriter_WriteFrame(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
-
-			mockStream.AssertExpectations(t)
 		})
 	}
 }
 
+// --- write deadline --------------------------------------------------------
+
 func TestGroupWriter_SetWriteDeadline(t *testing.T) {
-	mockStream := &MockQUICSendStream{}
-	mockStream.On("Context").Return(context.Background())
+	mockStream := &FakeQUICSendStream{}
 	deadline := time.Now().Add(time.Minute)
-	mockStream.On("SetWriteDeadline", deadline).Return(nil)
 	sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
 	err := sgs.SetWriteDeadline(deadline)
 	assert.NoError(t, err)
-	mockStream.AssertExpectations(t)
 }
 
+// --- close behavior --------------------------------------------------------
+
 func TestGroupWriter_Close(t *testing.T) {
-	mockStream := &MockQUICSendStream{}
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Close").Return(nil)
+	mockStream := &FakeQUICSendStream{}
 
 	sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
 	err := sgs.Close()
 	assert.NoError(t, err)
-	mockStream.AssertExpectations(t)
 }
 
 func TestGroupWriter_ContextCancellation(t *testing.T) {
 	t.Run("operations continue when context is cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		mockStream := &MockQUICSendStream{}
-		mockStream.On("Context").Return(ctx)
-		mockStream.On("Write", mock.Anything).Return(4, nil)
+		mockStream := &FakeQUICSendStream{
+			ParentCtx: ctx,
+			WriteFunc: func(p []byte) (int, error) { return 4, nil },
+		}
 
 		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
@@ -169,53 +158,48 @@ func TestGroupWriter_ContextCancellation(t *testing.T) {
 		err := sgs.WriteFrame(frameLocal)
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(1), sgs.frameCount)
-		mockStream.AssertExpectations(t)
 	})
 }
 
 func TestGroupWriter_CloseWithStreamError(t *testing.T) {
 	t.Run("close returns stream error", func(t *testing.T) {
-		mockStream := &MockQUICSendStream{}
-		mockStream.On("Context").Return(context.Background())
-
 		streamID := transport.StreamID(123)
 		streamErr := &transport.StreamError{
 			StreamID:  streamID,
 			ErrorCode: transport.StreamErrorCode(42),
 		}
 
-		mockStream.On("Close").Return(streamErr)
+		mockStream := &FakeQUICSendStream{
+			CloseFunc: func() error { return streamErr },
+		}
 
 		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
 		err := sgs.Close()
 		// Due to the current implementation bug, Cause(ctx) returns nil when there's no context cause
 		assert.NoError(t, err)
-		mockStream.AssertExpectations(t)
 	})
 
 	t.Run("close returns non-stream error", func(t *testing.T) {
-		mockStream := &MockQUICSendStream{}
-		mockStream.On("Context").Return(context.Background())
-
 		otherErr := errors.New("some other error")
 
-		mockStream.On("Close").Return(otherErr)
+		mockStream := &FakeQUICSendStream{
+			CloseFunc: func() error { return otherErr },
+		}
 
 		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
 		err := sgs.Close()
 		// Due to the current implementation bug, Cause(ctx) returns nil when there's no context cause
 		assert.NoError(t, err)
-		mockStream.AssertExpectations(t)
 	})
 
 	t.Run("close when context already cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
-		mockStream := &MockQUICSendStream{}
-		mockStream.On("Context").Return(ctx)
-		mockStream.On("Close").Return(nil)
+		mockStream := &FakeQUICSendStream{
+			ParentCtx: ctx,
+		}
 
 		sgs := newGroupWriter(mockStream, GroupSequence(1), newGroupWriterManager())
 
@@ -224,26 +208,23 @@ func TestGroupWriter_CloseWithStreamError(t *testing.T) {
 
 		err := sgs.Close()
 		assert.NoError(t, err) // Close still works even if context is cancelled
-		mockStream.AssertExpectations(t)
 	})
 }
 
+// --- context and cancellation ---------------------------------------------
+
 func TestGroupWriter_Context(t *testing.T) {
-	mockStream := &MockQUICSendStream{}
-	mockStream.On("Context").Return(context.Background())
+	mockStream := &FakeQUICSendStream{}
 
 	sgs := newGroupWriter(mockStream, GroupSequence(123), newGroupWriterManager())
 
 	ctx := sgs.Context()
 	assert.NotNil(t, ctx)
 	assert.Equal(t, message.StreamTypeGroup, ctx.Value(uniStreamTypeCtxKey))
-	mockStream.AssertExpectations(t)
 }
 
 func TestGroupWriter_CancelWrite(t *testing.T) {
-	mockStream := &MockQUICSendStream{}
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("CancelWrite", transport.StreamErrorCode(1)).Return()
+	mockStream := &FakeQUICSendStream{}
 
 	groupManager := newGroupWriterManager()
 	sgs := newGroupWriter(mockStream, GroupSequence(1), groupManager)
@@ -251,5 +232,4 @@ func TestGroupWriter_CancelWrite(t *testing.T) {
 
 	sgs.CancelWrite(1)
 	assert.Equal(t, 0, groupManager.countGroups())
-	mockStream.AssertExpectations(t)
 }

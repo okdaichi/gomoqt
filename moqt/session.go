@@ -330,16 +330,13 @@ func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 
 	err = message.StreamTypeFetch.Encode(stream)
 	if err != nil {
-		var strErr *transport.StreamError
-		if errors.As(err, &strErr) && strErr.Remote {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
 			return nil, &FetchError{
 				StreamError: strErr,
 			}
 		}
-		strErrCode := transport.StreamErrorCode(FetchErrorCodeInternal)
-		stream.CancelWrite(strErrCode)
-		stream.CancelRead(strErrCode)
+		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
 		return nil, fmt.Errorf("failed to encode stream type message: %w", err)
 	}
 
@@ -350,22 +347,24 @@ func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 		GroupSequence: uint64(req.GroupSequence),
 	}.Encode(stream)
 	if err != nil {
-		var strErr *transport.StreamError
-		if errors.As(err, &strErr) && strErr.Remote {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
 			return nil, &FetchError{
 				StreamError: strErr,
 			}
 		}
 
-		strErrCode := transport.StreamErrorCode(FetchErrorCodeInternal)
-		stream.CancelWrite(strErrCode)
-		stream.CancelRead(strErrCode)
+		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
 
 		return nil, fmt.Errorf("failed to encode FETCH message: %w", err)
 	}
 
 	group := newGroupReader(req.GroupSequence, stream, nil)
+
+	context.AfterFunc(req.Context(), func() {
+		// Cancel the stream when the context is done
+		group.CancelRead(ExpiredGroupErrorCode)
+	})
 
 	return group, nil
 }
@@ -408,9 +407,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 	}.Encode(stream)
 	if err != nil {
 		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
-			strErrCode := transport.StreamErrorCode(AnnounceErrorCodeInternal)
-			stream.CancelRead(strErrCode)
-
+			cancelStreamWithError(stream, transport.StreamErrorCode(AnnounceErrorCodeInternal))
 			return nil, &AnnounceError{
 				StreamError: strErr,
 			}
@@ -566,10 +563,19 @@ func (sess *Session) processBiStream(stream transport.Stream) {
 			TrackName:     TrackName(fm.TrackName),
 			Priority:      TrackPriority(fm.Priority),
 			GroupSequence: GroupSequence(fm.GroupSequence),
+			ctx:           stream.Context(),
 		}
 
-		w := newGroupWriter(stream, req.GroupSequence, nil)
-		if err := safeServeFetch(handler, w, req); err != nil {
+		group := newGroupWriter(stream, req.GroupSequence, nil)
+
+		stop := context.AfterFunc(req.Context(), func() {
+			// Cancel the stream when the context is done
+			group.CancelWrite(ExpiredGroupErrorCode)
+		})
+		defer stop()
+
+		err = safeServeFetch(handler, group, req)
+		if err != nil {
 			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
 			return
 		}

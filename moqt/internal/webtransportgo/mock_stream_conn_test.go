@@ -6,76 +6,97 @@ import (
 	"net"
 
 	"github.com/okdaichi/gomoqt/transport"
-	"github.com/stretchr/testify/mock"
 )
 
-var _ transport.StreamConn = (*MockStreamConn)(nil)
+var _ transport.StreamConn = (*FakeStreamConn)(nil)
 
-type MockStreamConn struct {
-	mock.Mock
+type FakeStreamConn struct {
+	AcceptStreamFunc      func(ctx context.Context) (transport.Stream, error)
+	AcceptUniStreamFunc   func(ctx context.Context) (transport.ReceiveStream, error)
+	CloseWithErrorFunc    func(code transport.ConnErrorCode, msg string) error
+	ParentCtx             context.Context
+	LocalAddrFunc         func() net.Addr
+	RemoteAddrFunc        func() net.Addr
+	OpenStreamFunc        func() (transport.Stream, error)
+	OpenStreamSyncFunc    func(ctx context.Context) (transport.Stream, error)
+	OpenUniStreamFunc     func() (transport.SendStream, error)
+	OpenUniStreamSyncFunc func(ctx context.Context) (transport.SendStream, error)
+	TLSFunc               func() *tls.ConnectionState
 }
 
-func (m *MockStreamConn) AcceptStream(ctx context.Context) (transport.Stream, error) {
-	args := m.Called(ctx)
-	stream, _ := args.Get(0).(transport.Stream)
-	return stream, args.Error(1)
+func (m *FakeStreamConn) AcceptStream(ctx context.Context) (transport.Stream, error) {
+	if m.AcceptStreamFunc != nil {
+		return m.AcceptStreamFunc(ctx)
+	}
+	return nil, nil
 }
 
-func (m *MockStreamConn) AcceptUniStream(ctx context.Context) (transport.ReceiveStream, error) {
-	args := m.Called(ctx)
-	stream, _ := args.Get(0).(transport.ReceiveStream)
-	return stream, args.Error(1)
+func (m *FakeStreamConn) AcceptUniStream(ctx context.Context) (transport.ReceiveStream, error) {
+	if m.AcceptUniStreamFunc != nil {
+		return m.AcceptUniStreamFunc(ctx)
+	}
+	return nil, nil
 }
 
-func (m *MockStreamConn) CloseWithError(code transport.ConnErrorCode, msg string) error {
-	args := m.Called(code, msg)
-	return args.Error(0)
+func (m *FakeStreamConn) CloseWithError(code transport.ConnErrorCode, msg string) error {
+	if m.CloseWithErrorFunc != nil {
+		return m.CloseWithErrorFunc(code, msg)
+	}
+	return nil
 }
 
-func (m *MockStreamConn) Context() context.Context {
-	args := m.Called()
-	ctx, _ := args.Get(0).(context.Context)
-	return ctx
+func (m *FakeStreamConn) Context() context.Context {
+	if m.ParentCtx != nil {
+		return m.ParentCtx
+	}
+	return context.Background()
 }
 
-func (m *MockStreamConn) LocalAddr() net.Addr {
-	args := m.Called()
-	addr, _ := args.Get(0).(net.Addr)
-	return addr
+func (m *FakeStreamConn) LocalAddr() net.Addr {
+	if m.LocalAddrFunc != nil {
+		return m.LocalAddrFunc()
+	}
+	return &net.TCPAddr{}
 }
 
-func (m *MockStreamConn) OpenStream() (transport.Stream, error) {
-	args := m.Called()
-	stream, _ := args.Get(0).(transport.Stream)
-	return stream, args.Error(1)
+func (m *FakeStreamConn) OpenStream() (transport.Stream, error) {
+	if m.OpenStreamFunc != nil {
+		return m.OpenStreamFunc()
+	}
+	return nil, nil
 }
 
-func (m *MockStreamConn) OpenStreamSync(ctx context.Context) (transport.Stream, error) {
-	args := m.Called(ctx)
-	stream, _ := args.Get(0).(transport.Stream)
-	return stream, args.Error(1)
+func (m *FakeStreamConn) OpenStreamSync(ctx context.Context) (transport.Stream, error) {
+	if m.OpenStreamSyncFunc != nil {
+		return m.OpenStreamSyncFunc(ctx)
+	}
+	return nil, nil
 }
 
-func (m *MockStreamConn) OpenUniStream() (transport.SendStream, error) {
-	args := m.Called()
-	stream, _ := args.Get(0).(transport.SendStream)
-	return stream, args.Error(1)
+func (m *FakeStreamConn) OpenUniStream() (transport.SendStream, error) {
+	if m.OpenUniStreamFunc != nil {
+		return m.OpenUniStreamFunc()
+	}
+	return nil, nil
 }
 
-func (m *MockStreamConn) OpenUniStreamSync(ctx context.Context) (transport.SendStream, error) {
-	args := m.Called(ctx)
-	stream, _ := args.Get(0).(transport.SendStream)
-	return stream, args.Error(1)
+func (m *FakeStreamConn) OpenUniStreamSync(ctx context.Context) (transport.SendStream, error) {
+	if m.OpenUniStreamSyncFunc != nil {
+		return m.OpenUniStreamSyncFunc(ctx)
+	}
+	return nil, nil
 }
 
-func (m *MockStreamConn) RemoteAddr() net.Addr {
-	args := m.Called()
-	addr, _ := args.Get(0).(net.Addr)
-	return addr
+func (m *FakeStreamConn) RemoteAddr() net.Addr {
+	if m.RemoteAddrFunc != nil {
+		return m.RemoteAddrFunc()
+	}
+	return &net.TCPAddr{}
 }
 
-func (m *MockStreamConn) TLS() *tls.ConnectionState {
-	args := m.Called()
-	state, _ := args.Get(0).(*tls.ConnectionState)
-	return state
+func (m *FakeStreamConn) TLS() *tls.ConnectionState {
+	if m.TLSFunc != nil {
+		return m.TLSFunc()
+	}
+	return nil
 }

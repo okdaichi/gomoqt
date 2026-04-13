@@ -13,8 +13,7 @@ func TestBroadcastRegisterTrack_UpdatesCatalogAndHandler(t *testing.T) {
 	broadcast, err := NewBroadcast(Catalog{Version: 1})
 	require.NoError(t, err)
 
-	handler := &MockTrackHandler{}
-	t.Cleanup(func() { handler.AssertExpectations(t) })
+	handler := &FakeTrackHandler{}
 	err = broadcast.RegisterTrack(Track{
 		Name:      "video",
 		Packaging: PackagingLOC,
@@ -26,17 +25,16 @@ func TestBroadcastRegisterTrack_UpdatesCatalogAndHandler(t *testing.T) {
 	require.Len(t, catalog.Tracks, 1)
 	assert.Equal(t, "video", catalog.Tracks[0].Name)
 	tw := &moqt.TrackWriter{TrackName: "video"}
-	handler.On("ServeTrack", tw).Return().Once()
 	broadcast.Handler("video").ServeTrack(tw)
-	handler.AssertCalled(t, "ServeTrack", tw)
+	require.Len(t, handler.ServeTrackCalls, 1)
+	assert.Equal(t, tw, handler.ServeTrackCalls[0])
 }
 
 func TestBroadcastHandler_ResolvesCatalogAndTrackHandlers(t *testing.T) {
 	broadcast, err := NewBroadcast(Catalog{Version: 1})
 	require.NoError(t, err)
 
-	handler := &MockTrackHandler{}
-	t.Cleanup(func() { handler.AssertExpectations(t) })
+	handler := &FakeTrackHandler{}
 	err = broadcast.RegisterTrack(Track{
 		Name:      "audio",
 		Packaging: PackagingLOC,
@@ -45,19 +43,18 @@ func TestBroadcastHandler_ResolvesCatalogAndTrackHandlers(t *testing.T) {
 	require.NoError(t, err)
 
 	tw := &moqt.TrackWriter{TrackName: "audio"}
-	handler.On("ServeTrack", tw).Return().Once()
 	broadcast.Handler("audio").ServeTrack(tw)
-	handler.AssertCalled(t, "ServeTrack", tw)
+	require.Len(t, handler.ServeTrackCalls, 1)
+	assert.Equal(t, tw, handler.ServeTrackCalls[0])
 	broadcast.Handler("missing").ServeTrack(tw)
-	handler.AssertNumberOfCalls(t, "ServeTrack", 1)
+	assert.Len(t, handler.ServeTrackCalls, 1)
 }
 
 func TestBroadcastRemoveTrack_RemovesCatalogEntryAndHandler(t *testing.T) {
 	broadcast, err := NewBroadcast(Catalog{Version: 1})
 	require.NoError(t, err)
 
-	handler := &MockTrackHandler{}
-	t.Cleanup(func() { handler.AssertExpectations(t) })
+	handler := &FakeTrackHandler{}
 	err = broadcast.RegisterTrack(Track{
 		Name:      "video",
 		Packaging: PackagingLOC,
@@ -70,14 +67,13 @@ func TestBroadcastRemoveTrack_RemovesCatalogEntryAndHandler(t *testing.T) {
 	assert.Empty(t, broadcast.Catalog().Tracks)
 	tw := &moqt.TrackWriter{TrackName: "video"}
 	broadcast.Handler("video").ServeTrack(tw)
-	handler.AssertNotCalled(t, "ServeTrack", tw)
+	assert.Empty(t, handler.ServeTrackCalls)
 }
 
 func TestBroadcastCatalogBytes_EncodesCurrentCatalog(t *testing.T) {
 	broadcast, err := NewBroadcast(Catalog{Version: 1})
 	require.NoError(t, err)
-	handler := &MockTrackHandler{}
-	t.Cleanup(func() { handler.AssertExpectations(t) })
+	handler := &FakeTrackHandler{}
 
 	err = broadcast.RegisterTrack(Track{
 		Name:      "video",
@@ -98,8 +94,7 @@ func TestBroadcastCatalogBytes_EncodesCurrentCatalog(t *testing.T) {
 func TestBroadcastRegisterTrack_RejectsReservedCatalogTrackName(t *testing.T) {
 	broadcast, err := NewBroadcast(Catalog{Version: 1})
 	require.NoError(t, err)
-	handler := &MockTrackHandler{}
-	t.Cleanup(func() { handler.AssertExpectations(t) })
+	handler := &FakeTrackHandler{}
 
 	err = broadcast.RegisterTrack(Track{
 		Name:      string(DefaultCatalogTrackName),
@@ -128,7 +123,7 @@ func TestBroadcastRegisterTrack_RejectsInvalidInput(t *testing.T) {
 		},
 		"empty track name": {
 			track:        Track{Packaging: PackagingLOC, IsLive: new(false)},
-			handler:      &MockTrackHandler{},
+			handler:      &FakeTrackHandler{},
 			errorMessage: "track name is required",
 		},
 	}
@@ -149,10 +144,8 @@ func TestBroadcastRegisterTrack_ReplacesExistingTrackAndHandler(t *testing.T) {
 	broadcast, err := NewBroadcast(Catalog{Version: 1})
 	require.NoError(t, err)
 
-	firstHandler := &MockTrackHandler{}
-	secondHandler := &MockTrackHandler{}
-	t.Cleanup(func() { firstHandler.AssertExpectations(t) })
-	t.Cleanup(func() { secondHandler.AssertExpectations(t) })
+	firstHandler := &FakeTrackHandler{}
+	secondHandler := &FakeTrackHandler{}
 
 	err = broadcast.RegisterTrack(Track{
 		Name:      "video",
@@ -176,9 +169,9 @@ func TestBroadcastRegisterTrack_ReplacesExistingTrackAndHandler(t *testing.T) {
 	require.NotNil(t, catalog.Tracks[0].IsLive)
 	assert.False(t, *catalog.Tracks[0].IsLive)
 	tw := &moqt.TrackWriter{TrackName: "video"}
-	secondHandler.On("ServeTrack", tw).Return().Once()
 	broadcast.Handler("video").ServeTrack(tw)
-	secondHandler.AssertCalled(t, "ServeTrack", tw)
+	require.Len(t, secondHandler.ServeTrackCalls, 1)
+	assert.Equal(t, tw, secondHandler.ServeTrackCalls[0])
 }
 
 func TestBroadcastZeroValue_UsesDefaultCatalogTrackName(t *testing.T) {
@@ -195,8 +188,7 @@ func TestBroadcastZeroValue_UsesDefaultCatalogTrackName(t *testing.T) {
 	assert.NotNil(t, broadcast.Handler(DefaultCatalogTrackName))
 	assert.False(t, broadcast.RemoveTrack(DefaultCatalogTrackName))
 	assert.False(t, broadcast.RemoveTrack(""))
-	handler := &MockTrackHandler{}
-	t.Cleanup(func() { handler.AssertExpectations(t) })
+	handler := &FakeTrackHandler{}
 	assert.Error(t, broadcast.RegisterTrack(Track{Name: string(DefaultCatalogTrackName)}, handler))
 }
 
@@ -204,8 +196,7 @@ func TestBroadcastSetCatalog_PrunesRemovedTrackHandlers(t *testing.T) {
 	broadcast, err := NewBroadcast(Catalog{Version: 1})
 	require.NoError(t, err)
 
-	handler := &MockTrackHandler{}
-	t.Cleanup(func() { handler.AssertExpectations(t) })
+	handler := &FakeTrackHandler{}
 	err = broadcast.RegisterTrack(Track{
 		Name:      "video",
 		Packaging: PackagingLOC,
@@ -222,7 +213,7 @@ func TestBroadcastSetCatalog_PrunesRemovedTrackHandlers(t *testing.T) {
 
 	tw := &moqt.TrackWriter{TrackName: "video"}
 	broadcast.Handler("video").ServeTrack(tw)
-	handler.AssertNotCalled(t, "ServeTrack", tw)
+	assert.Empty(t, handler.ServeTrackCalls)
 }
 
 func TestBroadcastSetCatalog_RejectsReservedCatalogTrackName(t *testing.T) {
@@ -276,8 +267,7 @@ func TestBroadcastRegisterTrack_RejectsDuplicateTrackNamesAcrossNamespaces(t *te
 	})
 	require.NoError(t, err)
 
-	handler := &MockTrackHandler{}
-	t.Cleanup(func() { handler.AssertExpectations(t) })
+	handler := &FakeTrackHandler{}
 	err = broadcast.RegisterTrack(Track{
 		Namespace: "live/backup",
 		Name:      "video",

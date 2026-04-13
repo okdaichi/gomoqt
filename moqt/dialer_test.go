@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,13 +29,11 @@ func TestDialer_Dial_HTTPSRoutesToDialWebTransport(t *testing.T) {
 			assert.Nil(t, header)
 			assert.Nil(t, tlsConfig)
 
-			conn := &MockWebTransportSession{}
-			conn.On("Context").Return(context.Background())
-			conn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled)
-			conn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled)
-			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-			conn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8443})
-			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 443})
+			conn := &FakeWebTransportSession{}
+			conn.AcceptStreamFunc = func(context.Context) (transport.Stream, error) { return nil, context.Canceled }
+			conn.AcceptUniStreamFunc = func(context.Context) (transport.ReceiveStream, error) { return nil, context.Canceled }
+			conn.LocalAddrFunc = func() net.Addr { return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8443} }
+			conn.RemoteAddrFunc = func() net.Addr { return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 443} }
 
 			return &http.Response{StatusCode: http.StatusOK}, conn, nil
 		},
@@ -67,10 +65,8 @@ func TestDialer_Dial_MOQTRoutesToDialQUIC(t *testing.T) {
 			assert.Nil(t, quicConfig)
 
 			conn := &MockStreamConn{}
-			conn.On("Context").Return(context.Background())
-			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
-			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
-			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			conn.AcceptStreamFunc = func(context.Context) (transport.Stream, error) { return nil, io.EOF }
+			conn.AcceptUniStreamFunc = func(context.Context) (transport.ReceiveStream, error) { return nil, io.EOF }
 			return conn, nil
 		},
 	}
@@ -100,13 +96,11 @@ func TestDialer_DialWebTransport_DefaultPath(t *testing.T) {
 		Config: &Config{SetupTimeout: 25 * time.Millisecond},
 		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
 			recordedTarget = addr
-			conn := &MockWebTransportSession{}
-			conn.On("Context").Return(context.Background())
-			conn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled)
-			conn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled)
-			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-			conn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8443})
-			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 443})
+			conn := &FakeWebTransportSession{}
+			conn.AcceptStreamFunc = func(context.Context) (transport.Stream, error) { return nil, context.Canceled }
+			conn.AcceptUniStreamFunc = func(context.Context) (transport.ReceiveStream, error) { return nil, context.Canceled }
+			conn.LocalAddrFunc = func() net.Addr { return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8443} }
+			conn.RemoteAddrFunc = func() net.Addr { return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 443} }
 			return &http.Response{StatusCode: http.StatusOK}, conn, nil
 		},
 	}
@@ -136,10 +130,8 @@ func TestDialer_DialQUIC_DefaultTLSConfig(t *testing.T) {
 			assert.Equal(t, []string{NextProtoMOQ}, tlsConfig.NextProtos)
 
 			conn := &MockStreamConn{}
-			conn.On("Context").Return(context.Background())
-			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
-			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
-			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			conn.AcceptStreamFunc = func(context.Context) (transport.Stream, error) { return nil, io.EOF }
+			conn.AcceptUniStreamFunc = func(context.Context) (transport.ReceiveStream, error) { return nil, io.EOF }
 			return conn, nil
 		},
 	}

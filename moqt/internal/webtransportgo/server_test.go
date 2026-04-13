@@ -28,7 +28,7 @@ func TestServer_Init_DoesNotPanic(t *testing.T) {
 
 func TestServer_ServeQUICConn_InvalidConnType(t *testing.T) {
 	srv := &Server{}
-	err := srv.ServeQUICConn(&MockStreamConn{})
+	err := srv.ServeQUICConn(&FakeStreamConn{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid connection type")
 }

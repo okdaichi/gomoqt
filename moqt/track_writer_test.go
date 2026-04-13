@@ -4,27 +4,21 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"sync"
 	"testing"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 func newTrackWriterDropTestSender(t *testing.T) (*TrackWriter, *bytes.Buffer) {
 	t.Helper()
 
-	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(1))
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream := &FakeQUICStream{}
 
 	var buf bytes.Buffer
-	mockStream.On("Write", mock.Anything).Return(0, nil)
 	mockStream.WriteFunc = func(p []byte) (int, error) {
 		return buf.Write(p)
 	}
@@ -32,12 +26,7 @@ func newTrackWriterDropTestSender(t *testing.T) (*TrackWriter, *bytes.Buffer) {
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
 
@@ -46,19 +35,10 @@ func newTrackWriterDropTestSender(t *testing.T) (*TrackWriter, *bytes.Buffer) {
 
 func TestNewTrackWriter(t *testing.T) {
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	mockStream := &FakeQUICStream{}
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 	t.Logf("mockStream addr: %p", mockStream)
 	t.Logf("substr.stream addr: %p", substr.stream)
@@ -78,28 +58,16 @@ func TestNewTrackWriter(t *testing.T) {
 func TestTrackWriter_OpenGroup(t *testing.T) {
 	var acceptCalled bool
 
-	mockStream := &MockQUICStream{
+	mockStream := &FakeQUICStream{
 		WriteFunc: func(b []byte) (int, error) {
 			acceptCalled = true
 			return len(b), nil
 		},
 	}
-	mockStream.On("StreamID").Return(transport.StreamID(1))
-	mockStream.On("StreamID").Return(transport.StreamID(1))
-	mockStream.On("Context").Return(context.Background())
-	// Mock the Read method to return EOF to stop the background goroutine
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	// Mock the Write method for sending messages
-	mockStream.On("Write", mock.Anything).Return(0, nil)
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
 
@@ -118,11 +86,8 @@ func TestTrackWriter_OpenGroup(t *testing.T) {
 func TestTrackWriter_OpenGroup_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel the context
-	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(1))
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	mockStream := &FakeQUICStream{}
+	mockStream.ParentCtx = ctx
 
 	openUniStreamFunc := func() (transport.SendStream, error) {
 		return nil, nil
@@ -146,11 +111,7 @@ func TestTrackWriter_OpenGroup_OpenGroupError(t *testing.T) {
 		return nil, expectedError
 	}
 
-	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(1))
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	mockStream := &FakeQUICStream{}
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
 	onCloseTrack := func() {}
@@ -166,26 +127,16 @@ func TestTrackWriter_OpenGroup_OpenGroupError(t *testing.T) {
 
 func TestTrackWriter_OpenGroup_Success(t *testing.T) {
 	var acceptCalled bool
-	mockStream := &MockQUICStream{
+	mockStream := &FakeQUICStream{
 		WriteFunc: func(b []byte) (int, error) {
 			acceptCalled = true
 			return len(b), nil
 		},
 	}
-	// Ensure StreamID is available for logging in WriteInfo
-	mockStream.On("StreamID").Return(transport.StreamID(1))
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
 
@@ -209,18 +160,12 @@ func TestTrackWriter_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(ctx)
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
+		mockSendStream.ParentCtx = ctx
 		return mockSendStream, nil
 	}
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	mockStream := &FakeQUICStream{}
+	mockStream.ParentCtx = ctx
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 	onCloseTrack := func() {}
 
@@ -243,26 +188,11 @@ func TestTrackWriter_ContextCancellation(t *testing.T) {
 
 func TestTrackWriter_Close(t *testing.T) {
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
 
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-	mockStream.On("Close").Return(nil)
-	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
-	mockStream.On("CancelRead", mock.Anything).Return()
-	// Close may have been expected to call CancelRead on receive subscribe stream
-	// in the past but our library now uses graceful Close instead. We assert
-	// that Close() is called and avoid CancelRead in a normal close.
-	mockStream.On("Close").Return(nil)
+	mockStream := &FakeQUICStream{}
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 	var onCloseTrackCalled bool
 	sender := newTrackWriter("/broadcastpath", "trackname", substr, openUniStreamFunc, func() {
@@ -285,21 +215,11 @@ func TestTrackWriter_Close(t *testing.T) {
 
 func TestTrackWriter_OpenAfterClose(t *testing.T) {
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
 
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-	// Close may be called by Close(), so mock it to avoid unexpected method calls.
-	mockStream.On("Close").Return(nil)
+	mockStream := &FakeQUICStream{}
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 	onCloseTrack := func() {}
 
@@ -351,22 +271,11 @@ func TestTrackWriter_OpenAfterClose(t *testing.T) {
 
 func TestTrackWriter_OpenWhileClose(t *testing.T) {
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
 
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-	// Close may be called concurrently by Close() on the receive subscribe stream.
-	mockStream.On("Close").Return(nil)
-	mockStream.On("CancelRead", mock.Anything).Return()
+	mockStream := &FakeQUICStream{}
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 	onCloseTrack := func() {}
 
@@ -400,18 +309,10 @@ func TestTrackWriter_OpenWhileClose(t *testing.T) {
 
 func TestTrackWriter_Context(t *testing.T) {
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	mockStream := &FakeQUICStream{}
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 	onCloseTrack := func() {}
 
@@ -423,18 +324,10 @@ func TestTrackWriter_Context(t *testing.T) {
 
 func TestTrackWriter_TrackConfig(t *testing.T) {
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	mockStream := &FakeQUICStream{}
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 	onCloseTrack := func() {}
 
@@ -452,18 +345,10 @@ func TestTrackWriter_TrackConfig(t *testing.T) {
 
 func TestTrackWriter_RemoveGroup(t *testing.T) {
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	mockStream := &FakeQUICStream{}
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 	onCloseTrack := func() {}
 
@@ -480,20 +365,11 @@ func TestTrackWriter_RemoveGroup(t *testing.T) {
 }
 
 func TestTrackWriter_OpenGroup_AutoIncrement(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(1))
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	mockStream := &FakeQUICStream{}
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
 
@@ -515,20 +391,11 @@ func TestTrackWriter_OpenGroup_AutoIncrement(t *testing.T) {
 }
 
 func TestTrackWriter_SkipGroups(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(transport.StreamID(1))
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	mockStream := &FakeQUICStream{}
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
 	openUniStreamFunc := func() (transport.SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("Context").Return(context.Background())
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(transport.StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
 

@@ -36,9 +36,6 @@ func BenchmarkGroupReader_ReadFrame(b *testing.B) {
 			repeatingData := bytes.Repeat(encodedData, b.N+1)
 			reader := bytes.NewReader(repeatingData)
 
-			mockStream := &MockQUICSendStream{}
-			mockStream.On("Context").Return(context.Background())
-
 			// Wrap the reader to implement ReceiveStream
 			recvStream := &mockReceiveStream{Reader: reader}
 
@@ -74,10 +71,6 @@ func BenchmarkGroupWriter_WriteFrame(b *testing.B) {
 
 	for _, size := range frameSizes {
 		b.Run(fmt.Sprintf("size-%d", size), func(b *testing.B) {
-			// Create mock send stream
-			mockStream := &MockQUICSendStream{}
-			mockStream.On("Context").Return(context.Background())
-
 			// Use a discard writer to avoid memory accumulation
 			sendStream := &mockSendStream{Writer: io.Discard}
 
@@ -313,7 +306,6 @@ func (m *mockReceiveStream) CancelRead(transport.StreamErrorCode) {}
 func (m *mockReceiveStream) SetReadDeadline(t time.Time) error {
 	return nil
 }
-func (m *mockReceiveStream) StreamID() transport.StreamID { return 0 }
 
 type mockSendStream struct {
 	io.Writer
@@ -322,5 +314,4 @@ type mockSendStream struct {
 func (m *mockSendStream) CancelWrite(transport.StreamErrorCode) {}
 func (m *mockSendStream) Close() error                          { return nil }
 func (m *mockSendStream) Context() context.Context              { return context.Background() }
-func (m *mockSendStream) StreamID() transport.StreamID          { return 0 }
 func (m *mockSendStream) SetWriteDeadline(t time.Time) error    { return nil }
