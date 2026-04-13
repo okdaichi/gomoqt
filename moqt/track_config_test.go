@@ -23,67 +23,51 @@ func TestTrackConfig(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			config := TrackConfig{
-				TrackPriority: tt.trackPriority,
+			config := SubscribeConfig{
+				Priority: tt.trackPriority,
 			}
 
-			assert.Equal(t, tt.trackPriority, config.TrackPriority)
-		})
-	}
-}
-
-func TestTrackConfig_String(t *testing.T) {
-	tests := map[string]struct {
-		config   TrackConfig
-		expected string
-	}{
-		"default values": {
-			config: TrackConfig{
-				TrackPriority: TrackPriority(0),
-			},
-			expected: "{ track_priority: 0 }",
-		},
-		"specific values": {
-			config: TrackConfig{
-				TrackPriority: TrackPriority(128),
-			},
-			expected: "{ track_priority: 128 }",
-		},
-		"high values": {
-			config: TrackConfig{
-				TrackPriority: TrackPriority(255),
-			},
-			expected: "{ track_priority: 255 }",
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			result := tt.config.String()
-			assert.Equal(t, tt.expected, result)
+			assert.Equal(t, tt.trackPriority, config.Priority)
 		})
 	}
 }
 
 func TestTrackConfig_ZeroValue(t *testing.T) {
-	var config TrackConfig
+	var config SubscribeConfig
 
-	assert.Equal(t, TrackPriority(0), config.TrackPriority)
+	assert.Equal(t, TrackPriority(0), config.Priority)
 }
 
 func TestTrackConfig_Comparison(t *testing.T) {
-	config1 := TrackConfig{
-		TrackPriority: TrackPriority(128),
+	config1 := SubscribeConfig{
+		Priority: TrackPriority(128),
 	}
 
-	config2 := TrackConfig{
-		TrackPriority: TrackPriority(128),
+	config2 := SubscribeConfig{
+		Priority: TrackPriority(128),
 	}
 
-	config3 := TrackConfig{
-		TrackPriority: TrackPriority(64),
+	config3 := SubscribeConfig{
+		Priority: TrackPriority(64),
 	}
 
 	assert.Equal(t, config1, config2)
 	assert.NotEqual(t, config1, config3)
+}
+
+func TestSubscribeConfig_String(t *testing.T) {
+	config := SubscribeConfig{
+		Priority:   128,
+		Ordered:    true,
+		MaxLatency: 250,
+		StartGroup: 5,
+		EndGroup:   10,
+	}
+
+	result := config.String()
+	assert.Contains(t, result, "subscriber_priority: 128")
+	assert.Contains(t, result, "ordered: true")
+	assert.Contains(t, result, "max_latency_ms: 250")
+	assert.Contains(t, result, "start_group: 5")
+	assert.Contains(t, result, "end_group: 10")
 }

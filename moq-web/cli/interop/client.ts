@@ -1,4 +1,4 @@
-import { Client, Frame, TrackMux, TrackWriter } from "@okdaichi/moq";
+import { Client, FetchRequest, Frame, TrackMux, TrackWriter } from "@okdaichi/moq";
 import { background } from "@okdaichi/golikejs/context";
 
 // shared client logic exported as function
@@ -107,6 +107,33 @@ export async function runClient(
 		if (err) throw err;
 		info("Frame data length:", frame.bytes.byteLength);
 		info("Received data from server:", new TextDecoder().decode(frame.bytes));
+	});
+
+	// Step 3: Fetch a single group from the server
+	const fetchGroup = await step("Fetching group from server", async () => {
+		const req = new FetchRequest({
+			broadcastPath: announcement.broadcastPath,
+			trackName: "",
+			priority: 0,
+			groupSequence: 0,
+		});
+		const [g, err] = await session.fetch(req);
+		if (err) throw err;
+		return g;
+	});
+
+	await step("Reading frame via Fetch", async () => {
+		const frame = new Frame(new Uint8Array(1024));
+		const err = await fetchGroup.readFrame(frame);
+		if (err) throw err;
+		info("Fetch payload:", new TextDecoder().decode(frame.bytes));
+	});
+
+	// Step 4: Probe the server bitrate
+	await step("Probing server bitrate", async () => {
+		const [measuredBitrate, err] = await session.probe(1_000_000);
+		if (err) throw err;
+		info(`Probe result: ${measuredBitrate} bps`);
 	});
 
 	debug("Operations completed");

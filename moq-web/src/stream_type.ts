@@ -1,6 +1,8 @@
 export const BiStreamTypes = {
 	AnnounceStreamType: 0x01,
 	SubscribeStreamType: 0x02,
+	FetchStreamType: 0x03,
+	ProbeStreamType: 0x04,
 } as const;
 
 export const UniStreamTypes = {

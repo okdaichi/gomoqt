@@ -35,7 +35,7 @@ func main() {
 		}
 	})
 
-	client := moqt.Client{
+	client := moqt.Dialer{
 		Logger: slog.Default(),
 	}
 
@@ -69,7 +69,7 @@ func main() {
 				return
 			}
 
-			tr, err := sess.Subscribe(ann.BroadcastPath(), "index", nil)
+			tr, err := sess.Subscribe(context.Background(), ann.BroadcastPath(), "index", nil)
 			if err != nil {
 				slog.Error("failed to open track stream", "error", err)
 				return

@@ -4,15 +4,58 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
+	"github.com/quic-go/quic-go"
 )
 
-func newSession(conn StreamConn, mux *TrackMux, onClose func()) *Session {
+const (
+	moqtVersion = "moq-lite-03"
+)
 
+// Session represents an active MOQ session over a QUIC connection.
+// It manages bidirectional and unidirectional streams, subscriptions, and
+// announcements for a single peer connection.
+type Session struct {
+	ctx context.Context // Context for the session
+
+	wg sync.WaitGroup // WaitGroup for session cleanup
+
+	conn StreamConn
+
+	mux *TrackMux
+
+	subscribeIDCounter atomic.Uint64
+
+	trackReaders         map[SubscribeID]*TrackReader
+	trackReaderMapLocker sync.RWMutex
+
+	trackWriters         map[SubscribeID]*TrackWriter
+	trackWriterMapLocker sync.RWMutex
+
+	fetchHandler FetchHandler
+	logger       *slog.Logger
+
+	isTerminating atomic.Bool
+	// sessErr       error
+
+	connManager *connManager
+}
+
+func newSession(
+	conn StreamConn,
+	mux *TrackMux,
+	manager *connManager,
+	fetchHandler FetchHandler,
+	logger *slog.Logger,
+) *Session {
 	if mux == nil {
 		mux = DefaultMux
 	}
@@ -22,20 +65,12 @@ func newSession(conn StreamConn, mux *TrackMux, onClose func()) *Session {
 		ctx:          connCtx,
 		conn:         conn,
 		mux:          mux,
+		fetchHandler: fetchHandler,
+		logger:       logger,
 		trackReaders: make(map[SubscribeID]*TrackReader),
 		trackWriters: make(map[SubscribeID]*TrackWriter),
-		onClose:      onClose,
+		connManager:  manager,
 	}
-
-	// Supervise session closure
-	context.AfterFunc(connCtx, func() {
-		reason := connCtx.Err()
-		if _, ok := errors.AsType[*ApplicationError](reason); ok {
-			return // Normal closure
-		}
-
-		_ = sess.CloseWithError(ProtocolViolationErrorCode, "session stream closed unexpectedly")
-	})
 
 	// Listen bidirectional streams
 	sess.wg.Go(func() {
@@ -50,35 +85,18 @@ func newSession(conn StreamConn, mux *TrackMux, onClose func()) *Session {
 	return sess
 }
 
-// Session represents an active MOQ session over a QUIC connection.
-// It manages bidirectional and unidirectional streams, subscriptions, and announcements for a single peer connection.
-type Session struct {
-	ctx context.Context // Context for the session
-
-	wg sync.WaitGroup // WaitGroup for session cleanup
-
-	conn StreamConn
-
-	transport string // "quic" or "webtransport"
-
-	mux *TrackMux // TODO
-
-	subscribeIDCounter atomic.Uint64
-
-	trackReaders         map[SubscribeID]*TrackReader
-	trackReaderMapLocker sync.RWMutex
-
-	trackWriters         map[SubscribeID]*TrackWriter
-	trackWriterMapLocker sync.RWMutex
-
-	isTerminating atomic.Bool
-	sessErr       error
-
-	onClose func() // Function to call when the session is closed
-}
-
 func (s *Session) terminating() bool {
 	return s.isTerminating.Load()
+}
+
+func (s *Session) logError(msg string, err error, args ...any) {
+	if s == nil || err == nil {
+		return
+	}
+
+	if s.logger != nil {
+		s.logger.Error(msg, append(args, "error", err)...)
+	}
 }
 
 // Context returns the session's context which is canceled when the session
@@ -87,79 +105,86 @@ func (s *Session) Context() context.Context {
 	return s.ctx
 }
 
+// ConnectionState returns connection metadata for the session.
+func (s *Session) ConnectionState() ConnectionState {
+	return ConnectionState{
+		Version: moqtVersion,
+		TLS:     s.conn.TLS(),
+	}
+}
+
 // LocalAddr returns the local network address.
-// The returned value implements [TransportAddr], which can be used to
-// retrieve the transport protocol ("quic" or "webtransport").
 func (s *Session) LocalAddr() net.Addr {
 	if s == nil || s.conn == nil {
 		return nil
 	}
-	return &addr{addr: s.conn.LocalAddr(), transport: s.transport}
+	return s.conn.LocalAddr()
 }
 
 // RemoteAddr returns the remote network address of the peer.
-// The returned value implements [TransportAddr], which can be used to
-// retrieve the transport protocol ("quic" or "webtransport"):
-//
-//	if ta, ok := sess.RemoteAddr().(moqt.TransportAddr); ok {
-//	    fmt.Println(ta.Transport()) // "quic" or "webtransport"
-//	}
 func (s *Session) RemoteAddr() net.Addr {
 	if s == nil || s.conn == nil {
 		return nil
 	}
-	return &addr{addr: s.conn.RemoteAddr(), transport: s.transport}
+	return s.conn.RemoteAddr()
 }
 
-// CloseWithError closes the connection with an error code and message.
+// CloseWithError closes the session with an error code and message.
 func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 	if s.terminating() {
-		return s.sessErr
+		return nil
 	}
 	s.isTerminating.Store(true)
 
-	if s.onClose != nil {
-		s.onClose()
-	}
-
-	err := s.conn.CloseWithError(ConnErrorCode(code), msg)
+	err := s.conn.CloseWithError(transport.ConnErrorCode(code), msg)
 	if err != nil {
-		var appErr *ApplicationError
-		if errors.As(err, &appErr) {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
 			reason := &SessionError{
 				ApplicationError: appErr,
 			}
-			s.sessErr = reason
 			return reason
 		}
-		s.sessErr = err
 		return fmt.Errorf("session termination failed: %w", err)
 	}
 
 	// Wait for finishing handling streams
 	s.wg.Wait()
 
+	if s.connManager != nil {
+		connManager := s.connManager
+		s.connManager = nil
+
+		connManager.removeConn(s.conn)
+	}
+
 	return nil
 }
 
-func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackConfig) (*TrackReader, error) {
+// Subscribe sends SUBSCRIBE and waits for SUBSCRIBE_OK.
+// ctx is used while opening the stream, sending SUBSCRIBE, and waiting for the response.
+// If config is nil, a zero-value SubscribeConfig is used.
+func (s *Session) Subscribe(ctx context.Context, path BroadcastPath, name TrackName, config *SubscribeConfig) (*TrackReader, error) {
+	if ctx == nil {
+		return nil, errors.New("nil context")
+	}
+
 	if s.terminating() {
-		if s.sessErr == nil {
-			return nil, ErrClosedSession
-		}
-		return nil, s.sessErr
+		return nil, ErrClosedSession
+	}
+
+	if !isValidPath(path) {
+		return nil, fmt.Errorf("invalid broadcast path: %q", path)
 	}
 
 	if config == nil {
-		config = &TrackConfig{}
+		config = &SubscribeConfig{}
 	}
 
 	id := s.nextSubscribeID()
 
 	stream, err := s.conn.OpenStream()
 	if err != nil {
-		var appErr *ApplicationError
-		if errors.As(err, &appErr) {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
 			return nil, &SessionError{
 				ApplicationError: appErr,
 			}
@@ -169,112 +194,157 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 
 	err = message.StreamTypeSubscribe.Encode(stream)
 	if err != nil {
-		var strErr *StreamError
-		if errors.As(err, &strErr) && strErr.Remote {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
 			return nil, &SubscribeError{
 				StreamError: strErr,
 			}
 		}
-		strErrCode := StreamErrorCode(InternalSubscribeErrorCode)
-		stream.CancelWrite(strErrCode)
-		stream.CancelRead(strErrCode)
+		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
 		return nil, fmt.Errorf("failed to encode stream type message: %w", err)
 	}
 
-	// Send a SUBSCRIBE message
-	sm := message.SubscribeMessage{
-		SubscribeID:   uint64(id),
-		BroadcastPath: string(path),
-		TrackName:     string(name),
-		TrackPriority: uint8(config.TrackPriority),
-	}
-	err = sm.Encode(stream)
-	if err == nil {
-		// Message sent successfully
-	}
+	err = message.SubscribeMessage{
+		SubscribeID:          uint64(id),
+		BroadcastPath:        string(path),
+		TrackName:            string(name),
+		SubscriberPriority:   uint8(config.Priority),
+		SubscriberOrdered:    boolToWireFlag(config.Ordered),
+		SubscriberMaxLatency: config.MaxLatency,
+		StartGroup:           groupSequenceToWire(config.StartGroup),
+		EndGroup:             groupSequenceToWire(config.EndGroup),
+	}.Encode(stream)
 	if err != nil {
-		var strErr *StreamError
-		if errors.As(err, &strErr) && strErr.Remote {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok && strErr.Remote {
 			stream.CancelRead(strErr.ErrorCode)
 			return nil, &SubscribeError{
 				StreamError: strErr,
 			}
 		}
 
-		strErrCode := StreamErrorCode(InternalSubscribeErrorCode)
-		stream.CancelWrite(strErrCode)
-		stream.CancelRead(strErrCode)
+		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
 
 		return nil, fmt.Errorf("failed to encode SUBSCRIBE message: %w", err)
 	}
 
-	// Register TrackReader AFTER sending SUBSCRIBE but BEFORE waiting for SUBSCRIBE_OK
-	// This ensures we're ready to receive data streams immediately when server approves
-	substr := newSendSubscribeStream(id, stream, config, Info{})
+	substr := newSendSubscribeStream(id, stream, config)
 
-	// Create a receive group stream queue
-	trackReceiver := newTrackReader(
-		path,
-		name,
-		substr,
-		func() { s.removeTrackReader(id) },
-	)
-	s.addTrackReader(id, trackReceiver)
-
-	cleanup := func() {
-		s.removeTrackReader(id)
+	track := newTrackReader(path, name, substr, func() { s.removeTrackReader(id) })
+	s.addTrackReader(id, track)
+	ctx, cancel := context.WithTimeout(ctx, s.timeout())
+	defer cancel()
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = stream.SetReadDeadline(deadline)
+		defer stream.SetReadDeadline(time.Time{})
 	}
 
-	var subok message.SubscribeOkMessage
-	err = subok.Decode(stream)
+	okMsg, dropMsg, err := readSubscribeResponse(stream)
 	if err != nil {
-		cleanup()
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
-			strErrCode := StreamErrorCode(strErr.ErrorCode)
-			stream.CancelWrite(strErrCode)
-
-			return nil, &SubscribeError{
-				StreamError: strErr,
-			}
+		if ctx.Err() != nil {
+			cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeTimeout))
+			return nil, fmt.Errorf("subscription timed out: %w", ctx.Err())
 		}
-
-		// If Decode returned an error that's not a QUIC StreamError, fail.
-		// For non-QUIC stream errors (e.g., io.EOF), do not cancel the stream
-		// aggressively. Allow the caller to close the session or the remote to
-		// clean up; canceling here may trigger a remote Reset which can break
-		// the normal lifecycle and lead to spurious EOFs on the server side.
-		return nil, fmt.Errorf("failed to read SUBSCRIBE_OK response: %w", err)
-	} else {
-		// Successful receipt of SUBSCRIBE_OK.
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
+			return nil, &SubscribeError{StreamError: strErr}
+		}
+		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
+		return nil, fmt.Errorf("failed to read SUBSCRIBE response: %w", err)
 	}
 
-	return trackReceiver, nil
+	if dropMsg != nil {
+		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
+		return nil, fmt.Errorf("moqt: unexpected SUBSCRIBE_DROP message received")
+	}
+
+	substr.updateInfo(PublishInfo{
+		Priority:   TrackPriority(okMsg.PublisherPriority),
+		Ordered:    boolFromWireFlag(okMsg.PublisherOrdered),
+		MaxLatency: okMsg.PublisherMaxLatency,
+		StartGroup: groupSequenceFromWire(okMsg.StartGroup),
+		EndGroup:   groupSequenceFromWire(okMsg.EndGroup),
+	})
+	go substr.readSubscribeResponses()
+
+	return track, nil
 }
 
-// Subscribe starts a subscription for the specified broadcast path and track name within the session.
-// It returns a TrackReader that can be used to accept groups and read track data.
-// The returned TrackReader and the subscription exist for the lifetime of this session unless closed.
-
+// nextSubscribeID atomically increments and returns the next SubscribeID for new subscriptions.
 func (s *Session) nextSubscribeID() SubscribeID {
 	// Increment and return the previous value atomically
 	return SubscribeID(s.subscribeIDCounter.Add(1))
 }
 
+func (s *Session) timeout() time.Duration {
+	return 30 * time.Second
+}
+
+func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
+	if s.terminating() {
+		return nil, ErrClosedSession
+	}
+
+	stream, err := s.conn.OpenStream()
+	if err != nil {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
+			return nil, &SessionError{
+				ApplicationError: appErr,
+			}
+		}
+		return nil, fmt.Errorf("failed to open stream for fetch: %w", err)
+	}
+
+	err = message.StreamTypeFetch.Encode(stream)
+	if err != nil {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok && strErr.Remote {
+			stream.CancelRead(strErr.ErrorCode)
+			return nil, &FetchError{
+				StreamError: strErr,
+			}
+		}
+		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
+		return nil, fmt.Errorf("failed to encode stream type message: %w", err)
+	}
+
+	err = message.FetchMessage{
+		BroadcastPath: string(req.BroadcastPath),
+		TrackName:     string(req.TrackName),
+		Priority:      uint8(req.Priority),
+		GroupSequence: uint64(req.GroupSequence),
+	}.Encode(stream)
+	if err != nil {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok && strErr.Remote {
+			stream.CancelRead(strErr.ErrorCode)
+			return nil, &FetchError{
+				StreamError: strErr,
+			}
+		}
+
+		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
+
+		return nil, fmt.Errorf("failed to encode FETCH message: %w", err)
+	}
+
+	group := newGroupReader(req.GroupSequence, stream, nil)
+
+	context.AfterFunc(req.Context(), func() {
+		// Cancel the stream when the context is done
+		group.CancelRead(ExpiredGroupErrorCode)
+	})
+
+	return group, nil
+}
+
+// AcceptAnnounce requests announcements from the remote peer that match the
+// specified prefix. It opens an announce stream and returns an
+// AnnouncementReader that yields Announcement objects for active tracks.
 func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) {
 	if sess.terminating() {
-		if sess.sessErr == nil {
-			return nil, ErrClosedSession
-		}
-		return nil, sess.sessErr
+		return nil, ErrClosedSession
 	}
 
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
-		var appErr *ApplicationError
-		if errors.As(err, &appErr) {
-
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
 			return nil, &SessionError{
 				ApplicationError: appErr,
 			}
@@ -285,9 +355,8 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	err = message.StreamTypeAnnounce.Encode(stream)
 	if err != nil {
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
-			strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
+			strErrCode := transport.StreamErrorCode(AnnounceErrorCodeInternal)
 			stream.CancelRead(strErrCode)
 
 			return nil, &AnnounceError{
@@ -302,52 +371,71 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		TrackPrefix: prefix,
 	}.Encode(stream)
 	if err != nil {
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
-			strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
-			stream.CancelRead(strErrCode)
-
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
+			cancelStreamWithError(stream, transport.StreamErrorCode(AnnounceErrorCodeInternal))
 			return nil, &AnnounceError{
 				StreamError: strErr,
 			}
 		}
 
-		strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
-		stream.CancelWrite(strErrCode)
-		stream.CancelRead(strErrCode)
+		cancelStreamWithError(stream, transport.StreamErrorCode(AnnounceErrorCodeInternal))
 
 		return nil, fmt.Errorf("failed to send ANNOUNCE_PLEASE message: %w", err)
 	}
 
-	var aim message.AnnounceInitMessage
-	err = aim.Decode(stream)
-	if err != nil {
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
-			// Helpful debug logging for interop investigation: show exact stream error details
-			strErrCode := StreamErrorCode(InternalAnnounceErrorCode)
-			stream.CancelRead(strErrCode)
+	return newAnnouncementReader(stream, prefix, nil), nil
+}
 
-			return nil, &AnnounceError{
-				StreamError: strErr,
+// Probe sends a bitrate probe request to the remote peer and returns the
+// bitrate reported by the response.
+func (sess *Session) Probe(bitrate uint64) (uint64, error) {
+	if sess.terminating() {
+		return 0, ErrClosedSession
+	}
+
+	stream, err := sess.conn.OpenStream()
+	if err != nil {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
+			return 0, &SessionError{
+				ApplicationError: appErr,
 			}
 		}
 
-		return nil, fmt.Errorf("failed to read ANNOUNCE_INIT message: %w", err)
+		return 0, fmt.Errorf("failed to open stream for probe: %w", err)
+	}
+	defer stream.Close()
+
+	err = message.StreamTypeProbe.Encode(stream)
+	if err != nil {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
+			stream.CancelRead(strErr.ErrorCode)
+			return 0, err
+		}
+
+		cancelStreamWithError(stream, transport.StreamErrorCode(ProbeErrorCodeInternal))
+
+		return 0, fmt.Errorf("failed to encode stream type message: %w", err)
 	}
 
-	return newAnnouncementReader(stream, prefix, aim.Suffixes), nil
-}
+	err = message.ProbeMessage{Bitrate: bitrate}.Encode(stream)
+	if err != nil {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
+			stream.CancelRead(strErr.ErrorCode)
+			return 0, err
+		}
 
-// AcceptAnnounce requests announcements from the remote peer that match the
-// specified prefix. It opens an announce stream and returns an
-// AnnouncementReader that yields Announcement objects for active tracks.
+		cancelStreamWithError(stream, transport.StreamErrorCode(ProbeErrorCodeInternal))
 
-func (sess *Session) goAway(_ string) error {
-	// goAway is a no-op in MOQT. Graceful shutdown is handled by the
-	// underlying QUIC connection close. This method exists for API
-	// compatibility with server/client shutdown logic.
-	return nil
+		return 0, fmt.Errorf("failed to send PROBE message: %w", err)
+	}
+
+	var resp message.ProbeMessage
+	err = resp.Decode(stream)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read PROBE response: %w", err)
+	}
+
+	return resp.Bitrate, nil
 }
 
 // listenBiStreams accepts bidirectional streams and handles them based on their type.
@@ -366,11 +454,12 @@ func (sess *Session) handleBiStreams() {
 	}
 }
 
-func (sess *Session) processBiStream(stream Stream) {
+func (sess *Session) processBiStream(stream transport.Stream) {
+	defer stream.Close()
 	var streamType message.StreamType
 	err := streamType.Decode(stream)
 	if err != nil {
-		_ = sess.CloseWithError(ProtocolViolationErrorCode, err.Error())
+		sess.logError("failed to decode stream type", err)
 		return
 	}
 
@@ -379,13 +468,14 @@ func (sess *Session) processBiStream(stream Stream) {
 		var apm message.AnnouncePleaseMessage
 		err := apm.Decode(stream)
 		if err != nil {
-			cancelStreamWithError(stream, StreamErrorCode(InternalAnnounceErrorCode))
+			sess.logError("failed to decode ANNOUNCE_PLEASE message", err)
+			cancelStreamWithError(stream, transport.StreamErrorCode(AnnounceErrorCodeInternal))
 			return
 		}
 
 		prefix := apm.TrackPrefix
 
-		annstr := newAnnouncementWriter(stream, prefix)
+		annstr := newAnnouncementWriter(stream, prefix, sess.logger)
 
 		sess.mux.serveAnnouncements(annstr)
 
@@ -395,81 +485,123 @@ func (sess *Session) processBiStream(stream Stream) {
 		var sm message.SubscribeMessage
 		err := sm.Decode(stream)
 		if err != nil {
-			cancelStreamWithError(stream, StreamErrorCode(InternalSubscribeErrorCode))
+			sess.logError("failed to decode SUBSCRIBE message", err)
+			cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
 			return
 		}
 
-		// Create a receiveSubscribeStream
-		config := &TrackConfig{
-			TrackPriority: TrackPriority(sm.TrackPriority),
+		// Create a receiveSubscribeStream with draft3 fields decoded from SUBSCRIBE message
+		config := &SubscribeConfig{
+			Priority:   TrackPriority(sm.SubscriberPriority),
+			Ordered:    boolFromWireFlag(sm.SubscriberOrdered),
+			MaxLatency: sm.SubscriberMaxLatency,
 		}
+
+		// Decode 0-sentinel / +1-encoded fields (matching SUBSCRIBE_UPDATE logic)
+		config.StartGroup = groupSequenceFromWire(sm.StartGroup)
+		config.EndGroup = groupSequenceFromWire(sm.EndGroup)
 
 		substr := newReceiveSubscribeStream(SubscribeID(sm.SubscribeID), stream, config)
 
-		w := newTrackWriter(
+		track := newTrackWriter(
 			BroadcastPath(sm.BroadcastPath),
 			TrackName(sm.TrackName),
 			substr,
 			sess.conn.OpenUniStream,
 			func() { sess.removeTrackWriter(SubscribeID(sm.SubscribeID)) },
 		)
-		sess.addTrackWriter(SubscribeID(sm.SubscribeID), w)
+		sess.addTrackWriter(SubscribeID(sm.SubscribeID), track)
 
-		sess.mux.serveTrack(w)
+		sess.mux.serveTrack(track)
 
 		// Ensure the track writer is closed when done
-		w.Close()
+		track.Close()
+	case message.StreamTypeFetch:
+		var fm message.FetchMessage
+		err := fm.Decode(stream)
+		if err != nil {
+			sess.logError("failed to decode FETCH message", err)
+			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
+			return
+		}
+
+		handler := sess.fetchHandler
+
+		req := &FetchRequest{
+			BroadcastPath: BroadcastPath(fm.BroadcastPath),
+			TrackName:     TrackName(fm.TrackName),
+			Priority:      TrackPriority(fm.Priority),
+			GroupSequence: GroupSequence(fm.GroupSequence),
+			ctx:           stream.Context(),
+		}
+
+		group := newGroupWriter(stream, req.GroupSequence, nil)
+
+		stop := context.AfterFunc(req.Context(), func() {
+			// Cancel the stream when the context is done
+			group.CancelWrite(ExpiredGroupErrorCode)
+		})
+		defer stop()
+
+		err = safeServeFetch(handler, group, req)
+		if err != nil {
+			sess.logError("fetch handler error", err)
+			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
+			return
+		}
+	case message.StreamTypeProbe:
+		if err := sess.handleProbeStream(stream); err != nil {
+			sess.logError("probe stream error", err)
+			cancelStreamWithError(stream, transport.StreamErrorCode(ProbeErrorCodeInternal))
+			return
+		}
 	default:
-		_ = sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown bidirectional stream type: %v", streamType))
+		sess.logError("unknown stream type", fmt.Errorf("stream type %d", streamType))
+		cancelStreamWithError(stream, transport.StreamErrorCode(InternalSessionErrorCode))
 		return
 	}
 }
 
 func (sess *Session) handleUniStreams() {
 	for {
-		/*
-		 * Accept a unidirectional stream
-		 */
 		stream, err := sess.conn.AcceptUniStream(sess.ctx)
 		if err != nil {
 			return
 		}
 
-		// Handle the stream
 		go sess.processUniStream(stream)
 	}
 }
 
-func (sess *Session) processUniStream(stream ReceiveStream) {
-	/*
-	 * Get a Stream Type ID
-	 */
+func (sess *Session) processUniStream(stream transport.ReceiveStream) {
 	var streamType message.StreamType
 	err := streamType.Decode(stream)
 	if err != nil {
+		sess.logError("failed to decode uni stream type", err)
 		return
 	}
 
-	// Handle the stream by the Stream Type ID
 	switch streamType {
 	case message.StreamTypeGroup:
 		var gm message.GroupMessage
 		err := gm.Decode(stream)
 		if err != nil {
+			sess.logError("failed to decode GROUP message", err)
 			return
 		}
 
 		track, ok := sess.trackReaders[SubscribeID(gm.SubscribeID)]
 		if !ok {
-			stream.CancelRead(StreamErrorCode(InvalidSubscribeIDErrorCode))
+			stream.CancelRead(transport.StreamErrorCode(InvalidSubscribeIDErrorCode))
 			return
 		}
 
-		// Enqueue the receiver
+		// Enqueue the receiver — ownership of the stream transfers to the TrackReader.
 		track.enqueueGroup(GroupSequence(gm.GroupSequence), stream)
 	default:
-		// Terminate the session
-		_ = sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown unidirectional stream type: %v", streamType))
+		// Unknown stream types are stream-local and non-fatal for extension probing.
+		sess.logError("unknown uni stream type", fmt.Errorf("stream type %d", streamType))
+		stream.CancelRead(transport.StreamErrorCode(InternalSessionErrorCode))
 		return
 	}
 }
@@ -502,7 +634,77 @@ func (s *Session) removeTrackReader(id SubscribeID) {
 	delete(s.trackReaders, id)
 }
 
-func cancelStreamWithError(stream Stream, code StreamErrorCode) {
+func cancelStreamWithError(stream transport.Stream, code transport.StreamErrorCode) {
 	stream.CancelRead(code)
 	stream.CancelWrite(code)
+}
+
+func (sess *Session) handleProbeStream(stream transport.Stream) error {
+	provider, _ := sess.probeStatsProvider()
+
+	tracker := &probeMeasurementTracker{}
+	for {
+		var pm message.ProbeMessage
+		err := pm.Decode(stream)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+
+		if provider == nil {
+			return &ProbeError{StreamError: &transport.StreamError{ErrorCode: transport.StreamErrorCode(ProbeErrorCodeNotSupported)}}
+		}
+		measured := tracker.measure(provider.ConnectionStats(), pm.Bitrate, time.Now())
+		if err := (message.ProbeMessage{Bitrate: measured}).Encode(stream); err != nil {
+			return err
+		}
+	}
+}
+
+type probeStatsProvider interface {
+	ConnectionStats() quic.ConnectionStats
+}
+
+type probeMeasurementTracker struct {
+	initialized bool
+	bytesSent   uint64
+	sampleTime  time.Time
+}
+
+func (sess *Session) probeStatsProvider() (probeStatsProvider, bool) {
+	provider, ok := sess.conn.(probeStatsProvider)
+	return provider, ok
+}
+
+func (t *probeMeasurementTracker) measure(stats quic.ConnectionStats, fallback uint64, now time.Time) uint64 {
+	if !t.initialized {
+		t.initialized = true
+		t.bytesSent = stats.BytesSent
+		t.sampleTime = now
+		return fallback
+	}
+
+	elapsed := now.Sub(t.sampleTime)
+	if elapsed <= 0 {
+		return fallback
+	}
+
+	bytesSent := stats.BytesSent
+	bytesDelta := bytesSent
+	if bytesDelta >= t.bytesSent {
+		bytesDelta -= t.bytesSent
+	} else {
+		bytesDelta = 0
+	}
+	if bytesDelta == 0 {
+		t.bytesSent = bytesSent
+		t.sampleTime = now
+		return fallback
+	}
+
+	t.bytesSent = bytesSent
+	t.sampleTime = now
+	return uint64((float64(bytesDelta) * 8) / elapsed.Seconds())
 }

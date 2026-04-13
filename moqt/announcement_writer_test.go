@@ -1,232 +1,222 @@
 package moqt
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
+// newTestAnnouncementWriter creates a test AnnouncementWriter with default setup.
+// It uses the default prefix "/test/" unless a custom prefix is provided.
+// Optional setup functions configure the underlying FakeQUICStream.
+func newTestAnnouncementWriter(t *testing.T, opts ...func(*FakeQUICStream)) *AnnouncementWriter {
+	mockStream := &FakeQUICStream{}
+	for _, f := range opts {
+		if f != nil {
+			f(mockStream)
+		}
+	}
+	return newAnnouncementWriter(mockStream, "/test/", nil)
+}
+
 func TestNewAnnouncementWriter(t *testing.T) {
-	mockStream := &MockQUICStream{}
+	mockStream := &FakeQUICStream{}
 	prefix := "/test/"
-	ctx := context.Background()
+	logger := &slog.Logger{}
+	aw := newAnnouncementWriter(mockStream, prefix, logger)
 
-	mockStream.On("Context").Return(ctx)
+	require.NotNil(t, aw)
+	assert.Equal(t, "/test/", aw.prefix)
+	assert.Equal(t, mockStream, aw.stream)
+	assert.Equal(t, logger, aw.logger)
+	assert.NotNil(t, aw.actives)
+	assert.NotNil(t, aw.ctx)
 
-	sas := newAnnouncementWriter(mockStream, prefix)
-
-	require.NotNil(t, sas)
-	assert.Equal(t, prefix, sas.prefix)
-	assert.Equal(t, mockStream, sas.stream)
-	assert.NotNil(t, sas.actives)
-	assert.NotNil(t, sas.ctx)
-
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_Init(t *testing.T) {
 	tests := map[string]struct {
-		setupAnnouncements func(ctx context.Context) map[*Announcement]struct{}
-		expectError        bool
-		expectedActives    int
-		expectedSuffixes   []string
-		setupMocks         func(*MockQUICStream)
+		initialAnnouncements func(ctx context.Context) map[*Announcement]struct{}
+		expectError          bool
+		expectedActives      int
+		expectedSuffixes     []string
+		setupMocks           func(*FakeQUICStream)
 	}{
 		"empty initialization": {
-			setupAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
+			initialAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
 				return make(map[*Announcement]struct{})
 			},
 			expectError:      false,
 			expectedActives:  0,
 			expectedSuffixes: []string{},
-			setupMocks: func(mockStream *MockQUICStream) {
-				ctx := context.Background()
-				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
-			},
 		},
 		"single active announcement": {
-			setupAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
-				ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+			initialAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
+				ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
 				return map[*Announcement]struct{}{ann: {}}
 			},
 			expectError:      false,
 			expectedActives:  1,
 			expectedSuffixes: []string{"stream1"},
-			setupMocks: func(mockStream *MockQUICStream) {
-				ctx := context.Background()
-				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
-			},
 		},
 		"multiple active announcements": {
-			setupAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
-				ann1, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-				ann2, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream2"))
+			initialAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
+				ann1, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+				ann2, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream2"))
 				return map[*Announcement]struct{}{ann1: {}, ann2: {}}
 			},
 			expectError:      false,
 			expectedActives:  2,
 			expectedSuffixes: []string{"stream1", "stream2"},
-			setupMocks: func(mockStream *MockQUICStream) {
-				ctx := context.Background()
-				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
-			},
 		},
 		"inactive announcement": {
-			setupAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
-				ann, end := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+			initialAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
+				ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
 				end() // Make it inactive
 				return map[*Announcement]struct{}{ann: {}}
 			},
 			expectError:      false,
 			expectedActives:  0,
 			expectedSuffixes: []string{},
-			setupMocks: func(mockStream *MockQUICStream) {
-				ctx := context.Background()
-				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
-			},
 		},
 		"write error": {
-			setupAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
-				return make(map[*Announcement]struct{})
+			initialAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
+				ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+				return map[*Announcement]struct{}{ann: {}}
 			},
 			expectError:     true,
 			expectedActives: 0,
-			setupMocks: func(mockStream *MockQUICStream) {
-				ctx := context.Background()
-				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, errors.New("write error")).Once()
+			setupMocks: func(mockStream *FakeQUICStream) {
+				mockStream.WriteFunc = func(p []byte) (int, error) { return 0, errors.New("write error") }
 			},
 		},
 		"invalid path announcement": {
-			setupAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
-				ann, _ := NewAnnouncement(ctx, BroadcastPath("/other/stream1")) // Different prefix
+			initialAnnouncements: func(ctx context.Context) map[*Announcement]struct{} {
+				ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/other/stream1")) // Different prefix
 				return map[*Announcement]struct{}{ann: {}}
 			},
 			expectError:      false,
 			expectedActives:  0,
 			expectedSuffixes: []string{},
-			setupMocks: func(mockStream *MockQUICStream) {
-				ctx := context.Background()
-				mockStream.On("Context").Return(ctx)
-				mockStream.On("Write", mock.Anything).Return(0, nil).Once()
-			},
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICStream{}
-			ctx := context.Background()
+			aw := newTestAnnouncementWriter(t, tt.setupMocks)
+			ctx := t.Context()
+			announcements := tt.initialAnnouncements(ctx)
 
-			tt.setupMocks(mockStream)
-
-			sas := newAnnouncementWriter(mockStream, "/test/")
-			announcements := tt.setupAnnouncements(ctx)
-
-			err := sas.init(announcements)
+			err := aw.init(announcements)
 
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				assert.Len(t, sas.actives, tt.expectedActives)
+				assert.Len(t, aw.actives, tt.expectedActives)
 
 				for _, suffix := range tt.expectedSuffixes {
-					assert.Contains(t, sas.actives, suffix)
-				}
-
-				// Verify initCh is closed after successful initialization
-				select {
-				case <-sas.initCh:
-					// Channel is closed, this is expected
-				default:
-					t.Error("initCh should be closed")
+					assert.Contains(t, aw.actives, suffix)
 				}
 			}
 
-			mockStream.AssertExpectations(t)
+			// Verify initDone is closed after init completes (including error paths)
+			select {
+			case <-aw.initDone:
+				// Channel is closed, this is expected
+			default:
+				t.Error("initDone should be closed")
+			}
 		})
 	}
 }
 
+func TestAnnouncementWriter_SendAnnouncement_AfterInitError(t *testing.T) {
+	aw := newTestAnnouncementWriter(t, func(m *FakeQUICStream) {
+		m.WriteFunc = func(p []byte) (int, error) { return 0, errors.New("write error") }
+	})
+	ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+
+	// Force init to fail
+	err := aw.init(map[*Announcement]struct{}{ann: {}})
+	require.Error(t, err)
+
+	// SendAnnouncement must return promptly with init error (must not block)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- aw.SendAnnouncement(ann)
+	}()
+
+	select {
+	case gotErr := <-errCh:
+		require.Error(t, gotErr)
+		assert.ErrorContains(t, gotErr, "write error")
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("SendAnnouncement blocked after init error")
+	}
+
+}
+
 func TestAnnouncementWriter_Init_OnlyOnce(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
+	aw := newTestAnnouncementWriter(t)
 
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil).Once() // Should only be called once
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
-
-	ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+	ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
 
 	// Call init multiple times
-	err1 := sas.init(map[*Announcement]struct{}{ann: {}})
-	err2 := sas.init(map[*Announcement]struct{}{}) // Second call should be ignored
+	err1 := aw.init(map[*Announcement]struct{}{ann: {}})
+	err2 := aw.init(map[*Announcement]struct{}{}) // Second call should be ignored
 
 	assert.NoError(t, err1)
 	assert.NoError(t, err2)
-	assert.Len(t, sas.actives, 1)
-	assert.Contains(t, sas.actives, "stream1")
+	assert.Len(t, aw.actives, 1)
+	assert.Contains(t, aw.actives, "stream1")
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_Init_StreamError(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
-
-	streamError := &StreamError{
-		StreamID:  StreamID(123),
-		ErrorCode: StreamErrorCode(42),
+	streamError := &transport.StreamError{
+		StreamID:  transport.StreamID(123),
+		ErrorCode: transport.StreamErrorCode(42),
 	}
 
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, streamError).Once()
+	aw := newTestAnnouncementWriter(t, func(m *FakeQUICStream) {
+		m.WriteFunc = func(p []byte) (int, error) { return 0, streamError }
+	})
 
-	sas := newAnnouncementWriter(mockStream, "/test/")
-
-	err := sas.init(map[*Announcement]struct{}{})
+	ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+	err := aw.init(map[*Announcement]struct{}{ann: {}})
 
 	require.Error(t, err)
 	var announceErr *AnnounceError
 	assert.ErrorAs(t, err, &announceErr)
 	assert.Equal(t, streamError, announceErr.StreamError)
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_Init_DuplicateAnnouncements(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
+	aw := newTestAnnouncementWriter(t)
 
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil) // Allow any number of Write calls
+	ann1, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+	ann2, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1")) // Same suffix - should replace first
 
-	sas := newAnnouncementWriter(mockStream, "/test/")
-
-	ann1, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-	ann2, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1")) // Same suffix - should replace first
-
-	err := sas.init(map[*Announcement]struct{}{ann1: {}, ann2: {}})
+	err := aw.init(map[*Announcement]struct{}{ann1: {}, ann2: {}})
 
 	assert.NoError(t, err)
-	assert.Len(t, sas.actives, 1)
-	assert.Contains(t, sas.actives, "stream1")
+	assert.Len(t, aw.actives, 1)
+	assert.Contains(t, aw.actives, "stream1")
 
 	// Due to map iteration order the final active announcement may be either
 	// ann1 or ann2. Both should remain active since init doesn't end announcements.
-	active := sas.actives["stream1"]
+	active := aw.actives["stream1"]
 	switch active.announcement {
 	case ann1:
 		assert.True(t, ann1.IsActive())
@@ -238,84 +228,70 @@ func TestAnnouncementWriter_Init_DuplicateAnnouncements(t *testing.T) {
 		t.Fatalf("unexpected active announcement: %v", active)
 	}
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_Init_MultipleDifferentAnnouncements(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
-
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil) // Allow any number of Write calls
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
+	aw := newTestAnnouncementWriter(t)
 
 	// Create two announcements with different paths
-	ann1, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-	ann2, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream2"))
+	ann1, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+	ann2, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream2"))
 
-	err := sas.init(map[*Announcement]struct{}{ann1: {}, ann2: {}})
+	err := aw.init(map[*Announcement]struct{}{ann1: {}, ann2: {}})
 
 	assert.NoError(t, err)
-	assert.Len(t, sas.actives, 2)
-	assert.Contains(t, sas.actives, "stream1")
-	assert.Contains(t, sas.actives, "stream2")
-	assert.Equal(t, ann1, sas.actives["stream1"].announcement)
-	assert.Equal(t, ann2, sas.actives["stream2"].announcement)
+	assert.Len(t, aw.actives, 2)
+	assert.Contains(t, aw.actives, "stream1")
+	assert.Contains(t, aw.actives, "stream2")
+	assert.Equal(t, ann1, aw.actives["stream1"].announcement)
+	assert.Equal(t, ann2, aw.actives["stream2"].announcement)
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_Init_DeadlockIssue(t *testing.T) {
 	// This test verifies that init() with duplicate announcements doesn't cause deadlock
 	// after the implementation was fixed to use goroutines in OnEnd callbacks.
 
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
+	aw := newTestAnnouncementWriter(t)
 
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
-
-	ann1, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-	ann2, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1")) // Same suffix - should replace first
+	ann1, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+	ann2, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1")) // Same suffix - should replace first
 
 	// This should not deadlock anymore
-	err := sas.init(map[*Announcement]struct{}{ann1: {}, ann2: {}})
+	err := aw.init(map[*Announcement]struct{}{ann1: {}, ann2: {}})
 	assert.NoError(t, err)
 
 	// Wait for background processing of OnEnd callbacks to complete
 	{
 		deadline := time.Now().Add(200 * time.Millisecond)
 		for time.Now().Before(deadline) {
-			sas.mu.RLock()
+			aw.mu.RLock()
 			n := 0
-			if sas.actives != nil {
-				n = len(sas.actives)
+			if aw.actives != nil {
+				n = len(aw.actives)
 			}
-			sas.mu.RUnlock()
+			aw.mu.RUnlock()
 			if n == 1 {
 				break
 			}
 			time.Sleep(1 * time.Millisecond)
 		}
-		sas.mu.RLock()
+		aw.mu.RLock()
 		n := 0
-		if sas.actives != nil {
-			n = len(sas.actives)
+		if aw.actives != nil {
+			n = len(aw.actives)
 		}
-		sas.mu.RUnlock()
+		aw.mu.RUnlock()
 		if n != 1 {
 			t.Fatalf("timeout waiting for %d active announcements", 1)
 		}
 	}
 
-	assert.Len(t, sas.actives, 1)
-	assert.Contains(t, sas.actives, "stream1")
+	assert.Len(t, aw.actives, 1)
+	assert.Contains(t, aw.actives, "stream1")
 
 	// Both announcements should remain active since init doesn't end announcements
-	activeAnn := sas.actives["stream1"]
+	activeAnn := aw.actives["stream1"]
 	assert.NotNil(t, activeAnn)
 
 	switch activeAnn.announcement {
@@ -329,24 +305,20 @@ func TestAnnouncementWriter_Init_DeadlockIssue(t *testing.T) {
 		t.Fatalf("unexpected announcement: %v", activeAnn)
 	}
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_SendAnnouncement(t *testing.T) {
 	tests := map[string]struct {
-		prefix         string
 		broadcastPath  string
 		expectError    bool
 		shouldBeActive bool
 	}{
 		"valid path": {
-			prefix:         "/test/",
 			broadcastPath:  "/test/stream1",
 			expectError:    false,
 			shouldBeActive: true,
 		},
 		"invalid path": {
-			prefix:         "/test/",
 			broadcastPath:  "/other/stream1",
 			expectError:    true,
 			shouldBeActive: false,
@@ -355,36 +327,47 @@ func TestAnnouncementWriter_SendAnnouncement(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICStream{}
-			ctx := context.Background()
-
-			mockStream.On("Context").Return(ctx)
-			if !tt.expectError {
-				mockStream.On("Write", mock.Anything).Return(0, nil).Times(2) // One for init, one for SendAnnouncement
-			} else {
-				mockStream.On("Write", mock.Anything).Return(0, nil).Times(1) // Only for init
-			}
-
-			sas := newAnnouncementWriter(mockStream, tt.prefix)
-			ann, _ := NewAnnouncement(ctx, BroadcastPath(tt.broadcastPath))
+			aw := newTestAnnouncementWriter(t)
+			ann, _ := NewAnnouncement(context.Background(), BroadcastPath(tt.broadcastPath))
 
 			// Initialize the AnnouncementWriter first
-			err := sas.init(map[*Announcement]struct{}{})
+			err := aw.init(map[*Announcement]struct{}{})
 			require.NoError(t, err)
 
-			err = sas.SendAnnouncement(ann)
+			err = aw.SendAnnouncement(ann)
 
 			if tt.expectError {
 				assert.Error(t, err)
-				assert.Len(t, sas.actives, 0)
+				assert.Len(t, aw.actives, 0)
 			} else {
 				assert.NoError(t, err)
-				assert.Len(t, sas.actives, 1)
+				assert.Len(t, aw.actives, 1)
 			}
 
-			mockStream.AssertExpectations(t)
 		})
 	}
+}
+
+func TestAnnouncementWriter_SendAnnouncement_EncodesHops(t *testing.T) {
+	var buf bytes.Buffer
+
+	aw := newTestAnnouncementWriter(t, func(m *FakeQUICStream) {
+		m.WriteFunc = buf.Write
+	})
+	ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+
+	err := aw.init(map[*Announcement]struct{}{})
+	require.NoError(t, err)
+
+	err = aw.SendAnnouncement(ann)
+	require.NoError(t, err)
+
+	var decoded message.AnnounceMessage
+	require.NoError(t, decoded.Decode(&buf))
+	assert.Equal(t, message.ACTIVE, decoded.AnnounceStatus)
+	assert.Equal(t, "stream1", decoded.BroadcastPathSuffix)
+	assert.Equal(t, uint64(1), decoded.Hops)
+
 }
 
 func TestAnnouncementWriter_SendAnnouncement_WriteError(t *testing.T) {
@@ -393,9 +376,9 @@ func TestAnnouncementWriter_SendAnnouncement_WriteError(t *testing.T) {
 		expectAnnErr bool
 	}{
 		"stream error": {
-			writeError: &StreamError{
-				StreamID:  StreamID(123),
-				ErrorCode: StreamErrorCode(42),
+			writeError: &transport.StreamError{
+				StreamID:  transport.StreamID(123),
+				ErrorCode: transport.StreamErrorCode(42),
 			},
 			expectAnnErr: true,
 		},
@@ -407,21 +390,15 @@ func TestAnnouncementWriter_SendAnnouncement_WriteError(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICStream{}
-			ctx := context.Background()
+			aw := newTestAnnouncementWriter(t, func(m *FakeQUICStream) {
+				m.WriteFunc = func(p []byte) (int, error) { return 0, tt.writeError }
+			})
+			ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
 
-			mockStream.On("Context").Return(ctx)
-			mockStream.On("Write", mock.Anything).Return(0, nil).Once()           // For init
-			mockStream.On("Write", mock.Anything).Return(0, tt.writeError).Once() // For SendAnnouncement
-
-			sas := newAnnouncementWriter(mockStream, "/test/")
-			ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-
-			// Initialize the AnnouncementWriter first
-			err := sas.init(map[*Announcement]struct{}{})
+			err := aw.init(map[*Announcement]struct{}{})
 			require.NoError(t, err)
 
-			err = sas.SendAnnouncement(ann)
+			err = aw.SendAnnouncement(ann)
 
 			assert.Error(t, err)
 
@@ -430,81 +407,60 @@ func TestAnnouncementWriter_SendAnnouncement_WriteError(t *testing.T) {
 				assert.ErrorAs(t, err, &announceErr)
 			}
 
-			mockStream.AssertExpectations(t)
 		})
 	}
 }
 
 func TestAnnouncementWriter_Close(t *testing.T) {
 	t.Run("closes with no active announcements", func(t *testing.T) {
-		mockStream := &MockQUICStream{}
-		ctx := context.Background()
+		aw := newTestAnnouncementWriter(t)
 
-		mockStream.On("Context").Return(ctx)
-		mockStream.On("Close").Return(nil)
-
-		sas := newAnnouncementWriter(mockStream, "/test/")
-
-		err := sas.Close()
+		err := aw.Close()
 
 		assert.NoError(t, err)
-		assert.Nil(t, sas.actives)
-		assert.NotNil(t, sas.initCh)
+		assert.Nil(t, aw.actives)
+		assert.NotNil(t, aw.initDone)
 
-		mockStream.AssertExpectations(t)
 	})
 
 	t.Run("closes with active announcements", func(t *testing.T) {
-		mockStream := &MockQUICStream{}
-		ctx := context.Background()
-
-		mockStream.On("Context").Return(ctx)
-		mockStream.On("Write", mock.Anything).Return(0, nil) // For init and SendAnnouncement
-		mockStream.On("Close").Return(nil)
-
-		sas := newAnnouncementWriter(mockStream, "/test/")
+		aw := newTestAnnouncementWriter(t)
 
 		// Initialize the AnnouncementWriter first
-		err := sas.init(map[*Announcement]struct{}{})
+		err := aw.init(map[*Announcement]struct{}{})
 		require.NoError(t, err)
 
 		// Add an active announcement
-		ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/active"))
-		err = sas.SendAnnouncement(ann)
+		ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
+		err = aw.SendAnnouncement(ann)
 		require.NoError(t, err)
 
 		// Verify we have an active announcement
-		assert.NotNil(t, sas.actives)
-		assert.Len(t, sas.actives, 1)
+		assert.NotNil(t, aw.actives)
+		assert.Len(t, aw.actives, 1)
 		assert.True(t, ann.IsActive(), "announcement should be active initially")
 
-		err = sas.Close()
+		err = aw.Close()
 
 		assert.NoError(t, err)
-		assert.Nil(t, sas.actives)
+		assert.Nil(t, aw.actives)
 		assert.True(t, ann.IsActive(), "announcement should remain active after Close (AnnouncementWriter doesn't end announcements)")
 
-		mockStream.AssertExpectations(t)
 	})
 
 	t.Run("handles stream close error", func(t *testing.T) {
-		mockStream := &MockQUICStream{}
-		ctx := context.Background()
-
 		expectedErr := fmt.Errorf("stream close error")
-		mockStream.On("Context").Return(ctx)
-		mockStream.On("Close").Return(expectedErr)
+		aw := newTestAnnouncementWriter(t, func(m *FakeQUICStream) {
+			m.CloseFunc = func() error { return expectedErr }
+		})
 
-		sas := newAnnouncementWriter(mockStream, "/test/")
-
-		err := sas.Close()
+		err := aw.Close()
 
 		assert.Error(t, err)
 		assert.Equal(t, expectedErr, err)
-		assert.Nil(t, sas.actives)
-		assert.NotNil(t, sas.initCh)
+		assert.Nil(t, aw.actives)
+		assert.NotNil(t, aw.initDone)
 
-		mockStream.AssertExpectations(t)
 	})
 }
 
@@ -514,175 +470,131 @@ func TestAnnouncementWriter_CloseWithError(t *testing.T) {
 			errorCode AnnounceErrorCode
 		}{
 			"internal error": {
-				errorCode: InternalAnnounceErrorCode,
+				errorCode: AnnounceErrorCodeInternal,
 			},
 			"duplicated announce error": {
-				errorCode: DuplicatedAnnounceErrorCode,
+				errorCode: AnnounceErrorCodeDuplicated,
 			},
 		}
 
 		for name, tt := range tests {
 			t.Run(name, func(t *testing.T) {
-				mockStream := &MockQUICStream{}
-				ctx := context.Background()
+				aw := newTestAnnouncementWriter(t)
 
-				mockStream.On("Context").Return(ctx)
-				mockStream.On("CancelWrite", StreamErrorCode(tt.errorCode)).Return()
-				mockStream.On("CancelRead", StreamErrorCode(tt.errorCode)).Return()
-
-				sas := newAnnouncementWriter(mockStream, "/test/")
-
-				err := sas.CloseWithError(tt.errorCode)
+				err := aw.CloseWithError(tt.errorCode)
 
 				assert.NoError(t, err)
-				assert.Nil(t, sas.actives)
-				assert.NotNil(t, sas.initCh)
+				assert.Nil(t, aw.actives)
+				assert.NotNil(t, aw.initDone)
 
-				mockStream.AssertExpectations(t)
 			})
 		}
 	})
 
 	t.Run("closes with error and active announcements", func(t *testing.T) {
-		mockStream := &MockQUICStream{}
-		ctx := context.Background()
-
-		mockStream.On("Context").Return(ctx)
-		mockStream.On("Write", mock.Anything).Return(0, nil) // For init and SendAnnouncement
-		mockStream.On("CancelWrite", StreamErrorCode(InternalAnnounceErrorCode)).Return()
-		mockStream.On("CancelRead", StreamErrorCode(InternalAnnounceErrorCode)).Return()
-
-		sas := newAnnouncementWriter(mockStream, "/test/")
+		aw := newTestAnnouncementWriter(t)
 
 		// Initialize the AnnouncementWriter first
-		err := sas.init(map[*Announcement]struct{}{})
+		err := aw.init(map[*Announcement]struct{}{})
 		require.NoError(t, err)
 
 		// Add an active announcement
-		ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/active"))
-		err = sas.SendAnnouncement(ann)
+		ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
+		err = aw.SendAnnouncement(ann)
 		require.NoError(t, err)
 
 		// Verify we have an active announcement
-		assert.NotNil(t, sas.actives)
-		assert.Len(t, sas.actives, 1)
+		assert.NotNil(t, aw.actives)
+		assert.Len(t, aw.actives, 1)
 		assert.True(t, ann.IsActive(), "announcement should be active initially")
 
-		err = sas.CloseWithError(InternalAnnounceErrorCode)
+		err = aw.CloseWithError(AnnounceErrorCodeInternal)
 
 		assert.NoError(t, err)
-		assert.Nil(t, sas.actives)
+		assert.Nil(t, aw.actives)
 
-		mockStream.AssertExpectations(t)
 	})
 }
 
 func TestAnnouncementWriter_SendAnnouncement_MultipleAnnouncements(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
+	aw := newTestAnnouncementWriter(t)
 
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil).Times(3) // One for init, two for SendAnnouncement
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
-
-	ann1, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-	ann2, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream2"))
+	ann1, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+	ann2, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream2"))
 
 	// Initialize the AnnouncementWriter first
-	err := sas.init(map[*Announcement]struct{}{})
+	err := aw.init(map[*Announcement]struct{}{})
 	require.NoError(t, err)
 
-	err1 := sas.SendAnnouncement(ann1)
-	err2 := sas.SendAnnouncement(ann2)
+	err1 := aw.SendAnnouncement(ann1)
+	err2 := aw.SendAnnouncement(ann2)
 
 	assert.NoError(t, err1)
 	assert.NoError(t, err2)
-	assert.Len(t, sas.actives, 2)
-	assert.Contains(t, sas.actives, "stream1")
-	assert.Contains(t, sas.actives, "stream2")
-	assert.Equal(t, ann1, sas.actives["stream1"].announcement)
-	assert.Equal(t, ann2, sas.actives["stream2"].announcement)
+	assert.Len(t, aw.actives, 2)
+	assert.Contains(t, aw.actives, "stream1")
+	assert.Contains(t, aw.actives, "stream2")
+	assert.Equal(t, ann1, aw.actives["stream1"].announcement)
+	assert.Equal(t, ann2, aw.actives["stream2"].announcement)
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_SendAnnouncement_ReplaceExisting(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
+	aw := newTestAnnouncementWriter(t)
 
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	ann1, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+	ann2, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1")) // Same suffix
 
-	sas := newAnnouncementWriter(mockStream, "/test/")
-
-	ann1, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-	ann2, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1")) // Same suffix
-
-	err := sas.init(map[*Announcement]struct{}{})
+	err := aw.init(map[*Announcement]struct{}{})
 	require.NoError(t, err)
 
-	err1 := sas.SendAnnouncement(ann1)
+	err1 := aw.SendAnnouncement(ann1)
 	assert.NoError(t, err1)
 
 	// Send second announcement with same path - should replace the first
-	err2 := sas.SendAnnouncement(ann2)
+	err2 := aw.SendAnnouncement(ann2)
 	assert.NoError(t, err2)
 
 	// Should have only one active announcement (the newer one)
-	assert.Len(t, sas.actives, 1)
-	assert.Contains(t, sas.actives, "stream1")
-	assert.Equal(t, ann2, sas.actives["stream1"].announcement)
+	assert.Len(t, aw.actives, 1)
+	assert.Contains(t, aw.actives, "stream1")
+	assert.Equal(t, ann2, aw.actives["stream1"].announcement)
 
 	// First announcement should remain active (AnnouncementWriter doesn't end announcements)
 	assert.True(t, ann1.IsActive())
 	assert.True(t, ann2.IsActive())
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_SendAnnouncement_SameInstance(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
-
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil).Times(2) // One for init, one for SendAnnouncement
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
-	ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+	aw := newTestAnnouncementWriter(t)
+	ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
 
 	// Initialize the AnnouncementWriter first
-	err := sas.init(map[*Announcement]struct{}{})
+	err := aw.init(map[*Announcement]struct{}{})
 	require.NoError(t, err)
 
-	err1 := sas.SendAnnouncement(ann)
-	err2 := sas.SendAnnouncement(ann)
+	err1 := aw.SendAnnouncement(ann)
+	err2 := aw.SendAnnouncement(ann)
 
 	assert.NoError(t, err1)
 	assert.NoError(t, err2)
-	assert.Len(t, sas.actives, 1)
+	assert.Len(t, aw.actives, 1)
 	assert.True(t, ann.IsActive())
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_AnnouncementEnd_BackgroundProcessing(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
-
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil).Times(3) // init, ACTIVE, and ENDED messages
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
-	ann, end := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+	aw := newTestAnnouncementWriter(t)
+	ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
 
 	// Initialize the AnnouncementWriter first
-	err := sas.init(map[*Announcement]struct{}{})
+	err := aw.init(map[*Announcement]struct{}{})
 	require.NoError(t, err)
 
-	err = sas.SendAnnouncement(ann)
+	err = aw.SendAnnouncement(ann)
 	assert.NoError(t, err)
-	assert.Len(t, sas.actives, 1)
+	assert.Len(t, aw.actives, 1)
 
 	end()
 
@@ -690,31 +602,30 @@ func TestAnnouncementWriter_AnnouncementEnd_BackgroundProcessing(t *testing.T) {
 	{
 		deadline := time.Now().Add(200 * time.Millisecond)
 		for time.Now().Before(deadline) {
-			sas.mu.RLock()
+			aw.mu.RLock()
 			n := 0
-			if sas.actives != nil {
-				n = len(sas.actives)
+			if aw.actives != nil {
+				n = len(aw.actives)
 			}
-			sas.mu.RUnlock()
+			aw.mu.RUnlock()
 			if n == 0 {
 				break
 			}
 			time.Sleep(1 * time.Millisecond)
 		}
-		sas.mu.RLock()
+		aw.mu.RLock()
 		n := 0
-		if sas.actives != nil {
-			n = len(sas.actives)
+		if aw.actives != nil {
+			n = len(aw.actives)
 		}
-		sas.mu.RUnlock()
+		aw.mu.RUnlock()
 		if n != 0 {
 			t.Fatalf("timeout waiting for %d active announcements", 0)
 		}
 	}
 
-	assert.Len(t, sas.actives, 0)
+	assert.Len(t, aw.actives, 0)
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_BoundaryValues(t *testing.T) {
@@ -742,24 +653,15 @@ func TestAnnouncementWriter_BoundaryValues(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICStream{}
-			ctx := context.Background()
-
-			mockStream.On("Context").Return(ctx)
-			if !tt.expectError {
-				mockStream.On("Write", mock.Anything).Return(0, nil).Times(2) // One for init, one for SendAnnouncement
-			} else {
-				mockStream.On("Write", mock.Anything).Return(0, nil).Times(1) // Only for init
-			}
-
-			sas := newAnnouncementWriter(mockStream, tt.prefix)
-			ann, _ := NewAnnouncement(ctx, BroadcastPath(tt.broadcastPath))
+			mockStream := &FakeQUICStream{}
+			aw := newAnnouncementWriter(mockStream, tt.prefix, nil)
+			ann, _ := NewAnnouncement(context.Background(), BroadcastPath(tt.broadcastPath))
 
 			// Initialize the AnnouncementWriter first
-			err := sas.init(map[*Announcement]struct{}{})
+			err := aw.init(map[*Announcement]struct{}{})
 			require.NoError(t, err)
 
-			err = sas.SendAnnouncement(ann)
+			err = aw.SendAnnouncement(ann)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -767,7 +669,6 @@ func TestAnnouncementWriter_BoundaryValues(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			mockStream.AssertExpectations(t)
 		})
 	}
 }
@@ -777,51 +678,38 @@ func TestAnnouncementWriter_Performance_LargeNumberOfAnnouncements(t *testing.T)
 		t.Skip("Skipping performance test in short mode")
 	}
 
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
-
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil) // Will handle init + multiple announcements
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
+	aw := newTestAnnouncementWriter(t)
 
 	// Initialize the AnnouncementWriter first
-	err := sas.init(map[*Announcement]struct{}{})
+	err := aw.init(map[*Announcement]struct{}{})
 	require.NoError(t, err)
 
 	const numAnnouncements = 100 // Reduced for test efficiency
 
 	start := time.Now()
 	for i := range numAnnouncements {
-		ann, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream%d", i)))
-		err := sas.SendAnnouncement(ann)
+		ann, _ := NewAnnouncement(context.Background(), BroadcastPath(fmt.Sprintf("/test/stream%d", i)))
+		err := aw.SendAnnouncement(ann)
 		assert.NoError(t, err)
 	}
 	duration := time.Since(start)
 
 	t.Logf("Time to send %d announcements: %v", numAnnouncements, duration)
-	assert.Len(t, sas.actives, numAnnouncements)
+	assert.Len(t, aw.actives, numAnnouncements)
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_CleanupResourceLeaks(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
-
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
+	aw := newTestAnnouncementWriter(t)
 
 	// Initialize the AnnouncementWriter first
-	err := sas.init(map[*Announcement]struct{}{})
+	err := aw.init(map[*Announcement]struct{}{})
 	require.NoError(t, err)
 
 	// Create and end many announcements to test cleanup
 	for i := range 10 {
-		ann, end := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream%d", i)))
-		err := sas.SendAnnouncement(ann)
+		ann, end := NewAnnouncement(context.Background(), BroadcastPath(fmt.Sprintf("/test/stream%d", i)))
+		err := aw.SendAnnouncement(ann)
 		assert.NoError(t, err)
 		end()
 	}
@@ -830,108 +718,100 @@ func TestAnnouncementWriter_CleanupResourceLeaks(t *testing.T) {
 	{
 		deadline := time.Now().Add(200 * time.Millisecond)
 		for time.Now().Before(deadline) {
-			sas.mu.RLock()
+			aw.mu.RLock()
 			n := 0
-			if sas.actives != nil {
-				n = len(sas.actives)
+			if aw.actives != nil {
+				n = len(aw.actives)
 			}
-			sas.mu.RUnlock()
+			aw.mu.RUnlock()
 			if n == 0 {
 				break
 			}
 			time.Sleep(1 * time.Millisecond)
 		}
-		sas.mu.RLock()
+		aw.mu.RLock()
 		n := 0
-		if sas.actives != nil {
-			n = len(sas.actives)
+		if aw.actives != nil {
+			n = len(aw.actives)
 		}
-		sas.mu.RUnlock()
+		aw.mu.RUnlock()
 		if n != 0 {
 			t.Fatalf("timeout waiting for %d active announcements", 0)
 		}
 	}
-	assert.Len(t, sas.actives, 0)
+	assert.Len(t, aw.actives, 0)
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_PartialCleanup(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
-
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
+	aw := newTestAnnouncementWriter(t)
 
 	// Initialize the AnnouncementWriter first
-	err := sas.init(map[*Announcement]struct{}{})
+	err := aw.init(map[*Announcement]struct{}{})
 	require.NoError(t, err)
 
 	// Create multiple announcements
-	ann1, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-	ann2, end2 := NewAnnouncement(ctx, BroadcastPath("/test/stream2"))
-	ann3, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream3"))
+	ann1, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+	ann2, end2 := NewAnnouncement(context.Background(), BroadcastPath("/test/stream2"))
+	ann3, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream3"))
 
-	assert.NoError(t, sas.SendAnnouncement(ann1))
-	assert.NoError(t, sas.SendAnnouncement(ann2))
-	assert.NoError(t, sas.SendAnnouncement(ann3))
+	assert.NoError(t, aw.SendAnnouncement(ann1))
+	assert.NoError(t, aw.SendAnnouncement(ann2))
+	assert.NoError(t, aw.SendAnnouncement(ann3))
 
 	// End only some announcements
 	end2()
 
 	// Wait for background processing to handle ended announcements
-	// Inline: wait until sas.actives no longer contains "stream2"
+	// Inline: wait until aw.actives no longer contains "stream2"
 	{
 		deadline := time.Now().Add(200 * time.Millisecond)
 		for time.Now().Before(deadline) {
-			sas.mu.RLock()
-			_, ok := sas.actives["stream2"]
-			sas.mu.RUnlock()
+			aw.mu.RLock()
+			_, ok := aw.actives["stream2"]
+			aw.mu.RUnlock()
 			if !ok {
 				break
 			}
 			time.Sleep(1 * time.Millisecond)
 		}
-		sas.mu.RLock()
-		if _, ok := sas.actives["stream2"]; ok {
-			sas.mu.RUnlock()
+		aw.mu.RLock()
+		if _, ok := aw.actives["stream2"]; ok {
+			aw.mu.RUnlock()
 			t.Fatalf("timeout waiting for active announcements to not contain %s", "stream2")
 		}
-		sas.mu.RUnlock()
+		aw.mu.RUnlock()
 	}
 
 	// Wait for background processing to reach exactly 2 active announcements
 	{
 		deadline := time.Now().Add(200 * time.Millisecond)
 		for time.Now().Before(deadline) {
-			sas.mu.RLock()
+			aw.mu.RLock()
 			n := 0
-			if sas.actives != nil {
-				n = len(sas.actives)
+			if aw.actives != nil {
+				n = len(aw.actives)
 			}
-			sas.mu.RUnlock()
+			aw.mu.RUnlock()
 			if n == 2 {
 				break
 			}
 			time.Sleep(1 * time.Millisecond)
 		}
-		sas.mu.RLock()
+		aw.mu.RLock()
 		n := 0
-		if sas.actives != nil {
-			n = len(sas.actives)
+		if aw.actives != nil {
+			n = len(aw.actives)
 		}
-		sas.mu.RUnlock()
+		aw.mu.RUnlock()
 		if n != 2 {
 			t.Fatalf("timeout waiting for %d active announcements", 2)
 		}
 	}
-	assert.Contains(t, sas.actives, "stream1")
-	assert.NotContains(t, sas.actives, "stream2")
-	assert.Contains(t, sas.actives, "stream3")
+	assert.Contains(t, aw.actives, "stream1")
+	assert.NotContains(t, aw.actives, "stream2")
+	assert.Contains(t, aw.actives, "stream3")
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_ConcurrentAccess(t *testing.T) {
@@ -940,16 +820,10 @@ func TestAnnouncementWriter_ConcurrentAccess(t *testing.T) {
 	// can deadlock between mutex acquisition and OnEnd callback processing.
 	// The implementation should be fixed to avoid holding the mutex while calling End().
 
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
-
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
+	aw := newTestAnnouncementWriter(t)
 
 	// Initialize the AnnouncementWriter first
-	err := sas.init(map[*Announcement]struct{}{})
+	err := aw.init(map[*Announcement]struct{}{})
 	require.NoError(t, err)
 
 	// Test concurrent access to DIFFERENT suffixes to avoid deadlock
@@ -959,8 +833,8 @@ func TestAnnouncementWriter_ConcurrentAccess(t *testing.T) {
 	go func() {
 		defer func() { done <- true }()
 		for i := range 5 {
-			ann, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream_a_%d", i)))
-			if err := sas.SendAnnouncement(ann); err != nil {
+			ann, _ := NewAnnouncement(context.Background(), BroadcastPath(fmt.Sprintf("/test/stream_a_%d", i)))
+			if err := aw.SendAnnouncement(ann); err != nil {
 				errors <- err
 				return
 			}
@@ -971,8 +845,8 @@ func TestAnnouncementWriter_ConcurrentAccess(t *testing.T) {
 	go func() {
 		defer func() { done <- true }()
 		for i := range 5 {
-			ann, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream_b_%d", i)))
-			if err := sas.SendAnnouncement(ann); err != nil {
+			ann, _ := NewAnnouncement(context.Background(), BroadcastPath(fmt.Sprintf("/test/stream_b_%d", i)))
+			if err := aw.SendAnnouncement(ann); err != nil {
 				errors <- err
 				return
 			}
@@ -988,25 +862,18 @@ func TestAnnouncementWriter_ConcurrentAccess(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	assert.Len(t, sas.actives, 10) // Should have 10 different streams
+	assert.Len(t, aw.actives, 10) // Should have 10 different streams
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_ConcurrentAccess_SameSuffix_DeadlockRisk(t *testing.T) {
 	// This test verifies that concurrent access to the same suffix doesn't cause deadlock
 	// after the implementation was fixed to use goroutines in OnEnd callbacks.
 
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
-
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
+	aw := newTestAnnouncementWriter(t)
 
 	// Initialize the AnnouncementWriter first
-	err := sas.init(map[*Announcement]struct{}{})
+	err := aw.init(map[*Announcement]struct{}{})
 	require.NoError(t, err)
 
 	// Test concurrent access to the SAME suffix - this should no longer cause deadlock
@@ -1016,8 +883,8 @@ func TestAnnouncementWriter_ConcurrentAccess_SameSuffix_DeadlockRisk(t *testing.
 	go func() {
 		defer func() { done <- true }()
 		for range 10 {
-			ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-			if err := sas.SendAnnouncement(ann); err != nil {
+			ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+			if err := aw.SendAnnouncement(ann); err != nil {
 				errors <- err
 				return
 			}
@@ -1028,8 +895,8 @@ func TestAnnouncementWriter_ConcurrentAccess_SameSuffix_DeadlockRisk(t *testing.
 	go func() {
 		defer func() { done <- true }()
 		for range 10 {
-			ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-			if err := sas.SendAnnouncement(ann); err != nil {
+			ann, _ := NewAnnouncement(context.Background(), BroadcastPath("/test/stream1"))
+			if err := aw.SendAnnouncement(ann); err != nil {
 				errors <- err
 				return
 			}
@@ -1044,23 +911,23 @@ func TestAnnouncementWriter_ConcurrentAccess_SameSuffix_DeadlockRisk(t *testing.
 	{
 		deadline := time.Now().Add(200 * time.Millisecond)
 		for time.Now().Before(deadline) {
-			sas.mu.RLock()
+			aw.mu.RLock()
 			n := 0
-			if sas.actives != nil {
-				n = len(sas.actives)
+			if aw.actives != nil {
+				n = len(aw.actives)
 			}
-			sas.mu.RUnlock()
+			aw.mu.RUnlock()
 			if n == 1 {
 				break
 			}
 			time.Sleep(1 * time.Millisecond)
 		}
-		sas.mu.RLock()
+		aw.mu.RLock()
 		n := 0
-		if sas.actives != nil {
-			n = len(sas.actives)
+		if aw.actives != nil {
+			n = len(aw.actives)
 		}
-		sas.mu.RUnlock()
+		aw.mu.RUnlock()
 		if n != 1 {
 			t.Fatalf("timeout waiting for %d active announcements", 1)
 		}
@@ -1071,43 +938,29 @@ func TestAnnouncementWriter_ConcurrentAccess_SameSuffix_DeadlockRisk(t *testing.
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	assert.Len(t, sas.actives, 1)
-	assert.Contains(t, sas.actives, "stream1")
+	assert.Len(t, aw.actives, 1)
+	assert.Contains(t, aw.actives, "stream1")
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_MultipleClose(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
+	aw := newTestAnnouncementWriter(t)
 
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Close").Return(nil).Times(2) // Allow multiple close calls
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
-
-	err1 := sas.Close()
+	err1 := aw.Close()
 	assert.NoError(t, err1)
-	assert.Nil(t, sas.actives)
+	assert.Nil(t, aw.actives)
 
-	err2 := sas.Close()
+	err2 := aw.Close()
 	assert.NoError(t, err2)
 
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_Context(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
+	aw := newTestAnnouncementWriter(t)
 
-	mockStream.On("Context").Return(ctx)
+	assert.NotNil(t, aw.Context())
+	assert.NoError(t, aw.Context().Err())
 
-	sas := newAnnouncementWriter(mockStream, "/test/")
-
-	assert.NotNil(t, sas.Context())
-	assert.NoError(t, sas.Context().Err())
-
-	mockStream.AssertExpectations(t)
 }
 
 func TestAnnouncementWriter_StressTest_HeavyConcurrentAccess(t *testing.T) {
@@ -1115,16 +968,10 @@ func TestAnnouncementWriter_StressTest_HeavyConcurrentAccess(t *testing.T) {
 		t.Skip("Skipping stress test in short mode")
 	}
 
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
-
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-
-	sas := newAnnouncementWriter(mockStream, "/test/")
+	aw := newTestAnnouncementWriter(t)
 
 	// Initialize the AnnouncementWriter first
-	err := sas.init(map[*Announcement]struct{}{})
+	err := aw.init(map[*Announcement]struct{}{})
 	require.NoError(t, err)
 
 	const numGoroutines = 50
@@ -1145,8 +992,8 @@ func TestAnnouncementWriter_StressTest_HeavyConcurrentAccess(t *testing.T) {
 					suffixPath = fmt.Sprintf("/test/stream_%d_%d", goroutineID, i)
 				}
 
-				ann, end := NewAnnouncement(ctx, BroadcastPath(suffixPath))
-				if err := sas.SendAnnouncement(ann); err != nil {
+				ann, end := NewAnnouncement(context.Background(), BroadcastPath(suffixPath))
+				if err := aw.SendAnnouncement(ann); err != nil {
 					errors <- err
 					return
 				}
@@ -1164,27 +1011,27 @@ func TestAnnouncementWriter_StressTest_HeavyConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for background processing to start removing finished announcements
-	// Inline: wait until sas has at least 1 active announcement
+	// Inline: wait until aw has at least 1 active announcement
 	{
 		deadline := time.Now().Add(200 * time.Millisecond)
 		for time.Now().Before(deadline) {
-			sas.mu.RLock()
+			aw.mu.RLock()
 			n := 0
-			if sas.actives != nil {
-				n = len(sas.actives)
+			if aw.actives != nil {
+				n = len(aw.actives)
 			}
-			sas.mu.RUnlock()
+			aw.mu.RUnlock()
 			if n >= 1 {
 				break
 			}
 			time.Sleep(1 * time.Millisecond)
 		}
-		sas.mu.RLock()
+		aw.mu.RLock()
 		n := 0
-		if sas.actives != nil {
-			n = len(sas.actives)
+		if aw.actives != nil {
+			n = len(aw.actives)
 		}
-		sas.mu.RUnlock()
+		aw.mu.RUnlock()
 		if n < 1 {
 			t.Fatalf("timeout waiting for at least %d active announcements", 1)
 		}
@@ -1196,7 +1043,6 @@ func TestAnnouncementWriter_StressTest_HeavyConcurrentAccess(t *testing.T) {
 	}
 
 	// Verify that we still have some active announcements
-	assert.True(t, len(sas.actives) > 0, "Should have some active announcements remaining")
+	assert.True(t, len(aw.actives) > 0, "Should have some active announcements remaining")
 
-	mockStream.AssertExpectations(t)
 }

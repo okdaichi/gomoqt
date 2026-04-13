@@ -1,26 +1,78 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { SubscribeOkMessage } from "./subscribe_ok.ts";
 import { Buffer } from "@okdaichi/golikejs/bytes";
 
 Deno.test("SubscribeOkMessage - encode/decode roundtrip", async (t) => {
-	await t.step("should encode and decode empty message", async () => {
-		const buffer = Buffer.make(10);
+	const testCases = {
+		"zero values": {
+			publisherPriority: 0,
+			publisherOrdered: 0,
+			publisherMaxLatency: 0,
+			startGroup: 0,
+			endGroup: 0,
+		},
+		"normal case": {
+			publisherPriority: 1,
+			publisherOrdered: 1,
+			publisherMaxLatency: 100,
+			startGroup: 5,
+			endGroup: 10,
+		},
+		"max priority": {
+			publisherPriority: 255,
+			publisherOrdered: 0,
+			publisherMaxLatency: 0,
+			startGroup: 0,
+			endGroup: 0,
+		},
+		"mid priority with latency": {
+			publisherPriority: 10,
+			publisherOrdered: 1,
+			publisherMaxLatency: 500,
+			startGroup: 0,
+			endGroup: 20,
+		},
+	};
 
-		const message = new SubscribeOkMessage({});
-		const encodeErr = await message.encode(buffer);
-		assertEquals(encodeErr, undefined);
+	for (const [caseName, input] of Object.entries(testCases)) {
+		await t.step(caseName, async () => {
+			const buffer = Buffer.make(100);
+			const message = new SubscribeOkMessage(input);
+			const encodeErr = await message.encode(buffer);
+			assertEquals(encodeErr, undefined, `encode failed for ${caseName}`);
 
-		const readBuffer = Buffer.make(10);
-		await readBuffer.write(buffer.bytes());
-		const decodedMessage = new SubscribeOkMessage({});
-		const decodeErr = await decodedMessage.decode(readBuffer);
-		assertEquals(decodeErr, undefined);
-	});
-
-	await t.step("messageLength should return 0", () => {
-		const message = new SubscribeOkMessage({});
-		assertEquals(message.len, 0);
-	});
+			const readBuffer = Buffer.make(100);
+			await readBuffer.write(buffer.bytes());
+			const decodedMessage = new SubscribeOkMessage({});
+			const decodeErr = await decodedMessage.decode(readBuffer);
+			assertEquals(decodeErr, undefined, `decode failed for ${caseName}`);
+			assertEquals(
+				decodedMessage.publisherPriority,
+				input.publisherPriority,
+				`publisherPriority mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.publisherOrdered,
+				input.publisherOrdered,
+				`publisherOrdered mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.publisherMaxLatency,
+				input.publisherMaxLatency,
+				`publisherMaxLatency mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.startGroup,
+				input.startGroup,
+				`startGroup mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.endGroup,
+				input.endGroup,
+				`endGroup mismatch for ${caseName}`,
+			);
+		});
+	}
 
 	await t.step("decode should return error when readVarint fails", async () => {
 		const buffer = Buffer.make(0); // Empty buffer causes read error
@@ -28,18 +80,4 @@ Deno.test("SubscribeOkMessage - encode/decode roundtrip", async (t) => {
 		const err = await message.decode(buffer);
 		assertEquals(err !== undefined, true);
 	});
-
-	await t.step(
-		"decode should return error when message length mismatch",
-		async () => {
-			const buffer = Buffer.make(10);
-			// Write a non-zero message length = 5 (varint) (expect 0 but got non-zero)
-			await buffer.write(new Uint8Array([0x05]));
-
-			const message = new SubscribeOkMessage({});
-			const err = await message.decode(buffer);
-			assert(err !== undefined);
-			assert(err?.message.includes("message length mismatch"));
-		},
-	);
 });

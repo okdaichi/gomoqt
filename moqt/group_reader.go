@@ -5,16 +5,22 @@ import (
 	"io"
 	"iter"
 	"time"
+
+	"github.com/okdaichi/gomoqt/transport"
 )
 
-func newGroupReader(sequence GroupSequence, stream ReceiveStream,
-	onClose func()) *GroupReader {
-	return &GroupReader{
-		sequence: sequence,
-		stream:   stream,
-		// frame:    newFrame(0),
-		onClose: onClose,
+func newGroupReader(sequence GroupSequence, stream transport.ReceiveStream, groupManager *groupReaderManager) *GroupReader {
+	r := &GroupReader{
+		sequence:     sequence,
+		stream:       stream,
+		groupManager: groupManager,
 	}
+
+	if groupManager != nil {
+		groupManager.addGroup(r)
+	}
+
+	return r
 }
 
 // GroupReader receives group data for a subscribed track.
@@ -22,10 +28,10 @@ func newGroupReader(sequence GroupSequence, stream ReceiveStream,
 type GroupReader struct {
 	sequence GroupSequence
 
-	stream     ReceiveStream
+	stream     transport.ReceiveStream
 	frameCount int64
 
-	onClose func()
+	groupManager *groupReaderManager
 }
 
 // GroupSequence returns the GroupSequence this reader belongs to.
@@ -45,8 +51,7 @@ func (s *GroupReader) ReadFrame(frame *Frame) error {
 			return err
 		}
 
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
 			grpErr := &GroupError{
 				StreamError: strErr,
 			}
@@ -64,8 +69,11 @@ func (s *GroupReader) ReadFrame(frame *Frame) error {
 
 // CancelRead cancels the group using the provided GroupErrorCode.
 func (s *GroupReader) CancelRead(code GroupErrorCode) {
-	strErrCode := StreamErrorCode(code)
-	s.stream.CancelRead(strErrCode)
+	s.stream.CancelRead(transport.StreamErrorCode(code))
+
+	if s.groupManager != nil {
+		s.groupManager.removeGroup(s)
+	}
 }
 
 // SetReadDeadline sets the read deadline for read operations.

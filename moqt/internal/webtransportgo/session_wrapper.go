@@ -7,13 +7,17 @@ import (
 
 	"github.com/okdaichi/gomoqt/transport"
 	quicgo_webtransportgo "github.com/okdaichi/webtransport-go"
+	"github.com/quic-go/quic-go"
 )
 
 type sessionWrapper struct {
 	sess *quicgo_webtransportgo.Session
 }
 
-func wrapSession(wtsess *quicgo_webtransportgo.Session) transport.StreamConn {
+func wrapSession(wtsess *quicgo_webtransportgo.Session) transport.WebTransportSession {
+	if wtsess == nil {
+		return nil
+	}
 	return &sessionWrapper{
 		sess: wtsess,
 	}
@@ -63,19 +67,14 @@ func (conn *sessionWrapper) OpenUniStream() (transport.SendStream, error) {
 	return &sendStreamWrapper{stream: stream}, err
 }
 
-func (conn *sessionWrapper) OpenUniStreamSync(ctx context.Context) (transport.SendStream, error) {
-	stream, err := conn.sess.OpenUniStreamSync(ctx)
-	return &sendStreamWrapper{stream: stream}, err
-}
-
-func (conn *sessionWrapper) ReceiveDatagram(ctx context.Context) ([]byte, error) {
-	return conn.sess.ReceiveDatagram(ctx)
-}
-
 func (conn *sessionWrapper) RemoteAddr() net.Addr {
 	return conn.sess.RemoteAddr()
 }
 
-func (conn *sessionWrapper) SendDatagram(b []byte) error {
-	return conn.sess.SendDatagram(b)
+func (conn *sessionWrapper) Subprotocol() string {
+	return conn.sess.SessionState().ApplicationProtocol
+}
+
+func (conn *sessionWrapper) ConnectionStats() quic.ConnectionStats {
+	return conn.sess.ConnectionStats()
 }

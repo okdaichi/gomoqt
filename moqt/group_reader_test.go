@@ -3,12 +3,19 @@ package moqt
 import (
 	"bytes"
 	"errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"io"
 	"testing"
 	"time"
+
+	"github.com/okdaichi/gomoqt/transport"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func newMockReceiveStreamWithCleanup(tb testing.TB) *FakeQUICReceiveStream {
+	tb.Helper()
+	return &FakeQUICReceiveStream{}
+}
 
 func TestNewReceiveGroupStream(t *testing.T) {
 	tests := map[string]struct {
@@ -31,9 +38,9 @@ func TestNewReceiveGroupStream(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICReceiveStream{}
+			mockStream := newMockReceiveStreamWithCleanup(t)
 
-			rgs := newGroupReader(tt.sequence, mockStream, func() {})
+			rgs := newGroupReader(tt.sequence, mockStream, nil)
 
 			assert.NotNil(t, rgs)
 			assert.Equal(t, tt.sequence, rgs.sequence)
@@ -66,8 +73,8 @@ func TestReceiveGroupStream_GroupSequence(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICReceiveStream{}
-			rgs := newGroupReader(tt.sequence, mockStream, func() {})
+			mockStream := newMockReceiveStreamWithCleanup(t)
+			rgs := newGroupReader(tt.sequence, mockStream, nil)
 
 			result := rgs.GroupSequence()
 			assert.Equal(t, tt.sequence, result)
@@ -76,11 +83,11 @@ func TestReceiveGroupStream_GroupSequence(t *testing.T) {
 }
 
 func TestReceiveGroupStream_ReadFrame_EOF(t *testing.T) {
-	mockStream := &MockQUICReceiveStream{}
+	mockStream := &FakeQUICReceiveStream{}
 	buf := bytes.NewBuffer(nil) // Empty buffer will return EOF
 	mockStream.ReadFunc = buf.Read
 
-	rgs := newGroupReader(GroupSequence(123), mockStream, func() {})
+	rgs := newGroupReader(GroupSequence(123), mockStream, nil)
 	frame := NewFrame(0)
 	err := rgs.ReadFrame(frame)
 	assert.Error(t, err)
@@ -106,71 +113,69 @@ func TestReceiveGroupStream_CancelRead(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICReceiveStream{}
-			mockStream.On("CancelRead", StreamErrorCode(tt.errorCode)).Return()
+			mockStream := &FakeQUICReceiveStream{}
 
-			rgs := newGroupReader(GroupSequence(123), mockStream, func() {})
+			rgs := newGroupReader(GroupSequence(123), mockStream, nil)
 
 			rgs.CancelRead(tt.errorCode)
 
-			mockStream.AssertExpectations(t)
+			_, readErr := mockStream.Read(make([]byte, 1))
+			var cancelReadErr *transport.StreamError
+			require.ErrorAs(t, readErr, &cancelReadErr)
+			assert.Equal(t, transport.StreamErrorCode(tt.errorCode), cancelReadErr.ErrorCode)
 		})
 	}
 }
 
 func TestReceiveGroupStream_CancelRead_MultipleCalls(t *testing.T) {
-	mockStream := &MockQUICReceiveStream{}
-	mockStream.On("CancelRead", StreamErrorCode(InternalGroupErrorCode)).Return()
+	mockStream := &FakeQUICReceiveStream{}
 
-	rgs := newGroupReader(GroupSequence(123), mockStream, func() {})
+	rgs := newGroupReader(GroupSequence(123), mockStream, nil)
 
 	// Cancel multiple times with the same error code
 	rgs.CancelRead(InternalGroupErrorCode)
 	rgs.CancelRead(InternalGroupErrorCode)
 
-	// Should be called for each CancelRead invocation
-	mockStream.AssertCalled(t, "CancelRead", StreamErrorCode(InternalGroupErrorCode))
-	mockStream.AssertExpectations(t)
+	// Should reflect the last CancelRead invocation
+	expected := transport.StreamErrorCode(InternalGroupErrorCode)
+	_, readErr := mockStream.Read(make([]byte, 1))
+	var cancelReadErr *transport.StreamError
+	require.ErrorAs(t, readErr, &cancelReadErr)
+	assert.Equal(t, expected, cancelReadErr.ErrorCode)
 }
 
 func TestReceiveGroupStream_SetReadDeadline(t *testing.T) {
 	tests := map[string]struct {
-		setupMock func() *MockQUICReceiveStream
+		setupMock func() *FakeQUICReceiveStream
 		deadline  time.Time
 		wantErr   bool
 	}{
 		"successful set deadline": {
-			setupMock: func() *MockQUICReceiveStream {
-				mockStream := &MockQUICReceiveStream{}
-				mockStream.On("SetReadDeadline", mock.Anything).Return(nil)
-				return mockStream
+			setupMock: func() *FakeQUICReceiveStream {
+				return &FakeQUICReceiveStream{}
 			},
 			deadline: time.Now().Add(time.Hour),
 			wantErr:  false,
 		},
 		"set deadline with error": {
-			setupMock: func() *MockQUICReceiveStream {
-				mockStream := &MockQUICReceiveStream{}
-				mockStream.On("SetReadDeadline", mock.Anything).Return(assert.AnError)
-				return mockStream
+			setupMock: func() *FakeQUICReceiveStream {
+				return &FakeQUICReceiveStream{
+					SetReadDeadlineFunc: func(t time.Time) error { return assert.AnError },
+				}
 			},
 			deadline: time.Now().Add(time.Hour),
 			wantErr:  true,
 		},
 		"zero time deadline": {
-			setupMock: func() *MockQUICReceiveStream {
-				mockStream := &MockQUICReceiveStream{}
-				mockStream.On("SetReadDeadline", time.Time{}).Return(nil)
-				return mockStream
+			setupMock: func() *FakeQUICReceiveStream {
+				return &FakeQUICReceiveStream{}
 			},
 			deadline: time.Time{},
 			wantErr:  false,
 		},
 		"deadline in the past": {
-			setupMock: func() *MockQUICReceiveStream {
-				mockStream := &MockQUICReceiveStream{}
-				mockStream.On("SetReadDeadline", mock.Anything).Return(nil)
-				return mockStream
+			setupMock: func() *FakeQUICReceiveStream {
+				return &FakeQUICReceiveStream{}
 			},
 			deadline: time.Now().Add(-time.Hour),
 			wantErr:  false,
@@ -180,7 +185,7 @@ func TestReceiveGroupStream_SetReadDeadline(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.setupMock()
-			rgs := newGroupReader(123, mockStream, func() {})
+			rgs := newGroupReader(123, mockStream, nil)
 
 			err := rgs.SetReadDeadline(tt.deadline)
 
@@ -189,24 +194,21 @@ func TestReceiveGroupStream_SetReadDeadline(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
-
-			mockStream.AssertExpectations(t)
 		})
 	}
 }
 
 func TestReceiveGroupStream_ReadFrame_StreamError(t *testing.T) {
-	mockStream := &MockQUICReceiveStream{
+	mockStream := &FakeQUICReceiveStream{
 		ReadFunc: func(p []byte) (int, error) {
-			return 0, &StreamError{
-				StreamID:  StreamID(123),
-				ErrorCode: StreamErrorCode(1),
+			return 0, &transport.StreamError{
+				StreamID:  transport.StreamID(123),
+				ErrorCode: transport.StreamErrorCode(1),
 			}
 		},
 	}
-	mockStream.On("StreamID").Return(StreamID(123))
 
-	rgs := newGroupReader(123, mockStream, func() {})
+	rgs := newGroupReader(123, mockStream, nil)
 	frame := NewFrame(0)
 	err := rgs.ReadFrame(frame)
 	assert.Error(t, err)
@@ -220,12 +222,12 @@ func TestReceiveGroupStream_ReadFrame_StreamError(t *testing.T) {
 
 func TestGroupReader_ReadFrame(t *testing.T) {
 	tests := map[string]struct {
-		setupStream func() *MockQUICReceiveStream
+		setupStream func() *FakeQUICReceiveStream
 		expectError bool
 		expectFrame bool
 	}{
 		"successful read": {
-			setupStream: func() *MockQUICReceiveStream {
+			setupStream: func() *FakeQUICReceiveStream {
 				// Create a frame with some data
 				frame := NewFrame(10)
 				_, _ = frame.Write([]byte("test data"))
@@ -236,7 +238,7 @@ func TestGroupReader_ReadFrame(t *testing.T) {
 				}
 				data := buf.Bytes()
 
-				mockStream := &MockQUICReceiveStream{
+				mockStream := &FakeQUICReceiveStream{
 					ReadFunc: func(p []byte) (int, error) {
 						if len(data) == 0 {
 							return 0, io.EOF
@@ -252,8 +254,8 @@ func TestGroupReader_ReadFrame(t *testing.T) {
 			expectFrame: true,
 		},
 		"EOF": {
-			setupStream: func() *MockQUICReceiveStream {
-				mockStream := &MockQUICReceiveStream{
+			setupStream: func() *FakeQUICReceiveStream {
+				mockStream := &FakeQUICReceiveStream{
 					ReadFunc: func(p []byte) (int, error) {
 						return 0, io.EOF
 					},
@@ -268,7 +270,7 @@ func TestGroupReader_ReadFrame(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.setupStream()
-			rgs := newGroupReader(123, mockStream, func() {})
+			rgs := newGroupReader(123, mockStream, nil)
 
 			frame := NewFrame(0)
 			err := rgs.ReadFrame(frame)
@@ -289,13 +291,13 @@ func TestGroupReader_ReadFrame(t *testing.T) {
 
 func TestGroupReader_Frames(t *testing.T) {
 	t.Run("returns iterator function", func(t *testing.T) {
-		mockStream := &MockQUICReceiveStream{
+		mockStream := &FakeQUICReceiveStream{
 			ReadFunc: func(p []byte) (int, error) {
 				return 0, io.EOF
 			},
 		}
 
-		rgs := newGroupReader(123, mockStream, func() {})
+		rgs := newGroupReader(123, mockStream, nil)
 		iterator := rgs.Frames(nil)
 		assert.NotNil(t, iterator)
 	})
@@ -313,7 +315,7 @@ func TestGroupReader_Frames(t *testing.T) {
 
 		encodedData := buf.Bytes()
 
-		mockStream := &MockQUICReceiveStream{
+		mockStream := &FakeQUICReceiveStream{
 			ReadFunc: func(p []byte) (int, error) {
 				if len(encodedData) == 0 {
 					return 0, io.EOF
@@ -324,7 +326,7 @@ func TestGroupReader_Frames(t *testing.T) {
 			},
 		}
 
-		rgs := newGroupReader(123, mockStream, func() {})
+		rgs := newGroupReader(123, mockStream, nil)
 
 		frameCount := 0
 		var frames []*Frame
@@ -345,13 +347,13 @@ func TestGroupReader_Frames(t *testing.T) {
 	})
 
 	t.Run("stops immediately on EOF", func(t *testing.T) {
-		mockStream := &MockQUICReceiveStream{
+		mockStream := &FakeQUICReceiveStream{
 			ReadFunc: func(p []byte) (int, error) {
 				return 0, io.EOF
 			},
 		}
 
-		rgs := newGroupReader(123, mockStream, func() {})
+		rgs := newGroupReader(123, mockStream, nil)
 
 		frameCount := 0
 		for range rgs.Frames(nil) {

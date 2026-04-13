@@ -6,12 +6,6 @@ import (
 
 // Config contains configuration options for MOQ sessions.
 type Config struct {
-	// ServerSetupExtensions func(clientParams *Parameters) (serverParams *Parameters, err error)
-
-	// MaxSubscribeID SubscribeID // TODO:
-
-	// NewSessionURI string // TODO:
-
 	// SetupTimeout is the maximum time to wait for session setup to complete.
 	// If zero, a default timeout of 5 seconds is used.
 	SetupTimeout time.Duration
@@ -31,10 +25,6 @@ func (c *Config) Clone() *Config {
 		return nil
 	}
 	return &Config{
-		// ServerSetupExtensions: c.ServerSetupExtensions,
-		// MaxSubscribeID: c.MaxSubscribeID,
-		// NewSessionURI:  c.NewSessionURI,
-		// CheckRoot:      c.CheckRoot,
 		SetupTimeout: c.SetupTimeout,
 	}
 }

@@ -53,10 +53,6 @@ func TestStreamType_Constants(t *testing.T) {
 		streamType message.StreamType
 		expected   message.StreamType
 	}{
-		"session constant": {
-			streamType: message.StreamTypeSession,
-			expected:   message.StreamType(0x0),
-		},
 		"announce constant": {
 			streamType: message.StreamTypeAnnounce,
 			expected:   message.StreamType(0x1),
@@ -68,6 +64,14 @@ func TestStreamType_Constants(t *testing.T) {
 		"group constant": {
 			streamType: message.StreamTypeGroup,
 			expected:   message.StreamType(0x0),
+		},
+		"fetch constant": {
+			streamType: message.StreamTypeFetch,
+			expected:   message.StreamType(0x3),
+		},
+		"probe constant": {
+			streamType: message.StreamTypeProbe,
+			expected:   message.StreamType(0x4),
 		},
 	}
 

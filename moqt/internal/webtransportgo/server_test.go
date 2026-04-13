@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okdaichi/gomoqt/transport"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,41 +26,9 @@ func TestServer_Init_DoesNotPanic(t *testing.T) {
 	})
 }
 
-func TestServer_Init_SetsConnContextWhenProvided(t *testing.T) {
-	type testKey struct{}
-
-	srv := &Server{
-		ConnContext: func(ctx context.Context, conn transport.StreamConn) context.Context {
-			require.Nil(t, conn)
-			return context.WithValue(ctx, testKey{}, "ok")
-		},
-	}
-	srv.init()
-
-	require.NotNil(t, srv.internalServer)
-	require.NotNil(t, srv.internalServer.H3)
-	require.NotNil(t, srv.internalServer.H3.ConnContext)
-
-	ctx := srv.internalServer.H3.ConnContext(context.Background(), nil)
-	require.Equal(t, "ok", ctx.Value(testKey{}))
-}
-
-func TestServer_Init_PanicsOnNilConnContextResult(t *testing.T) {
-	srv := &Server{
-		ConnContext: func(ctx context.Context, conn transport.StreamConn) context.Context {
-			return nil
-		},
-	}
-	srv.init()
-
-	require.Panics(t, func() {
-		_ = srv.internalServer.H3.ConnContext(context.Background(), nil)
-	})
-}
-
 func TestServer_ServeQUICConn_InvalidConnType(t *testing.T) {
 	srv := &Server{}
-	err := srv.ServeQUICConn(&MockStreamConn{})
+	err := srv.ServeQUICConn(&FakeStreamConn{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid connection type")
 }

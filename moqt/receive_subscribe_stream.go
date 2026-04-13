@@ -1,197 +1,184 @@
 package moqt
 
 import (
-	"context"
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
-func newReceiveSubscribeStream(id SubscribeID, stream Stream, config *TrackConfig) *receiveSubscribeStream {
-	// Ensure config is not nil
-	if config == nil {
-		config = &TrackConfig{}
-	}
-
-	rss := &receiveSubscribeStream{
+func newReceiveSubscribeStream(id SubscribeID, stream transport.Stream, config *SubscribeConfig) *receiveSubscribeStream {
+	substr := &receiveSubscribeStream{
 		subscribeID: id,
 		config:      config,
 		stream:      stream,
 		updatedCh:   make(chan struct{}, 1),
-		closeOnce:   make(chan struct{}, 1),
-		ctx:         context.WithValue(stream.Context(), biStreamTypeCtxKey, message.StreamTypeSubscribe),
 	}
 
 	// Listen for updates in a separate goroutine
 	go func() {
-		var sum message.SubscribeUpdateMessage
+		var updateMsg message.SubscribeUpdateMessage
 		var err error
 
 		for {
-			rss.configMu.Lock()
-			if rss.ctx.Err() != nil {
-				rss.configMu.Unlock()
-				break
-			}
-			rss.configMu.Unlock()
-
-			err = sum.Decode(rss.stream)
+			err = updateMsg.Decode(substr.stream)
 			if err != nil {
 				break
 			}
 
-			rss.configMu.Lock()
-			rss.config = &TrackConfig{
-				TrackPriority: TrackPriority(sum.TrackPriority),
+			config := &SubscribeConfig{
+				Priority:   TrackPriority(updateMsg.SubscriberPriority),
+				Ordered:    boolFromWireFlag(updateMsg.SubscriberOrdered),
+				MaxLatency: updateMsg.SubscriberMaxLatency,
+				StartGroup: groupSequenceFromWire(updateMsg.StartGroup),
+				EndGroup:   groupSequenceFromWire(updateMsg.EndGroup),
 			}
 
+			substr.mu.Lock()
+
+			substr.config = config
 			select {
-			case rss.updatedCh <- struct{}{}:
+			case substr.updatedCh <- struct{}{}:
 			default:
 			}
-			rss.configMu.Unlock()
+			substr.mu.Unlock()
 		}
-
-		// Cleanup after loop ends
-		rss.configMu.Lock()
-		select {
-		case rss.closeOnce <- struct{}{}:
-			if rss.updatedCh != nil {
-				close(rss.updatedCh)
-			}
-		default:
-		}
-		rss.configMu.Unlock()
-
 	}()
 
-	return rss
+	return substr
 }
 
 type receiveSubscribeStream struct {
 	subscribeID SubscribeID
 
-	stream Stream
+	stream transport.Stream
 
-	acceptOnce sync.Once
-	// writeInfoWG tracks active WriteInfo calls so close waits for them.
-	writeInfoWG sync.WaitGroup
+	mu sync.Mutex
 
-	configMu  sync.Mutex
-	config    *TrackConfig
-	updatedCh chan struct{}
-
-	closeOnce chan struct{}
-
-	ctx context.Context
+	config          *SubscribeConfig
+	updatedCh       chan struct{}
+	responseStarted bool
 }
 
-func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
-	return rss.subscribeID
+func (substr *receiveSubscribeStream) SubscribeID() SubscribeID {
+	return substr.subscribeID
 }
 
-func (rss *receiveSubscribeStream) writeInfo(info Info) error {
-	var err error
-	rss.acceptOnce.Do(func() {
-		rss.writeInfoWG.Add(1)
-		defer rss.writeInfoWG.Done()
-		rss.configMu.Lock()
-		defer rss.configMu.Unlock()
-		if rss.ctx.Err() != nil {
-			err = Cause(rss.ctx)
-			return
-		}
-		sum := message.SubscribeOkMessage{}
-		err = sum.Encode(rss.stream)
-		if err != nil {
-			_ = rss.closeWithError(InternalSubscribeErrorCode)
-			return
-		}
-	})
+func (substr *receiveSubscribeStream) ensureInfo(info PublishInfo) error {
+	substr.mu.Lock()
+	if substr.responseStarted {
+		substr.mu.Unlock()
+		return nil
+	}
+	err := substr.writeInfoLocked(info)
+	substr.mu.Unlock()
+
+	if err != nil {
+		_ = substr.closeWithError(SubscribeErrorCodeInternal)
+	}
 
 	return err
 }
 
-func (rss *receiveSubscribeStream) TrackConfig() *TrackConfig {
-	rss.configMu.Lock()
-	defer rss.configMu.Unlock()
+func (substr *receiveSubscribeStream) writeInfo(info PublishInfo) error {
+	substr.mu.Lock()
+	err := substr.writeInfoLocked(info)
+	substr.mu.Unlock()
+
+	if err != nil {
+		_ = substr.closeWithError(SubscribeErrorCodeInternal)
+	}
+
+	return err
+}
+
+func (substr *receiveSubscribeStream) writeInfoLocked(info PublishInfo) error {
+	if _, err := substr.stream.Write([]byte{byte(message.MessageTypeSubscribeOk)}); err != nil {
+		return err
+	}
+
+	err := message.SubscribeOkMessage{
+		PublisherPriority:   uint8(info.Priority),
+		PublisherOrdered:    boolToWireFlag(info.Ordered),
+		PublisherMaxLatency: info.MaxLatency,
+		StartGroup:          groupSequenceToWire(info.StartGroup),
+		EndGroup:            groupSequenceToWire(info.EndGroup),
+	}.Encode(substr.stream)
+
+	if err != nil {
+		return err
+	}
+
+	substr.responseStarted = true
+
+	return nil
+}
+
+func (substr *receiveSubscribeStream) writeDrop(drop SubscribeDrop) error {
+	substr.mu.Lock()
+	defer substr.mu.Unlock()
+
+	if !substr.responseStarted {
+		err := substr.writeInfoLocked(PublishInfo{})
+		if err != nil {
+			return err
+		}
+	}
+
+	if _, err := substr.stream.Write([]byte{byte(message.MessageTypeSubscribeDrop)}); err != nil {
+		return err
+	}
+
+	err := message.SubscribeDropMessage{
+		StartGroup: groupSequenceToWire(drop.StartGroup),
+		EndGroup:   groupSequenceToWire(drop.EndGroup),
+		ErrorCode:  uint64(drop.ErrorCode),
+	}.Encode(substr.stream)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (substr *receiveSubscribeStream) TrackConfig() *SubscribeConfig {
+	substr.mu.Lock()
+	defer substr.mu.Unlock()
 
 	// Ensure config is never nil
-	if rss.config == nil {
-		rss.config = &TrackConfig{}
+	if substr.config == nil {
+		substr.config = &SubscribeConfig{}
 	}
 
-	return rss.config
+	return substr.config
 }
 
-func (rss *receiveSubscribeStream) Updated() <-chan struct{} {
-	return rss.updatedCh
+func (substr *receiveSubscribeStream) Updated() <-chan struct{} {
+	return substr.updatedCh
 }
 
-func (rss *receiveSubscribeStream) Context() context.Context {
-	if rss == nil || rss.ctx == nil {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		return ctx
+func (substr *receiveSubscribeStream) close() error {
+	substr.mu.Lock()
+	defer substr.mu.Unlock()
+
+	if updateCh := substr.updatedCh; updateCh != nil {
+		substr.updatedCh = nil
+		close(updateCh)
 	}
-	return rss.ctx
+
+	return substr.stream.Close()
 }
 
-func (rss *receiveSubscribeStream) close() error {
-	rss.configMu.Lock()
-	defer rss.configMu.Unlock()
+func (substr *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error {
+	substr.mu.Lock()
+	defer substr.mu.Unlock()
 
-	if rss.ctx.Err() != nil {
-		return Cause(rss.ctx)
-	}
+	strErrCode := transport.StreamErrorCode(code)
+	cancelStreamWithError(substr.stream, strErrCode)
 
-	// Wait for any in-flight WriteInfo calls to finish before closing.
-	rss.writeInfoWG.Wait()
-
-	// Close the write-side stream. Do not cancel the read side for a
-	// graceful close: allow the peer to finish its read operations and
-	// close the stream gracefully to avoid triggering a reset.
-	err := rss.stream.Close()
-
-	select {
-	case rss.closeOnce <- struct{}{}:
-		if rss.updatedCh != nil {
-			close(rss.updatedCh)
-		}
-	default:
-	}
-
-	return err
-}
-
-func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error {
-	if rss == nil {
-		panic("receiveSubscribeStream: cannot call closeWithError on nil stream")
-	}
-
-	rss.configMu.Lock()
-	defer rss.configMu.Unlock()
-
-	if rss.ctx.Err() != nil {
-		return Cause(rss.ctx)
-	}
-
-	// Wait for any in-flight WriteInfo calls to finish. We still cancel the
-	// stream afterwards to enforce the error unconditionally.
-	rss.writeInfoWG.Wait()
-
-	strErrCode := StreamErrorCode(code)
-	// Cancel the write-side stream
-	rss.stream.CancelWrite(strErrCode)
-	// Cancel the read-side stream
-	rss.stream.CancelRead(strErrCode)
-
-	select {
-	case rss.closeOnce <- struct{}{}:
-		if rss.updatedCh != nil {
-			close(rss.updatedCh)
-		}
-	default:
+	if updateCh := substr.updatedCh; updateCh != nil {
+		substr.updatedCh = nil
+		close(updateCh)
 	}
 
 	return nil

@@ -29,14 +29,8 @@ func main() {
 	}
 
 	// Serve moq over webtransport
-	upgrader := moqt.Upgrader{}
-	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		_, err := upgrader.Upgrade(w, r)
-		if err != nil {
-			slog.Error("failed to upgrade to WebTransport session", "error", err)
-			return
-		}
-	})
+	handler := &moqt.WebTransportHandler{}
+	http.Handle("/broadcast", handler)
 
 	// Register the broadcast handler with the default mux
 	moqt.PublishFunc(context.Background(), "/server.broadcast", func(tw *moqt.TrackWriter) {

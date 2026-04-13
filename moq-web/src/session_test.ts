@@ -2,9 +2,10 @@ import { assertEquals, assertExists, assertInstanceOf } from "@std/assert";
 import { spy } from "@std/testing/mock";
 import { Session } from "./session.ts";
 import {
-	AnnounceInitMessage,
 	AnnouncePleaseMessage,
+	FetchMessage,
 	GroupMessage,
+	ProbeMessage,
 	SubscribeMessage,
 	SubscribeOkMessage,
 	writeVarint,
@@ -15,6 +16,9 @@ import type { TrackPrefix } from "./track_prefix.ts";
 import { Writer } from "@okdaichi/golikejs/io";
 import { EOFError } from "@okdaichi/golikejs/io";
 import { ReceiveStream, SendStream, Stream, StreamConn } from "./internal/webtransport/mod.ts";
+import { FetchRequest } from "./fetch.ts";
+import type { FetchHandler } from "./fetch.ts";
+import type { GroupWriter } from "./group_stream.ts";
 
 // Utility class to implement Writer for encoding messages
 class Uint8ArrayWriter implements Writer {
@@ -48,19 +52,27 @@ interface MockWebTransportSessionInit {
 	acceptUniStreamData?: Array<{ type: number; data: Uint8Array }>;
 	closedPromise?: Promise<WebTransportCloseInfo>;
 	protocol?: string;
+	stats?: { estimatedSendRate: number | null };
 }
+
+type WebTransportProbeStats = {
+	estimatedSendRate: number | null;
+};
 
 class MockWebTransportSession implements StreamConn {
 	#openStreamResponses: Uint8Array[];
 	#openStreamIndex = 0;
+	#openStreamWrittenData: Uint8Array[][] = [];
 	#acceptStreamData: Array<{ type: number; data: Uint8Array }>;
 	#acceptStreamIndex = 0;
+	#acceptStreamWrittenData: Uint8Array[][] = [];
 	#acceptUniStreamData: Array<{ type: number; data: Uint8Array }>;
 	#acceptUniStreamIndex = 0;
 	#closed = false;
 	#closedPromise: Promise<WebTransportCloseInfo>;
 	#closedResolve?: (info: WebTransportCloseInfo) => void;
 	#waitingAcceptResolvers: Array<() => void> = [];
+	#stats: WebTransportProbeStats = { estimatedSendRate: null };
 
 	ready: Promise<void> = Promise.resolve();
 	readonly protocol: string;
@@ -70,6 +82,15 @@ class MockWebTransportSession implements StreamConn {
 		this.#acceptStreamData = options.acceptStreamData ?? [];
 		this.#acceptUniStreamData = options.acceptUniStreamData ?? [];
 		this.protocol = options.protocol ?? "";
+		this.#stats = options.stats ?? { estimatedSendRate: null };
+		if (options.stats !== undefined) {
+			Object.defineProperty(this, "getStats", {
+				value: async () => this.#stats,
+				configurable: true,
+				enumerable: false,
+				writable: false,
+			});
+		}
 
 		if (options.closedPromise) {
 			this.#closedPromise = options.closedPromise;
@@ -92,6 +113,7 @@ class MockWebTransportSession implements StreamConn {
 		// Create inline mock stream
 		const writtenData: Uint8Array[] = [];
 		let readOffset = 0;
+		this.#openStreamWrittenData.push(writtenData);
 		const writable = {
 			write: spy(async (p: Uint8Array) => {
 				writtenData.push(new Uint8Array(p));
@@ -149,6 +171,7 @@ class MockWebTransportSession implements StreamConn {
 
 		const writtenData: Uint8Array[] = [];
 		let readOffset = 0;
+		this.#acceptStreamWrittenData.push(writtenData);
 		const writable = {
 			write: spy(async (p: Uint8Array) => {
 				writtenData.push(new Uint8Array(p));
@@ -220,6 +243,14 @@ class MockWebTransportSession implements StreamConn {
 	get closed(): Promise<WebTransportCloseInfo> {
 		return this.#closedPromise;
 	}
+
+	get openStreamWrittenData(): Uint8Array[][] {
+		return this.#openStreamWrittenData;
+	}
+
+	get acceptStreamWrittenData(): Uint8Array[][] {
+		return this.#acceptStreamWrittenData;
+	}
 }
 
 Deno.test({
@@ -288,27 +319,6 @@ Deno.test({
 		);
 
 		await t.step(
-			"acceptAnnounce returns error when ANNOUNCE_INIT decode fails",
-			async () => {
-				const truncatedBytes = new Uint8Array([0x80]);
-
-				const mock = new MockWebTransportSession({
-					openStreamResponses: [truncatedBytes],
-				});
-
-				const session = new Session({ transport: mock });
-				await session.ready;
-
-				const [reader, err] = await session.acceptAnnounce(
-					"/test/" as TrackPrefix,
-				);
-				assertEquals(reader, undefined);
-				assertExists(err);
-				await session.close();
-			},
-		);
-
-		await t.step(
 			"subscribe returns error when SUBSCRIBE_OK decode fails",
 			async () => {
 				const truncatedBytes = new Uint8Array([0x80]);
@@ -344,7 +354,7 @@ Deno.test({
 					subscribeId: 1,
 					broadcastPath: "/test/path",
 					trackName: "name",
-					trackPriority: 0,
+					subscriberPriority: 0,
 				});
 				const buf = await encodeMessageToUint8Array(async (w) => {
 					await writeVarint(w, BiStreamTypes.SubscribeStreamType);
@@ -368,12 +378,71 @@ Deno.test({
 			},
 		);
 
-		await t.step("acceptAnnounce succeeds with valid messages", async () => {
-			const init = new AnnounceInitMessage({ suffixes: ["suffix"] });
-			const initBytes = await encodeMessageToUint8Array(async (w) => init.encode(w));
+		await t.step(
+			"listening for probe stream responds with current stats",
+			async () => {
+				const req = new ProbeMessage({ bitrate: 1234 });
+				const expected = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, BiStreamTypes.ProbeStreamType);
+					return await req.encode(w);
+				});
 
+				const mock = new MockWebTransportSession({
+					acceptStreamData: [{ type: BiStreamTypes.ProbeStreamType, data: expected }],
+					stats: { estimatedSendRate: 4321 },
+				});
+
+				const session = new Session({ transport: mock });
+				await session.ready;
+
+				await new Promise((resolve) => setTimeout(resolve, 10));
+
+				const written = mock.acceptStreamWrittenData[0] ?? [];
+				const rsp = new ProbeMessage({ bitrate: 4321 });
+				const expectedResponse = await encodeMessageToUint8Array(async (w) =>
+					rsp.encode(w)
+				);
+				const actualResponse = new Uint8Array(
+					written.flatMap((chunk) => Array.from(chunk)),
+				);
+				assertEquals(actualResponse, expectedResponse);
+
+				await session.close();
+			},
+		);
+
+		await t.step(
+			"probe sends request and returns response bitrate",
+			async () => {
+				const rsp = new ProbeMessage({ bitrate: 4321 });
+				const rspBytes = await encodeMessageToUint8Array(async (w) => rsp.encode(w));
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [rspBytes],
+				});
+
+				const session = new Session({ transport: mock });
+				await session.ready;
+
+				const [got, err] = await session.probe(1234);
+				assertEquals(err, undefined);
+				assertEquals(got, 4321);
+
+				const written = mock.openStreamWrittenData[0] ?? [];
+				const actualRequest = new Uint8Array(written.flatMap((chunk) => Array.from(chunk)));
+				const expectedRequest = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, BiStreamTypes.ProbeStreamType);
+					return await new ProbeMessage({ bitrate: 1234 }).encode(w);
+				});
+				assertEquals(actualRequest, expectedRequest);
+
+				await session.close();
+			},
+		);
+
+		await t.step("acceptAnnounce succeeds with valid messages", async () => {
 			const mock = new MockWebTransportSession({
-				openStreamResponses: [initBytes],
+				openStreamResponses: [new Uint8Array(0)],
 			});
 
 			const session = new Session({ transport: mock });
@@ -390,7 +459,10 @@ Deno.test({
 
 		await t.step("subscribe succeeds with valid messages", async () => {
 			const ok = new SubscribeOkMessage({});
-			const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+			const okBytes = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, 0);
+				return await ok.encode(w);
+			});
 
 			const mock = new MockWebTransportSession({
 				openStreamResponses: [okBytes],
@@ -446,7 +518,10 @@ Deno.test({
 
 		await t.step("listening for group stream enqueues to track", async () => {
 			const ok = new SubscribeOkMessage({});
-			const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+			const okBytes = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, 0);
+				return await ok.encode(w);
+			});
 
 			const groupMsg = new GroupMessage({
 				subscribeId: 0,
@@ -549,7 +624,10 @@ Deno.test({
 			"multiple subscribes get different subscribe IDs",
 			async () => {
 				const ok = new SubscribeOkMessage({});
-				const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+				const okBytes = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, 0);
+					return await ok.encode(w);
+				});
 
 				const mock = new MockWebTransportSession({
 					openStreamResponses: [okBytes, okBytes, okBytes],
@@ -620,7 +698,10 @@ Deno.test({
 			"subscribe with trackConfig passes config values",
 			async () => {
 				const ok = new SubscribeOkMessage({});
-				const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+				const okBytes = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, 0);
+					return await ok.encode(w);
+				});
 
 				const mock = new MockWebTransportSession({
 					openStreamResponses: [okBytes],
@@ -632,14 +713,14 @@ Deno.test({
 				const [track, err] = await session.subscribe(
 					"/test/path",
 					"track-name",
-					{ trackPriority: 5 },
+					{ priority: 5, ordered: false, maxLatency: 0, startGroup: 0, endGroup: 0 },
 				);
 				assertExists(track);
 				assertEquals(err, undefined);
 
 				// Verify track config is reflected
 				const config = track.trackConfig;
-				assertEquals(config.trackPriority, 5);
+				assertEquals(config.priority, 5);
 
 				await session.close();
 			},
@@ -735,6 +816,129 @@ Deno.test({
 					}],
 				});
 
+				const session = new Session({ transport: mock });
+				await session.ready;
+
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				await session.close();
+			},
+		);
+
+		await t.step("fetch sends FETCH message and returns GroupReader", async () => {
+			// The response stream will be empty (EOF) — that's fine for testing the request path
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array(0)],
+			});
+
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const req = new FetchRequest({
+				broadcastPath: "/live/stream",
+				trackName: "video",
+				priority: 5,
+				groupSequence: 42,
+			});
+
+			const [group, err] = await session.fetch(req);
+			assertExists(group);
+			assertEquals(err, undefined);
+
+			await session.close();
+		});
+
+		await t.step("fetch returns error when openStream fails", async () => {
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [],
+			});
+
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			mock.close();
+
+			const req = new FetchRequest({
+				broadcastPath: "/live/stream",
+				trackName: "video",
+				priority: 5,
+				groupSequence: 1,
+			});
+
+			const [group, err] = await session.fetch(req);
+			assertEquals(group, undefined);
+			assertExists(err);
+		});
+
+		await t.step(
+			"incoming fetch stream calls fetchHandler.serveFetch",
+			async () => {
+				let served = false;
+				let servedPath: string | undefined;
+				let servedTrackName: string | undefined;
+				const handler: FetchHandler = {
+					serveFetch: async (_w: GroupWriter, r: FetchRequest) => {
+						served = true;
+						servedPath = r.broadcastPath;
+						servedTrackName = r.trackName;
+					},
+				};
+
+				const fm = new FetchMessage({
+					broadcastPath: "/live/fetch",
+					trackName: "audio",
+					priority: 3,
+					groupSequence: 10,
+				});
+				const buf = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, BiStreamTypes.FetchStreamType);
+					return await fm.encode(w);
+				});
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [],
+					acceptStreamData: [{
+						type: BiStreamTypes.FetchStreamType,
+						data: buf,
+					}],
+				});
+
+				const session = new Session({
+					transport: mock,
+					fetchHandler: handler,
+				});
+				await session.ready;
+
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				assertEquals(served, true);
+				assertEquals(servedPath, "/live/fetch");
+				assertEquals(servedTrackName, "audio");
+				await session.close();
+			},
+		);
+
+		await t.step(
+			"incoming fetch stream without handler cancels stream",
+			async () => {
+				const fm = new FetchMessage({
+					broadcastPath: "/live/fetch",
+					trackName: "audio",
+					priority: 3,
+					groupSequence: 10,
+				});
+				const buf = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, BiStreamTypes.FetchStreamType);
+					return await fm.encode(w);
+				});
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [],
+					acceptStreamData: [{
+						type: BiStreamTypes.FetchStreamType,
+						data: buf,
+					}],
+				});
+
+				// No fetchHandler provided
 				const session = new Session({ transport: mock });
 				await session.ready;
 

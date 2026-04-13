@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **moqt/session:** `Session.handleProbeStream` now returns `ProbeErrorCodeNotSupported` when the underlying connection does not expose `ConnectionStats()` (e.g. WebTransport sessions prior to the stats delegation below), allowing clients to detect unsupported probe capability cleanly rather than receiving an internal error.
+- **moqt/webtransportgo:** `sessionWrapper` now implements `ConnectionStats()` by delegating to the underlying `webtransport-go` `Session.ConnectionStats()` method (available since `v0.10.2-okdaichi.1`), enabling bitrate measurement for Probe streams over WebTransport.
 - **transport:** introduced a shared transport abstraction package (`transport/*`) and migrated core connection/listener/config/error interfaces into it.
 - **moqt:** added `alpn.go` with protocol constants (`NextProtoMOQ`, `NextProtoH3`) for ALPN-based negotiation.
 - **moqt API:** added top-level transport type aliases (e.g. `moqt.StreamConn`, `moqt.QUICListener`) to reduce `transport.` prefix leakage while keeping the dedicated transport abstraction package.
@@ -22,15 +24,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **interop:** updated Dockerized interop flow and Go interop client/server URL handling for more robust address/scheme behavior.
 - **interop/Dockerfile:** aligned containerized interop environment with updated Go toolchain/runtime settings.
 - **examples:** updated broadcast and echo server examples to the current `Upgrader` API.
-- **Dependencies:** switched WebTransport dependency from `github.com/quic-go/webtransport-go` to `github.com/okdaichi/webtransport-go v0.10.1-okdaichi.1`.
+- **Dependencies:** switched WebTransport dependency from `github.com/quic-go/webtransport-go` to `github.com/okdaichi/webtransport-go v0.10.1-okdaichi.1`, then upgraded to `v0.10.2-okdaichi.1` to gain `Session.ConnectionStats()`.
 - **webtransport/webtransportgo:** updated wrapper imports and server wrapper initialization for the forked WebTransport module path (including removing dependency on `ConfigureHTTP3Server`).
 - **Documentation:** updated README files (all supported languages) and MoQT docs links to reference `github.com/okdaichi/webtransport-go`.
 - **moq-web:** aligned internal WebTransport connection abstractions and naming with the Go transport-layer model.
+- **transport:** removed `OpenStreamSync` and `OpenUniStreamSync` from the `StreamConn` interface to simplify the required surface; callers that need sync opening can pass a `context.Context` at the application layer.
 
 ### Fixed
 
-- **moqt/server:** wired server `connContext` into the default internal WebTransport server (`http3.Server.ConnContext`) and fixed `connContext` variable shadowing so custom `Server.ConnContext` return values propagate correctly during WebTransport upgrades.
+- **moqt/receive_subscribe_stream:** fixed missing message-type prefix bytes (`SubscribeOk` = `0x00`, `SubscribeDrop` = `0x01`) that were omitted before the encoded body, causing type mismatches when a TypeScript client decoded the subscribe response.
+- **moqt/session:** fixed `processUniStream` unconditionally canceling group streams via `defer stream.CancelRead()` immediately after enqueueing them to a `TrackReader`; the cancel now only fires for unknown stream types where ownership is not transferred.
+- **moqt/session:** fixed `handleProbeStream` returning a generic internal error (`"probe unsupported"`) when no `probeStatsProvider` was available; it now returns `ProbeErrorCodeNotSupported` so the remote peer can distinguish capability absence from implementation errors.
+- **moqt/server:** wired server `connContext` into the default internal WebTransport server (`http3.Server.ConnContext`) via a `sync.Map` keyed on `*quic.Conn` to bridge the context from the outer `StreamConn` wrapper into the HTTP/3 layer.
+- **moqt/server:** introduced `streamConnContext` — a `StreamConn` wrapper that overrides `Context()` and delegates `QUICConn()` — so that the enriched connection context (containing `connManager`) propagates correctly through `ServeQUICConn` into the WebTransport upgrade path.
+- **moqt/server:** `WebTransportHandler.ServeHTTP` no longer panics when used standalone (without `Server`): the `connManager` lookup from request context is now nil-safe.
 - **moqt/server:** fixed `Server.ListenAndServe()` and `Server.ListenAndServeTLS()` to correctly use custom `Server.ListenFunc` when provided (prevents nil function call panic in tests/custom listeners).
+- **cmd/interop/server:** interop server session now waits for the client to close the session (or a 5-second timeout) before returning, preventing the connection from being torn down before the client completes Probe and session-close steps.
 
 ### Removed
 
@@ -41,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **moq-web:** removed obsolete version negotiation surface (`src/version.ts`, `MOQOptions.versions`, `SessionOptions.versions`) and aligned API report artifacts.
 - **moq-web:** removed obsolete `Extensions` negotiation surface (`src/extensions.ts`, `MOQOptions.extensions`, `SessionOptions.extensions`) and aligned API report artifacts.
 - **examples:** cleaned up outdated relay/native_quic example code paths.
+- **moqt/webtransportgo:** removed `OpenUniStreamSync`, `ReceiveDatagram`, and `SendDatagram` from `sessionWrapper` in line with the trimmed `StreamConn` interface.
 
 ### Tests
 
@@ -48,6 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **webtransport/webtransportgo:** updated server init tests to validate stable wrapper initialization behavior across the forked implementation.
 - **moqt/server:** added regression tests to verify default WebTransport `ConnContext` wiring and `connContext` behavior (custom context propagation and nil-context panic guard).
 - **moqt/client:** added tests verifying default ALPN behavior for native QUIC dialing when `TLSConfig.NextProtos` is unset.
+- **moqt/track_writer:** updated `TestTrackWriter_DropGroups` and `TestTrackWriter_DropNextGroups` to read the message-type prefix byte before decoding `SubscribeDrop` messages, matching the corrected wire format.
 
 ## [v0.11.0] - 2026-03-12
 

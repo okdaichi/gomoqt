@@ -1,114 +1,188 @@
 package moqt
 
 import (
-	"context"
-	"errors"
+	"fmt"
+	"io"
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
-func newSendSubscribeStream(id SubscribeID, stream Stream, initConfig *TrackConfig, info Info) *sendSubscribeStream {
+func newSendSubscribeStream(id SubscribeID, stream transport.Stream, initConfig *SubscribeConfig) *sendSubscribeStream {
 	substr := &sendSubscribeStream{
-		ctx:    context.WithValue(stream.Context(), biStreamTypeCtxKey, message.StreamTypeSubscribe),
-		id:     id,
-		config: initConfig,
-		stream: stream,
-		info:   info,
+		id:        id,
+		config:    initConfig,
+		stream:    stream,
+		droppedCh: make(chan struct{}, 1),
 	}
 
 	return substr
 }
 
 type sendSubscribeStream struct {
-	ctx context.Context
+	stream transport.Stream
 
-	config *TrackConfig
+	config *SubscribeConfig
 
-	stream Stream
+	info PublishInfo
 
 	mu sync.Mutex
 
-	info Info
+	droppedCh chan struct{}
+	drops     []SubscribeDrop
 
 	id SubscribeID
 }
 
-func (sss *sendSubscribeStream) SubscribeID() SubscribeID {
-	return sss.id
+func (substr *sendSubscribeStream) readSubscribeResponses() {
+	for {
+		ok, drop, err := readSubscribeResponse(substr.stream)
+		if err != nil {
+			return
+		}
+
+		if ok != nil {
+			substr.updateInfo(PublishInfo{
+				Priority:   TrackPriority(ok.PublisherPriority),
+				Ordered:    boolFromWireFlag(ok.PublisherOrdered),
+				MaxLatency: ok.PublisherMaxLatency,
+				StartGroup: groupSequenceFromWire(ok.StartGroup),
+				EndGroup:   groupSequenceFromWire(ok.EndGroup),
+			})
+			continue
+		}
+
+		if drop != nil {
+			substr.appendDrop(SubscribeDrop{
+				StartGroup: groupSequenceFromWire(drop.StartGroup),
+				EndGroup:   groupSequenceFromWire(drop.EndGroup),
+				ErrorCode:  SubscribeErrorCode(drop.ErrorCode),
+			})
+			return
+		}
+	}
 }
 
-func (sss *sendSubscribeStream) TrackConfig() *TrackConfig {
-	sss.mu.Lock()
-	defer sss.mu.Unlock()
-
-	return sss.config
-}
-
-func (sss *sendSubscribeStream) updateSubscribe(newConfig *TrackConfig) error {
-	if newConfig == nil {
-		return errors.New("new track config cannot be nil")
+func readSubscribeResponse(stream io.Reader) (*message.SubscribeOkMessage, *message.SubscribeDropMessage, error) {
+	head := make([]byte, 1)
+	if _, err := io.ReadFull(stream, head); err != nil {
+		return nil, nil, err
 	}
 
-	sss.mu.Lock()
-	defer sss.mu.Unlock()
+	msgType, _, err := message.ReadVarint(head)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	if sss.ctx.Err() != nil {
-		return Cause(sss.ctx)
+	switch msgType {
+	case 0x0:
+		var msg message.SubscribeOkMessage
+		err := msg.Decode(stream)
+		if err != nil {
+			return nil, nil, err
+		}
+		return &msg, nil, nil
+	case 0x1:
+		var msg message.SubscribeDropMessage
+		err := msg.Decode(stream)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, &msg, nil
+	default:
+		return nil, nil, fmt.Errorf("unexpected SUBSCRIBE response type: %d", msgType)
+	}
+}
+
+func (substr *sendSubscribeStream) SubscribeID() SubscribeID {
+	return substr.id
+}
+
+func (substr *sendSubscribeStream) TrackConfig() *SubscribeConfig {
+	substr.mu.Lock()
+	defer substr.mu.Unlock()
+
+	return substr.config
+}
+
+func (substr *sendSubscribeStream) updateInfo(newInfo PublishInfo) {
+	substr.mu.Lock()
+	defer substr.mu.Unlock()
+
+	substr.info = newInfo
+}
+
+func (substr *sendSubscribeStream) updateSubscribe(newConfig *SubscribeConfig) error {
+	if newConfig == nil {
+		// TODO: Handle nil config case if necessary (e.g., return an error, ignore the update, etc.)
+		return nil
 	}
 
 	// Send the message first before updating config
+	ordered := boolToWireFlag(newConfig.Ordered)
+
+	startGroup := groupSequenceToWire(newConfig.StartGroup)
+
+	endGroup := groupSequenceToWire(newConfig.EndGroup)
+
 	sum := message.SubscribeUpdateMessage{
-		TrackPriority: uint8(newConfig.TrackPriority),
+		SubscriberPriority:   uint8(newConfig.Priority),
+		SubscriberOrdered:    ordered,
+		SubscriberMaxLatency: newConfig.MaxLatency,
+		StartGroup:           startGroup,
+		EndGroup:             endGroup,
 	}
-	err := sum.Encode(sss.stream)
+	err := sum.Encode(substr.stream)
 	if err != nil {
-		// Close the stream with error on write failure
-		sss.mu.Unlock() // Unlock before calling closeWithError to avoid deadlock
-		_ = sss.closeWithError(InternalSubscribeErrorCode)
-		sss.mu.Lock() // Re-lock for defer
+		substr.closeWithError(SubscribeErrorCodeInternal)
 		return err
 	}
 
-	// Only update config after successful message sending
-	sss.config = newConfig
+	substr.mu.Lock()
+	substr.config = newConfig
+	substr.mu.Unlock()
 
 	return nil
 }
 
-func (sss *sendSubscribeStream) ReadInfo() Info {
-	return sss.info
-}
-
-func (sss *sendSubscribeStream) Context() context.Context {
-	if sss == nil || sss.ctx == nil {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		return ctx
+func (substr *sendSubscribeStream) appendDrop(drop SubscribeDrop) {
+	substr.mu.Lock()
+	substr.drops = append(substr.drops, drop)
+	select {
+	case substr.droppedCh <- struct{}{}:
+	default:
 	}
-	return sss.ctx
+	substr.mu.Unlock()
 }
 
-func (sss *sendSubscribeStream) close() error {
-	sss.mu.Lock()
-	defer sss.mu.Unlock()
+func (substr *sendSubscribeStream) pendingDrops() []SubscribeDrop {
+	substr.mu.Lock()
+	defer substr.mu.Unlock()
 
-	// Close the write side of the stream
-	err := sss.stream.Close()
-	// Do not cancel the read side on a graceful close: allow peer to finish sending
+	if len(substr.drops) == 0 {
+		return nil
+	}
 
-	return err
+	drops := substr.drops
+	substr.drops = nil
+	return drops
 }
 
-func (sss *sendSubscribeStream) closeWithError(code SubscribeErrorCode) error {
-	sss.mu.Lock()
-	defer sss.mu.Unlock()
+func (substr *sendSubscribeStream) ReadInfo() PublishInfo {
+	return substr.info
+}
 
-	strErrCode := StreamErrorCode(code)
-	// Cancel the write side of the stream
-	sss.stream.CancelWrite(strErrCode)
-	// Cancel the read side of the stream
-	sss.stream.CancelRead(strErrCode)
+func (substr *sendSubscribeStream) close() error {
+	substr.mu.Lock()
+	defer substr.mu.Unlock()
 
-	return nil
+	return substr.stream.Close()
+}
+
+func (substr *sendSubscribeStream) closeWithError(code SubscribeErrorCode) {
+	substr.mu.Lock()
+	defer substr.mu.Unlock()
+
+	cancelStreamWithError(substr.stream, transport.StreamErrorCode(code))
 }

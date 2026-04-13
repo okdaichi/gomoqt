@@ -168,6 +168,43 @@ export class SubscribeError extends WebTransportStreamError {
 }
 
 // =============================================================================
+// Fetch Error Codes
+// =============================================================================
+
+export const FetchErrorCode = {
+	/** Internal error */
+	InternalError: 0x00,
+	/** Timeout */
+	Timeout: 0x01,
+} as const;
+
+export type FetchErrorCode = number;
+
+export class FetchError extends WebTransportStreamError {
+	override get code(): FetchErrorCode {
+		return super.code as FetchErrorCode;
+	}
+
+	static textOf(code: FetchErrorCode): string {
+		switch (code) {
+			case FetchErrorCode.InternalError:
+				return "internal error";
+			case FetchErrorCode.Timeout:
+				return "timeout";
+			default:
+				return `unknown fetch error (${code})`;
+		}
+	}
+
+	constructor(code: FetchErrorCode, remote: boolean) {
+		super({ source: "stream", streamErrorCode: code }, remote);
+		this.message = FetchError.textOf(code);
+		this.name = "FetchError";
+		Object.setPrototypeOf(this, FetchError.prototype);
+	}
+}
+
+// =============================================================================
 // Group Error Codes
 // =============================================================================
 

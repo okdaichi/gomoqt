@@ -6,9 +6,10 @@ import (
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
-func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) *AnnouncementReader {
+func newAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes []suffix) *AnnouncementReader {
 	if !isValidPrefix(prefix) {
 		panic("invalid prefix for AnnouncementReader")
 	}
@@ -43,7 +44,7 @@ func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) 
 			switch am.AnnounceStatus {
 			case message.ACTIVE:
 				{
-					suffix := am.TrackSuffix
+					suffix := am.BroadcastPathSuffix
 					var shouldClose bool
 					// Mutate maps under lock
 					func() {
@@ -66,13 +67,13 @@ func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) 
 					}()
 
 					if shouldClose {
-						_ = ar.CloseWithError(DuplicatedAnnounceErrorCode)
+						ar.CloseWithError(AnnounceErrorCodeDuplicated)
 						return
 					}
 				}
 			case message.ENDED:
 				{
-					suffix := am.TrackSuffix
+					suffix := am.BroadcastPathSuffix
 					var handled bool
 					func() {
 						ar.announcementsMu.Lock()
@@ -89,11 +90,11 @@ func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) 
 					if handled {
 						continue
 					}
-					_ = ar.CloseWithError(DuplicatedAnnounceErrorCode)
+					ar.CloseWithError(AnnounceErrorCodeDuplicated)
 					return
 				}
 			default:
-				_ = ar.CloseWithError(InvalidAnnounceStatusErrorCode)
+				ar.CloseWithError(AnnounceErrorCodeInvalidStatus)
 				return
 			}
 		}
@@ -102,11 +103,11 @@ func newAnnouncementReader(stream Stream, prefix prefix, initSuffixes []suffix) 
 	return ar
 }
 
-// AnnouncementReader receives and manages broadcast announcements from a remote peer.
-// It maintains a list of active announcements and notifies when new announcements
-// are received or existing ones are canceled.
+// AnnouncementReader receives and manages broadcast announcements for a prefix from
+// a remote peer. It maintains active announcements and notifies the caller when new
+// announcements arrive or existing ones end.
 type AnnouncementReader struct {
-	stream Stream
+	stream transport.Stream
 	prefix prefix
 
 	ctx context.Context
@@ -193,7 +194,7 @@ func (ras *AnnouncementReader) Close() error {
 // CloseWithError closes the AnnouncementReader with an error, ending all
 // active announcements and canceling the stream with the specified error
 // code.
-func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
+func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) {
 	ras.announcementsMu.Lock()
 	defer ras.announcementsMu.Unlock()
 
@@ -202,11 +203,7 @@ func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 		ras.announcedCh = nil
 	}
 
-	strErrCode := StreamErrorCode(code)
-	ras.stream.CancelRead(strErrCode)
-	ras.stream.CancelWrite(strErrCode)
-
-	return nil
+	cancelStreamWithError(ras.stream, transport.StreamErrorCode(code))
 }
 
 // Context returns the AnnouncementReader's context. It is canceled when the reader is closed.

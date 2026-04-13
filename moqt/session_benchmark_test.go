@@ -5,13 +5,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
-	"github.com/stretchr/testify/mock"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 // BenchmarkSession_Subscribe benchmarks subscribe operations
@@ -20,31 +19,20 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("size-%d", size), func(b *testing.B) {
-			conn := &MockStreamConn{}
-			conn.On("Context").Return(context.Background())
-			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
-			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
-			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+			conn := &FakeStreamConn{}
 
 			// Mock OpenStream to return streams that will complete the subscribe handshake
 			streamIndex := 0
-			conn.OpenStreamFunc = func() (Stream, error) {
-				mockBiStream := &MockQUICStream{}
-				mockBiStream.On("StreamID").Return(StreamID(streamIndex))
+			conn.OpenStreamFunc = func() (transport.Stream, error) {
+				mockBiStream := &FakeQUICStream{}
 				streamIndex++
-				mockBiStream.On("Context").Return(context.Background())
-
-				// Mock Write for SUBSCRIBE message
-				mockBiStream.WriteFunc = func(b []byte) (int, error) {
-					return len(b), nil
-				}
 
 				// Mock Read for SUBSCRIBE_OK message
 				mockBiStream.ReadFunc = func(b []byte) (int, error) {
 					// Encode SUBSCRIBE_OK message
 					msg := message.SubscribeOkMessage{}
 					var buf bytes.Buffer
+					_, _ = buf.Write([]byte{byte(message.MessageTypeSubscribeOk)})
 					err := msg.Encode(&buf)
 					if err != nil {
 						return 0, err
@@ -54,15 +42,11 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 					return len(data), io.EOF
 				}
 
-				mockBiStream.On("CancelWrite", mock.Anything).Return()
-				mockBiStream.On("CancelRead", mock.Anything).Return()
-				mockBiStream.On("Close").Return(nil)
-
 				return mockBiStream, nil
 			}
 
 			mux := NewTrackMux()
-			session := newSession(conn, mux, nil)
+			session := newSession(conn, mux, nil, nil, nil)
 
 			// Pre-generate paths
 			paths := make([]BroadcastPath, size)
@@ -77,7 +61,7 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 
 			for i := range b.N {
 				idx := i % size
-				_, _ = session.Subscribe(paths[idx], names[idx], nil)
+				_, _ = session.Subscribe(context.Background(), paths[idx], names[idx], nil)
 			}
 
 			b.StopTimer()
@@ -92,29 +76,20 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 
 	for _, conc := range concurrency {
 		b.Run(fmt.Sprintf("goroutines-%d", conc), func(b *testing.B) {
-			conn := &MockStreamConn{}
-			conn.On("Context").Return(context.Background())
-			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
-			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
-			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+			conn := &FakeStreamConn{}
 
 			var streamMu sync.Mutex
 			streamIndex := 0
-			conn.OpenStreamFunc = func() (Stream, error) {
+			conn.OpenStreamFunc = func() (transport.Stream, error) {
 				streamMu.Lock()
 				defer streamMu.Unlock()
 
-				mockBiStream := &MockQUICStream{}
-				mockBiStream.On("StreamID").Return(StreamID(streamIndex))
+				mockBiStream := &FakeQUICStream{}
 				streamIndex++
-				mockBiStream.On("Context").Return(context.Background())
-				mockBiStream.WriteFunc = func(b []byte) (int, error) {
-					return len(b), nil
-				}
 				mockBiStream.ReadFunc = func(b []byte) (int, error) {
 					msg := message.SubscribeOkMessage{}
 					var buf bytes.Buffer
+					_, _ = buf.Write([]byte{byte(message.MessageTypeSubscribeOk)})
 					err := msg.Encode(&buf)
 					if err != nil {
 						return 0, err
@@ -123,14 +98,11 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 					copy(b, data)
 					return len(data), io.EOF
 				}
-				mockBiStream.On("CancelWrite", mock.Anything).Return()
-				mockBiStream.On("CancelRead", mock.Anything).Return()
-				mockBiStream.On("Close").Return(nil)
 				return mockBiStream, nil
 			}
 
 			mux := NewTrackMux()
-			session := newSession(conn, mux, nil)
+			session := newSession(conn, mux, nil, nil, nil)
 
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -140,7 +112,7 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 				for pb.Next() {
 					path := BroadcastPath(fmt.Sprintf("/broadcast/%d", i))
 					name := TrackName(fmt.Sprintf("track_%d", i))
-					_, _ = session.Subscribe(path, name, nil)
+					_, _ = session.Subscribe(context.Background(), path, name, nil)
 					i++
 				}
 			})
@@ -153,15 +125,10 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 
 // BenchmarkSession_TrackReaderOperations benchmarks adding/removing track readers
 func BenchmarkSession_TrackReaderOperations(b *testing.B) {
-	conn := &MockStreamConn{}
-	conn.On("Context").Return(context.Background())
-	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
-	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
-	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn := &FakeStreamConn{}
 
 	mux := NewTrackMux()
-	session := newSession(conn, mux, nil)
+	session := newSession(conn, mux, nil, nil, nil)
 
 	b.ReportAllocs()
 
@@ -169,17 +136,10 @@ func BenchmarkSession_TrackReaderOperations(b *testing.B) {
 		id := SubscribeID(i)
 
 		// Create mock subscribe stream
-		mockSubStream := &MockQUICStream{}
-		mockSubStream.On("Context").Return(context.Background())
-		mockSubStream.On("StreamID").Return(StreamID(i))
+		mockSubStream := &FakeQUICStream{}
 
-		substr := newSendSubscribeStream(id, mockSubStream, &TrackConfig{}, Info{})
-		trackReader := newTrackReader(
-			BroadcastPath("/test"),
-			TrackName("track"),
-			substr,
-			func() {},
-		)
+		substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{})
+		trackReader := newTrackReader("/test", "video", substr, func() {})
 
 		// Add track reader
 		session.addTrackReader(id, trackReader)
@@ -194,15 +154,10 @@ func BenchmarkSession_TrackReaderOperations(b *testing.B) {
 
 // BenchmarkSession_TrackWriterOperations benchmarks adding/removing track writers
 func BenchmarkSession_TrackWriterOperations(b *testing.B) {
-	conn := &MockStreamConn{}
-	conn.On("Context").Return(context.Background())
-	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
-	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
-	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn := &FakeStreamConn{}
 
 	mux := NewTrackMux()
-	session := newSession(conn, mux, nil)
+	session := newSession(conn, mux, nil, nil, nil)
 
 	b.ReportAllocs()
 
@@ -210,16 +165,14 @@ func BenchmarkSession_TrackWriterOperations(b *testing.B) {
 		id := SubscribeID(i)
 
 		// Create mock subscribe stream
-		mockSubStream := &MockQUICStream{}
-		mockSubStream.On("Context").Return(context.Background())
-		mockSubStream.On("StreamID").Return(StreamID(i))
+		mockSubStream := &FakeQUICStream{}
 
-		substr := newReceiveSubscribeStream(id, mockSubStream, &TrackConfig{})
+		substr := newReceiveSubscribeStream(id, mockSubStream, &SubscribeConfig{})
 		trackWriter := newTrackWriter(
 			BroadcastPath("/test"),
 			TrackName("track"),
 			substr,
-			func() (SendStream, error) { return nil, nil },
+			func() (transport.SendStream, error) { return nil, nil },
 			func() {},
 		)
 
@@ -240,30 +193,18 @@ func BenchmarkSession_MapLookup(b *testing.B) {
 
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("size-%d", size), func(b *testing.B) {
-			conn := &MockStreamConn{}
-			conn.On("Context").Return(context.Background())
-			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
-			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
-			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+			conn := &FakeStreamConn{}
 
 			mux := NewTrackMux()
-			session := newSession(conn, mux, nil)
+			session := newSession(conn, mux, nil, nil, nil)
 
 			// Pre-populate with track readers
 			for i := range size {
 				id := SubscribeID(i)
-				mockSubStream := &MockQUICStream{}
-				mockSubStream.On("Context").Return(context.Background())
-				mockSubStream.On("StreamID").Return(StreamID(i))
+				mockSubStream := &FakeQUICStream{}
 
-				substr := newSendSubscribeStream(id, mockSubStream, &TrackConfig{}, Info{})
-				trackReader := newTrackReader(
-					BroadcastPath("/test"),
-					TrackName("track"),
-					substr,
-					func() {},
-				)
+				substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{})
+				trackReader := newTrackReader("/test", "video", substr, func() {})
 				session.addTrackReader(id, trackReader)
 			}
 
@@ -297,30 +238,18 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 			b.ReportAllocs()
 
 			for range b.N {
-				conn := &MockStreamConn{}
-				conn.On("Context").Return(context.Background())
-				conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-				conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
-				conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
-				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+				conn := &FakeStreamConn{}
 
 				mux := NewTrackMux()
-				session := newSession(conn, mux, nil)
+				session := newSession(conn, mux, nil, nil, nil)
 
 				// Create many track readers
 				for j := range size {
 					id := SubscribeID(j)
-					mockSubStream := &MockQUICStream{}
-					mockSubStream.On("Context").Return(context.Background())
-					mockSubStream.On("StreamID").Return(StreamID(j))
+					mockSubStream := &FakeQUICStream{}
 
-					substr := newSendSubscribeStream(id, mockSubStream, &TrackConfig{}, Info{})
-					trackReader := newTrackReader(
-						BroadcastPath("/test"),
-						TrackName("track"),
-						substr,
-						func() {},
-					)
+					substr := newSendSubscribeStream(id, mockSubStream, &SubscribeConfig{})
+					trackReader := newTrackReader("/test", "video", substr, func() {})
 					session.addTrackReader(id, trackReader)
 				}
 
@@ -337,15 +266,11 @@ func BenchmarkSession_ContextCancellation(b *testing.B) {
 	for range b.N {
 		ctx, cancel := context.WithCancel(context.Background())
 
-		conn := &MockStreamConn{}
-		conn.On("Context").Return(ctx)
-		conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-		conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
-		conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
-		conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+		conn := &FakeStreamConn{}
+		conn.ParentCtx = ctx
 
 		mux := NewTrackMux()
-		session := newSession(conn, mux, nil)
+		session := newSession(conn, mux, nil, nil, nil)
 
 		// Cancel context
 		cancel()

@@ -198,10 +198,8 @@ func setupBroadcastServerWithFrameSize(b *testing.B, ctx context.Context, frameS
 
 	// Setup HTTP handler for WebTransport
 	mux := http.NewServeMux()
-	upgrader := Upgrader{}
-	mux.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		upgrader.Upgrade(w, r)
-	})
+	upgrader := &WebTransportHandler{}
+	mux.Handle("/broadcast", upgrader)
 
 	httpServer := &http.Server{
 		Addr:      addr,
@@ -259,7 +257,7 @@ func setupBroadcastServerWithFrameSize(b *testing.B, ctx context.Context, frameS
 }
 
 func runBroadcastClient(ctx context.Context, serverAddr string, framesReceived, bytesReceived *atomic.Int64) error {
-	client := Client{
+	client := Dialer{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
@@ -288,7 +286,7 @@ func runBroadcastClient(ctx context.Context, serverAddr string, framesReceived, 
 		return fmt.Errorf("announcement not active")
 	}
 
-	tr, err := sess.Subscribe(ann.BroadcastPath(), "index", nil)
+	tr, err := sess.Subscribe(ctx, ann.BroadcastPath(), TrackName("index"), nil)
 	if err != nil {
 		return fmt.Errorf("failed to subscribe: %w", err)
 	}

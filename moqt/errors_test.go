@@ -1,8 +1,10 @@
 package moqt
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/okdaichi/gomoqt/transport"
+	"github.com/stretchr/testify/assert"
 )
 
 // Test for standard errors
@@ -23,10 +25,6 @@ func TestStandardErrors(t *testing.T) {
 			err:    ErrServerClosed,
 			expect: "moqt: server closed",
 		},
-		"client closed": {
-			err:    ErrClientClosed,
-			expect: "moqt: client closed",
-		},
 	}
 
 	for name, tt := range tests {
@@ -36,22 +34,22 @@ func TestStandardErrors(t *testing.T) {
 	}
 }
 
-// Test for AnnounceErrorText function
-func TestAnnounceErrorText(t *testing.T) {
+// Test for AnnounceErrorCode.String method
+func TestAnnounceErrorCode_String(t *testing.T) {
 	tests := map[string]struct {
 		code   AnnounceErrorCode
 		expect string
 	}{
 		"internal error code": {
-			code:   InternalAnnounceErrorCode,
+			code:   AnnounceErrorCodeInternal,
 			expect: "moqt: internal error",
 		},
 		"duplicated announce error code": {
-			code:   DuplicatedAnnounceErrorCode,
+			code:   AnnounceErrorCodeDuplicated,
 			expect: "moqt: duplicated broadcast path",
 		},
 		"invalid announce status error code": {
-			code:   InvalidAnnounceStatusErrorCode,
+			code:   AnnounceErrorCodeInvalidStatus,
 			expect: "moqt: invalid announce status",
 		},
 		"uninterested error code": {
@@ -63,7 +61,7 @@ func TestAnnounceErrorText(t *testing.T) {
 			expect: "moqt: banned prefix",
 		},
 		"invalid prefix error code": {
-			code:   InvalidPrefixErrorCode,
+			code:   AnnounceErrorCodeInvalidPrefix,
 			expect: "moqt: invalid prefix",
 		},
 		"unknown code": {
@@ -74,7 +72,7 @@ func TestAnnounceErrorText(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := AnnounceErrorText(tt.code)
+			result := tt.code.String()
 			assert.Equal(t, tt.expect, result)
 
 			// Verify that defined codes always return non-empty strings
@@ -85,34 +83,34 @@ func TestAnnounceErrorText(t *testing.T) {
 	}
 }
 
-// Test for SubscribeErrorText function
-func TestSubscribeErrorText(t *testing.T) {
+// Test for SubscribeErrorCode.String method
+func TestSubscribeErrorCode_String(t *testing.T) {
 	tests := map[string]struct {
 		code   SubscribeErrorCode
 		expect string
 	}{
 		"internal error code": {
-			code:   InternalSubscribeErrorCode,
+			code:   SubscribeErrorCodeInternal,
 			expect: "moqt: internal error",
 		},
 		"invalid range error code": {
-			code:   InvalidRangeErrorCode,
+			code:   SubscribeErrorCodeInvalidRange,
 			expect: "moqt: invalid range",
 		},
 		"duplicate subscribe ID error code": {
-			code:   DuplicateSubscribeIDErrorCode,
+			code:   SubscribeErrorCodeDuplicateID,
 			expect: "moqt: duplicated id",
 		},
 		"track not found error code": {
-			code:   TrackNotFoundErrorCode,
+			code:   SubscribeErrorCodeNotFound,
 			expect: "moqt: track does not exist",
 		},
 		"unauthorized subscribe error code": {
-			code:   UnauthorizedSubscribeErrorCode,
+			code:   SubscribeErrorCodeUnauthorized,
 			expect: "moqt: unauthorized",
 		},
 		"subscribe timeout error code": {
-			code:   SubscribeTimeoutErrorCode,
+			code:   SubscribeErrorCodeTimeout,
 			expect: "moqt: timeout",
 		},
 		"unknown code": {
@@ -123,7 +121,7 @@ func TestSubscribeErrorText(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := SubscribeErrorText(tt.code)
+			result := tt.code.String()
 			assert.Equal(t, tt.expect, result)
 
 			// Verify that defined codes always return non-empty strings
@@ -134,8 +132,8 @@ func TestSubscribeErrorText(t *testing.T) {
 	}
 }
 
-// Test for SessionErrorText function
-func TestSessionErrorText(t *testing.T) {
+// Test for SessionErrorCode.String method
+func TestSessionErrorCode_String(t *testing.T) {
 	tests := map[string]struct {
 		code   SessionErrorCode
 		expect string
@@ -184,7 +182,7 @@ func TestSessionErrorText(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := SessionErrorText(tt.code)
+			result := tt.code.String()
 			assert.Equal(t, tt.expect, result)
 
 			// Verify that defined codes always return non-empty strings
@@ -195,8 +193,8 @@ func TestSessionErrorText(t *testing.T) {
 	}
 }
 
-// Test for GroupErrorText function
-func TestGroupErrorText(t *testing.T) {
+// Test for GroupErrorCode.String method
+func TestGroupErrorCode_String(t *testing.T) {
 	tests := map[string]struct {
 		code   GroupErrorCode
 		expect string
@@ -237,7 +235,7 @@ func TestGroupErrorText(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := GroupErrorText(tt.code)
+			result := tt.code.String()
 			assert.Equal(t, tt.expect, result)
 
 			// Verify that defined codes always return non-empty strings
@@ -252,8 +250,8 @@ func TestGroupErrorText(t *testing.T) {
 func TestAnnounceError_UnknownCodeFallback(t *testing.T) {
 	unknownCode := AnnounceErrorCode(0x99)
 	err := AnnounceError{
-		&StreamError{
-			ErrorCode: StreamErrorCode(unknownCode),
+		&transport.StreamError{
+			ErrorCode: transport.StreamErrorCode(unknownCode),
 		},
 	}
 
@@ -268,8 +266,8 @@ func TestAnnounceError_UnknownCodeFallback(t *testing.T) {
 func TestSubscribeError_UnknownCodeFallback(t *testing.T) {
 	unknownCode := SubscribeErrorCode(0x99)
 	err := SubscribeError{
-		&StreamError{
-			ErrorCode: StreamErrorCode(unknownCode),
+		&transport.StreamError{
+			ErrorCode: transport.StreamErrorCode(unknownCode),
 		},
 	}
 
@@ -297,8 +295,8 @@ func TestSessionError_UnknownCodeFallback(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			unknownCode := SessionErrorCode(0x99)
 			err := SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(unknownCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(unknownCode),
 					Remote:    tt.remote,
 				},
 			}
@@ -316,8 +314,8 @@ func TestSessionError_UnknownCodeFallback(t *testing.T) {
 func TestGroupError_UnknownCodeFallback(t *testing.T) {
 	unknownCode := GroupErrorCode(0x99)
 	err := GroupError{
-		&StreamError{
-			ErrorCode: StreamErrorCode(unknownCode),
+		&transport.StreamError{
+			ErrorCode: transport.StreamErrorCode(unknownCode),
 		},
 	}
 
@@ -337,35 +335,35 @@ func TestAnnounceError(t *testing.T) {
 	}{
 		"internal error": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InternalAnnounceErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(AnnounceErrorCodeInternal),
 				},
 			},
 			expectedString: "moqt: internal error",
-			expectedCode:   InternalAnnounceErrorCode,
+			expectedCode:   AnnounceErrorCodeInternal,
 		},
 		"duplicated broadcast path": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(DuplicatedAnnounceErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(AnnounceErrorCodeDuplicated),
 				},
 			},
 			expectedString: "moqt: duplicated broadcast path",
-			expectedCode:   DuplicatedAnnounceErrorCode,
+			expectedCode:   AnnounceErrorCodeDuplicated,
 		},
 		"invalid announce status": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InvalidAnnounceStatusErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(AnnounceErrorCodeInvalidStatus),
 				},
 			},
 			expectedString: "moqt: invalid announce status",
-			expectedCode:   InvalidAnnounceStatusErrorCode,
+			expectedCode:   AnnounceErrorCodeInvalidStatus,
 		},
 		"uninterested": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(UninterestedErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(UninterestedErrorCode),
 				},
 			},
 			expectedString: "moqt: uninterested",
@@ -373,8 +371,8 @@ func TestAnnounceError(t *testing.T) {
 		},
 		"banned prefix": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(BannedPrefixErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(BannedPrefixErrorCode),
 				},
 			},
 			expectedString: "moqt: banned prefix",
@@ -382,12 +380,12 @@ func TestAnnounceError(t *testing.T) {
 		},
 		"invalid prefix": {
 			err: AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InvalidPrefixErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(AnnounceErrorCodeInvalidPrefix),
 				},
 			},
 			expectedString: "moqt: invalid prefix",
-			expectedCode:   InvalidPrefixErrorCode,
+			expectedCode:   AnnounceErrorCodeInvalidPrefix,
 		},
 	}
 
@@ -408,57 +406,57 @@ func TestSubscribeError(t *testing.T) {
 	}{
 		"internal error": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InternalSubscribeErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeInternal),
 				},
 			},
 			expectedString: "moqt: internal error",
-			expectedCode:   InternalSubscribeErrorCode,
+			expectedCode:   SubscribeErrorCodeInternal,
 		},
 		"invalid range": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InvalidRangeErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeInvalidRange),
 				},
 			},
 			expectedString: "moqt: invalid range",
-			expectedCode:   InvalidRangeErrorCode,
+			expectedCode:   SubscribeErrorCodeInvalidRange,
 		},
 		"duplicate subscribe ID": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(DuplicateSubscribeIDErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeDuplicateID),
 				},
 			},
 			expectedString: "moqt: duplicated id",
-			expectedCode:   DuplicateSubscribeIDErrorCode,
+			expectedCode:   SubscribeErrorCodeDuplicateID,
 		},
 		"track not found": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(TrackNotFoundErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeNotFound),
 				},
 			},
 			expectedString: "moqt: track does not exist",
-			expectedCode:   TrackNotFoundErrorCode,
+			expectedCode:   SubscribeErrorCodeNotFound,
 		},
 		"unauthorized": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(UnauthorizedSubscribeErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeUnauthorized),
 				},
 			},
 			expectedString: "moqt: unauthorized",
-			expectedCode:   UnauthorizedSubscribeErrorCode,
+			expectedCode:   SubscribeErrorCodeUnauthorized,
 		},
 		"timeout": {
 			err: SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(SubscribeTimeoutErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeTimeout),
 				},
 			},
 			expectedString: "moqt: timeout",
-			expectedCode:   SubscribeTimeoutErrorCode,
+			expectedCode:   SubscribeErrorCodeTimeout,
 		},
 	}
 
@@ -479,8 +477,8 @@ func TestSessionError(t *testing.T) {
 	}{
 		"local internal error": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(InternalSessionErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(InternalSessionErrorCode),
 					Remote:    false,
 				},
 			},
@@ -489,8 +487,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"remote unauthorized": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(UnauthorizedSessionErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(UnauthorizedSessionErrorCode),
 					Remote:    true,
 				},
 			},
@@ -499,8 +497,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"local protocol violation": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(ProtocolViolationErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(ProtocolViolationErrorCode),
 					Remote:    false,
 				},
 			},
@@ -509,8 +507,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"remote parameter length mismatch": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(ParameterLengthMismatchErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(ParameterLengthMismatchErrorCode),
 					Remote:    true,
 				},
 			},
@@ -519,8 +517,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"local too many subscribes": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(TooManySubscribeErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(TooManySubscribeErrorCode),
 					Remote:    false,
 				},
 			},
@@ -529,8 +527,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"local goaway timeout": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(GoAwayTimeoutErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(GoAwayTimeoutErrorCode),
 					Remote:    false,
 				},
 			},
@@ -539,8 +537,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"remote unsupported version": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(UnsupportedVersionErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(UnsupportedVersionErrorCode),
 					Remote:    true,
 				},
 			},
@@ -549,8 +547,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"local setup failed": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(SetupFailedErrorCode),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(SetupFailedErrorCode),
 					Remote:    false,
 				},
 			},
@@ -559,8 +557,8 @@ func TestSessionError(t *testing.T) {
 		},
 		"local no error": {
 			err: SessionError{
-				&ApplicationError{
-					ErrorCode: ApplicationErrorCode(NoError),
+				&transport.ApplicationError{
+					ErrorCode: transport.ApplicationErrorCode(NoError),
 					Remote:    false,
 				},
 			},
@@ -586,8 +584,8 @@ func TestGroupError(t *testing.T) {
 	}{
 		"internal error": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InternalGroupErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(InternalGroupErrorCode),
 				},
 			},
 			expectedString: "moqt: internal error",
@@ -595,8 +593,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"out of range": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(OutOfRangeErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(OutOfRangeErrorCode),
 				},
 			},
 			expectedString: "moqt: out of range",
@@ -604,8 +602,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"expired group": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(ExpiredGroupErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(ExpiredGroupErrorCode),
 				},
 			},
 			expectedString: "moqt: group expires",
@@ -613,8 +611,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"subscribe canceled": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(SubscribeCanceledErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(SubscribeCanceledErrorCode),
 				},
 			},
 			expectedString: "moqt: subscribe canceled",
@@ -622,8 +620,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"publish aborted": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(PublishAbortedErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(PublishAbortedErrorCode),
 				},
 			},
 			expectedString: "moqt: publish aborted",
@@ -631,8 +629,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"session closed": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(ClosedSessionGroupErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(ClosedSessionGroupErrorCode),
 				},
 			},
 			expectedString: "moqt: session closed",
@@ -640,8 +638,8 @@ func TestGroupError(t *testing.T) {
 		},
 		"invalid subscribe ID": {
 			err: GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(InvalidSubscribeIDErrorCode),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(InvalidSubscribeIDErrorCode),
 				},
 			},
 			expectedString: "moqt: invalid subscribe id",
@@ -657,156 +655,49 @@ func TestGroupError(t *testing.T) {
 	}
 }
 
-// // Test for InternalError
-// func TestInternalError(t *testing.T) {
-// 	tests := map[string]struct {
-// 		err                      InternalError
-// 		expectedString           string
-// 		expectedAnnounceCode     AnnounceErrorCode
-// 		expectedSubscribeCode    SubscribeErrorCode
-// 		expectedSessionCode      SessionErrorCode
-// 		expectedGroupCode        GroupErrorCode
-// 		shouldMatchInternalError bool
-// 	}{
-// 		"with reason": {
-// 			err:                      InternalError{Reason: "test error"},
-// 			expectedString:           "moqt: internal error: test error",
-// 			expectedAnnounceCode:     InternalAnnounceErrorCode,
-// 			expectedSubscribeCode:    InternalSubscribeErrorCode,
-// 			expectedSessionCode:      InternalSessionErrorCode,
-// 			expectedGroupCode:        InternalGroupErrorCode,
-// 			shouldMatchInternalError: true,
-// 		},
-// 		"empty reason": {
-// 			err:                      InternalError{Reason: ""},
-// 			expectedString:           "moqt: internal error: ",
-// 			expectedAnnounceCode:     InternalAnnounceErrorCode,
-// 			expectedSubscribeCode:    InternalSubscribeErrorCode,
-// 			expectedSessionCode:      InternalSessionErrorCode,
-// 			expectedGroupCode:        InternalGroupErrorCode,
-// 			shouldMatchInternalError: true,
-// 		},
-// 	}
-
-// 	for name, tt := range tests {
-// 		t.Run(name, func(t *testing.T) {
-// 			assert.Equal(t, tt.expectedString, tt.err.Error())
-// 			assert.Equal(t, tt.expectedAnnounceCode, tt.err.AnnounceErrorCode())
-// 			assert.Equal(t, tt.expectedSubscribeCode, tt.err.SubscribeErrorCode())
-// 			assert.Equal(t, tt.expectedSessionCode, tt.err.SessionErrorCode())
-// 			assert.Equal(t, tt.expectedGroupCode, tt.err.GroupErrorCode())
-
-// 			// Test Is method
-// 			var internalErr InternalError
-// 			assert.Equal(t, tt.shouldMatchInternalError, errors.Is(tt.err, internalErr))
-// 		})
-// 	}
-// }
-
-// // Test for UnauthorizedError
-// func TestUnauthorizedError(t *testing.T) {
-// 	tests := map[string]struct {
-// 		err                        UnauthorizedError
-// 		expectedString             string
-// 		expectedSubscribeCode      SubscribeErrorCode
-// 		expectedSessionCode        SessionErrorCode
-// 		shouldMatchUnauthorizedErr bool
-// 	}{
-// 		"default": {
-// 			err:                        UnauthorizedError{},
-// 			expectedString:             "moqt: unauthorized",
-// 			expectedSubscribeCode:      UnauthorizedSubscribeErrorCode,
-// 			expectedSessionCode:        UnauthorizedSessionErrorCode,
-// 			shouldMatchUnauthorizedErr: true,
-// 		},
-// 	}
-
-// 	for name, tt := range tests {
-// 		t.Run(name, func(t *testing.T) {
-// 			assert.Equal(t, tt.expectedString, tt.err.Error())
-// 			assert.Equal(t, tt.expectedSubscribeCode, tt.err.SubscribeErrorCode())
-// 			assert.Equal(t, tt.expectedSessionCode, tt.err.SessionErrorCode())
-
-// 			// Test Is method
-// 			var unauthorizedErr UnauthorizedError
-// 			assert.Equal(t, tt.shouldMatchUnauthorizedErr, errors.Is(tt.err, unauthorizedErr))
-// 		})
-// 	}
-// }
-
-// // Test for error compatibility with standard errors
-// func TestErrorCompatibility(t *testing.T) {
-// 	// Test errors.Is compatibility
-// 	t.Run("errors.Is with InternalError", func(t *testing.T) {
-// 		err := InternalError{Reason: "test"}
-// 		var internalErr InternalError
-// 		assert.True(t, errors.Is(err, internalErr))
-// 	})
-
-// 	t.Run("errors.Is with UnauthorizedError", func(t *testing.T) {
-// 		err := UnauthorizedError{}
-// 		var unauthorizedErr UnauthorizedError
-// 		assert.True(t, errors.Is(err, unauthorizedErr))
-// 	})
-
-// 	// Test errors.As compatibility
-// 	t.Run("errors.As with InternalError", func(t *testing.T) {
-// 		err := InternalError{Reason: "test"}
-// 		var target InternalError
-// 		assert.True(t, errors.As(err, &target))
-// 		assert.Equal(t, "test", target.Reason)
-// 	})
-
-// 	t.Run("errors.As with UnauthorizedError", func(t *testing.T) {
-// 		err := UnauthorizedError{}
-// 		var target UnauthorizedError
-// 		assert.True(t, errors.As(err, &target))
-// 	})
-// }
-
 // Test consistency between ErrorText functions and Error types
 func TestErrorTextConsistency(t *testing.T) {
 	t.Run("AnnounceError consistency", func(t *testing.T) {
 		// Test all defined announce error codes
 		codes := []AnnounceErrorCode{
-			InternalAnnounceErrorCode,
-			DuplicatedAnnounceErrorCode,
-			InvalidAnnounceStatusErrorCode,
+			AnnounceErrorCodeInternal,
+			AnnounceErrorCodeDuplicated,
+			AnnounceErrorCodeInvalidStatus,
 			UninterestedErrorCode,
 			BannedPrefixErrorCode,
-			InvalidPrefixErrorCode,
+			AnnounceErrorCodeInvalidPrefix,
 		}
 
 		for _, code := range codes {
-			text := AnnounceErrorText(code)
+			text := code.String()
 			err := AnnounceError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(code),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(code),
 				},
 			}
-			assert.Equal(t, text, err.Error(), "AnnounceErrorText and AnnounceError.Error() should return the same text for code %v", code)
+			assert.Equal(t, text, err.Error(), "AnnounceErrorCode.String and AnnounceError.Error() should return the same text for code %v", code)
 		}
 	})
 
 	t.Run("SubscribeError consistency", func(t *testing.T) {
 		// Test all defined subscribe error codes
 		codes := []SubscribeErrorCode{
-			InternalSubscribeErrorCode,
-			InvalidRangeErrorCode,
-			DuplicateSubscribeIDErrorCode,
-			TrackNotFoundErrorCode,
-			UnauthorizedSubscribeErrorCode,
-			SubscribeTimeoutErrorCode,
+			SubscribeErrorCodeInternal,
+			SubscribeErrorCodeInvalidRange,
+			SubscribeErrorCodeDuplicateID,
+			SubscribeErrorCodeNotFound,
+			SubscribeErrorCodeUnauthorized,
+			SubscribeErrorCodeTimeout,
 		}
 
 		for _, code := range codes {
-			text := SubscribeErrorText(code)
+			text := code.String()
 			err := SubscribeError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(code),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(code),
 				},
 			}
-			assert.Equal(t, text, err.Error(), "SubscribeErrorText and SubscribeError.Error() should return the same text for code %v", code)
+			assert.Equal(t, text, err.Error(), "SubscribeErrorCode.String and SubscribeError.Error() should return the same text for code %v", code)
 		}
 	})
 
@@ -825,13 +716,13 @@ func TestErrorTextConsistency(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := SessionErrorText(code)
+			text := code.String()
 
 			// Test both local and remote
 			for _, remote := range []bool{false, true} {
 				err := SessionError{
-					&ApplicationError{
-						ErrorCode: ApplicationErrorCode(code),
+					&transport.ApplicationError{
+						ErrorCode: transport.ApplicationErrorCode(code),
 						Remote:    remote,
 					},
 				}
@@ -860,52 +751,52 @@ func TestErrorTextConsistency(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := GroupErrorText(code)
+			text := code.String()
 			err := GroupError{
-				&StreamError{
-					ErrorCode: StreamErrorCode(code),
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(code),
 				},
 			}
-			assert.Equal(t, text, err.Error(), "GroupErrorText and GroupError.Error() should return the same text for code %v", code)
+			assert.Equal(t, text, err.Error(), "GroupErrorCode.String and GroupError.Error() should return the same text for code %v", code)
 		}
 	})
 }
 
 // Test that all error codes return non-empty text
 func TestErrorText_NonEmpty(t *testing.T) {
-	t.Run("AnnounceErrorText returns non-empty for all defined codes", func(t *testing.T) {
+	t.Run("AnnounceErrorCode.String returns non-empty for all defined codes", func(t *testing.T) {
 		codes := []AnnounceErrorCode{
-			InternalAnnounceErrorCode,
-			DuplicatedAnnounceErrorCode,
-			InvalidAnnounceStatusErrorCode,
+			AnnounceErrorCodeInternal,
+			AnnounceErrorCodeDuplicated,
+			AnnounceErrorCodeInvalidStatus,
 			UninterestedErrorCode,
 			BannedPrefixErrorCode,
-			InvalidPrefixErrorCode,
+			AnnounceErrorCodeInvalidPrefix,
 		}
 
 		for _, code := range codes {
-			text := AnnounceErrorText(code)
-			assert.NotEmpty(t, text, "AnnounceErrorText should return non-empty text for code %v", code)
+			text := code.String()
+			assert.NotEmpty(t, text, "AnnounceErrorCode.String should return non-empty text for code %v", code)
 		}
 	})
 
-	t.Run("SubscribeErrorText returns non-empty for all defined codes", func(t *testing.T) {
+	t.Run("SubscribeErrorCode.String returns non-empty for all defined codes", func(t *testing.T) {
 		codes := []SubscribeErrorCode{
-			InternalSubscribeErrorCode,
-			InvalidRangeErrorCode,
-			DuplicateSubscribeIDErrorCode,
-			TrackNotFoundErrorCode,
-			UnauthorizedSubscribeErrorCode,
-			SubscribeTimeoutErrorCode,
+			SubscribeErrorCodeInternal,
+			SubscribeErrorCodeInvalidRange,
+			SubscribeErrorCodeDuplicateID,
+			SubscribeErrorCodeNotFound,
+			SubscribeErrorCodeUnauthorized,
+			SubscribeErrorCodeTimeout,
 		}
 
 		for _, code := range codes {
-			text := SubscribeErrorText(code)
-			assert.NotEmpty(t, text, "SubscribeErrorText should return non-empty text for code %v", code)
+			text := code.String()
+			assert.NotEmpty(t, text, "SubscribeErrorCode.String should return non-empty text for code %v", code)
 		}
 	})
 
-	t.Run("SessionErrorText returns non-empty for all defined codes", func(t *testing.T) {
+	t.Run("SessionErrorCode.String returns non-empty for all defined codes", func(t *testing.T) {
 		codes := []SessionErrorCode{
 			NoError,
 			InternalSessionErrorCode,
@@ -919,12 +810,12 @@ func TestErrorText_NonEmpty(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := SessionErrorText(code)
-			assert.NotEmpty(t, text, "SessionErrorText should return non-empty text for code %v", code)
+			text := code.String()
+			assert.NotEmpty(t, text, "SessionErrorCode.String should return non-empty text for code %v", code)
 		}
 	})
 
-	t.Run("GroupErrorText returns non-empty for all defined codes", func(t *testing.T) {
+	t.Run("GroupErrorCode.String returns non-empty for all defined codes", func(t *testing.T) {
 		codes := []GroupErrorCode{
 			InternalGroupErrorCode,
 			OutOfRangeErrorCode,
@@ -936,8 +827,175 @@ func TestErrorText_NonEmpty(t *testing.T) {
 		}
 
 		for _, code := range codes {
-			text := GroupErrorText(code)
-			assert.NotEmpty(t, text, "GroupErrorText should return non-empty text for code %v", code)
+			text := code.String()
+			assert.NotEmpty(t, text, "GroupErrorCode.String should return non-empty text for code %v", code)
 		}
 	})
+}
+
+// Test for FetchErrorCode.String method
+func TestFetchErrorCode_String(t *testing.T) {
+	tests := map[string]struct {
+		code   FetchErrorCode
+		expect string
+	}{
+		"internal error code": {
+			code:   FetchErrorCodeInternal,
+			expect: "moqt: internal error",
+		},
+		"timeout error code": {
+			code:   FetchErrorCodeTimeout,
+			expect: "moqt: timeout",
+		},
+		"unknown code": {
+			code:   FetchErrorCode(0xFF),
+			expect: "",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := tt.code.String()
+			assert.Equal(t, tt.expect, result)
+		})
+	}
+}
+
+// Test for FetchError
+func TestFetchError(t *testing.T) {
+	tests := map[string]struct {
+		err            FetchError
+		expectedString string
+		expectedCode   FetchErrorCode
+	}{
+		"internal error": {
+			err: FetchError{
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(FetchErrorCodeInternal),
+				},
+			},
+			expectedString: "moqt: internal error",
+			expectedCode:   FetchErrorCodeInternal,
+		},
+		"timeout": {
+			err: FetchError{
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(FetchErrorCodeTimeout),
+				},
+			},
+			expectedString: "moqt: timeout",
+			expectedCode:   FetchErrorCodeTimeout,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.expectedString, tt.err.Error())
+			assert.Equal(t, tt.expectedCode, tt.err.FetchErrorCode())
+		})
+	}
+}
+
+// Test for FetchError with unknown code fallback
+func TestFetchError_UnknownCodeFallback(t *testing.T) {
+	unknownCode := FetchErrorCode(0x99)
+	err := FetchError{
+		&transport.StreamError{
+			ErrorCode: transport.StreamErrorCode(unknownCode),
+		},
+	}
+
+	result := err.Error()
+	assert.Equal(t, unknownCode, err.FetchErrorCode())
+	assert.NotEmpty(t, result)
+}
+
+// Test for ProbeErrorCode.String method
+func TestProbeErrorCode_String(t *testing.T) {
+	tests := map[string]struct {
+		code   ProbeErrorCode
+		expect string
+	}{
+		"internal error code": {
+			code:   ProbeErrorCodeInternal,
+			expect: "moqt: internal error",
+		},
+		"timeout error code": {
+			code:   ProbeErrorCodeTimeout,
+			expect: "moqt: timeout",
+		},
+		"not supported error code": {
+			code:   ProbeErrorCodeNotSupported,
+			expect: "moqt: not supported",
+		},
+		"unknown code": {
+			code:   ProbeErrorCode(0xFF),
+			expect: "",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := tt.code.String()
+			assert.Equal(t, tt.expect, result)
+		})
+	}
+}
+
+// Test for ProbeError
+func TestProbeError(t *testing.T) {
+	tests := map[string]struct {
+		err            ProbeError
+		expectedString string
+		expectedCode   ProbeErrorCode
+	}{
+		"internal error": {
+			err: ProbeError{
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(ProbeErrorCodeInternal),
+				},
+			},
+			expectedString: "moqt: internal error",
+			expectedCode:   ProbeErrorCodeInternal,
+		},
+		"timeout": {
+			err: ProbeError{
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(ProbeErrorCodeTimeout),
+				},
+			},
+			expectedString: "moqt: timeout",
+			expectedCode:   ProbeErrorCodeTimeout,
+		},
+		"not supported": {
+			err: ProbeError{
+				&transport.StreamError{
+					ErrorCode: transport.StreamErrorCode(ProbeErrorCodeNotSupported),
+				},
+			},
+			expectedString: "moqt: not supported",
+			expectedCode:   ProbeErrorCodeNotSupported,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.expectedString, tt.err.Error())
+			assert.Equal(t, tt.expectedCode, tt.err.ProbeErrorCode())
+		})
+	}
+}
+
+// Test for ProbeError with unknown code fallback
+func TestProbeError_UnknownCodeFallback(t *testing.T) {
+	unknownCode := ProbeErrorCode(0x99)
+	err := ProbeError{
+		&transport.StreamError{
+			ErrorCode: transport.StreamErrorCode(unknownCode),
+		},
+	}
+
+	result := err.Error()
+	assert.Equal(t, unknownCode, err.ProbeErrorCode())
+	assert.NotEmpty(t, result)
 }

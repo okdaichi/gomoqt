@@ -201,6 +201,12 @@ When submitting a pull request:
 - Test edge cases and error conditions
 - Consider integration tests for complex features
 
+### Testing Strategy (Mock Usage)
+
+- Prefer hand-written fake/stub implementations for new tests.
+- Use `testify/mock` only for boundary/protocol interaction checks.
+- Keep assertions result/state-focused; avoid strict call-order checks unless required by protocol behavior.
+
 ## Project Structure
 
 ```

@@ -14,4 +14,5 @@ export * from "./track_reader.ts";
 export * from "./track_mux.ts";
 export * from "./broadcast.ts";
 export * from "./error.ts";
+export * from "./fetch.ts";
 export * from "./frame.ts";

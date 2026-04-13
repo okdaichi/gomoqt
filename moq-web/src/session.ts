@@ -1,12 +1,14 @@
 import {
-	AnnounceInitMessage,
 	AnnouncePleaseMessage,
+	FetchMessage,
 	GroupMessage,
+	ProbeMessage,
 	readVarint,
 	SubscribeMessage,
 	SubscribeOkMessage,
 	writeVarint,
 } from "./internal/message/mod.ts";
+import { EOFError } from "@okdaichi/golikejs/io";
 import {
 	ReceiveStream,
 	Stream,
@@ -23,16 +25,33 @@ import type { TrackConfig } from "./subscribe_stream.ts";
 import { type BroadcastPath, validateBroadcastPath } from "./broadcast_path.ts";
 import { TrackReader } from "./track_reader.ts";
 import { TrackWriter } from "./track_writer.ts";
+import { GroupReader, GroupWriter } from "./group_stream.ts";
 import type { TrackMux } from "./track_mux.ts";
 import { DefaultTrackMux } from "./track_mux.ts";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 import { Queue } from "./internal/queue.ts";
 import type { SubscribeID, TrackName } from "./alias.ts";
+import { FetchRequest } from "./fetch.ts";
+import type { FetchHandler } from "./fetch.ts";
+import { FetchErrorCode, GroupErrorCode, SessionErrorCode } from "./error.ts";
+
+const PROBE_STREAM_ERROR_CODE = 0x1;
+
+function cancelStreamWithError(stream: Stream, code: number): void {
+	stream.readable.cancel(code).catch(() => {});
+	stream.writable.cancel(code).catch(() => {});
+}
+
+type ProbeStatsCapable = {
+	getStats?: () => Promise<{ estimatedSendRate: number | null }>;
+};
 
 export interface SessionInit {
 	transport: StreamConn;
 
 	mux?: TrackMux;
+
+	fetchHandler?: FetchHandler;
 }
 
 export class Session {
@@ -42,10 +61,10 @@ export class Session {
 	#cancelFunc: CancelCauseFunc;
 
 	#wg: Promise<void>[] = [];
-
 	#subscribeIDCounter: number = 0;
 
 	readonly mux: TrackMux;
+	#fetchHandler?: FetchHandler;
 
 	#queues: Map<
 		SubscribeID,
@@ -55,37 +74,37 @@ export class Session {
 	constructor(options: SessionInit) {
 		this.#webtransport = options.transport;
 		this.mux = options.mux ?? DefaultTrackMux;
+		this.#fetchHandler = options.fetchHandler;
 		const [ctx, cancel] = withCancelCause(background());
-		this.#webtransport.closed.then((info) => {
-			if (this.#ctx.err()) {
-				return;
-			}
-
-			if (info.closeCode === undefined && info.reason === undefined) {
-				// This means the establishment of the connection failed
-				cancel(new Error("webtransport: connection closed unexpectedly"));
-				return;
-			}
-
-			cancel(
-				new StreamConnError(
-					info as StreamConnErrorInfo,
-					true,
-				),
-			);
-		}).catch((info) => {
-			if (this.#ctx.err()) {
-				// Session was already closed
-				return;
-			}
-
-			// Some error occurred while establishing the connection or waiting for the connection to close
-			// The caught error here is likely not defined in general. So we wrap it in a generic Error.
-			cancel(new Error(info));
-		});
 		this.#ctx = ctx;
 		this.#cancelFunc = cancel;
 		this.ready = this.#setup();
+
+		this.#webtransport.closed
+			.then((info) => {
+				if (this.#ctx.err()) {
+					return;
+				}
+
+				if (info.closeCode === undefined && info.reason === undefined) {
+					cancel(new Error("webtransport: connection closed unexpectedly"));
+					return;
+				}
+
+				cancel(
+					new StreamConnError(
+						info as StreamConnErrorInfo,
+						true,
+					),
+				);
+			})
+			.catch((info) => {
+				if (this.#ctx.err()) {
+					return;
+				}
+
+				cancel(new Error(String(info)));
+			});
 	}
 
 	async #setup(): Promise<void> {
@@ -96,6 +115,35 @@ export class Session {
 		this.#wg.push(this.#listenUniStreams());
 
 		return;
+	}
+
+	async probe(bitrate: number): Promise<[number, undefined] | [undefined, Error]> {
+		const [stream, openErr] = await this.#webtransport.openStream();
+		if (openErr) {
+			console.error("moq: failed to open probe stream:", openErr);
+			return [undefined, openErr];
+		}
+
+		let [, err] = await writeVarint(stream.writable, BiStreamTypes.ProbeStreamType);
+		if (err) {
+			console.error("moq: failed to open probe stream:", err);
+			return [undefined, err];
+		}
+
+		err = await new ProbeMessage({ bitrate }).encode(stream.writable);
+		if (err) {
+			console.error("moq: failed to send PROBE message:", err);
+			return [undefined, err];
+		}
+
+		const rsp = new ProbeMessage({});
+		err = await rsp.decode(stream.readable);
+		if (err) {
+			console.error("moq: failed to receive PROBE response:", err);
+			return [undefined, err];
+		}
+
+		return [rsp.bitrate, undefined];
 	}
 
 	async acceptAnnounce(
@@ -126,17 +174,7 @@ export class Session {
 
 		// debug log removed
 
-		// Receive AnnounceInitMessage
-		const rsp = new AnnounceInitMessage({});
-		err = await rsp.decode(stream.readable);
-		if (err) {
-			console.error("moq: failed to receive ANNOUNCE_INIT message:", err);
-			return [undefined, err];
-		}
-
-		// debug log removed
-
-		return [new AnnouncementReader(this.#ctx, stream, req, rsp), undefined];
+		return [new AnnouncementReader(this.#ctx, stream, req), undefined];
 	}
 
 	async subscribe(
@@ -174,7 +212,11 @@ export class Session {
 			subscribeId: subscribeId,
 			broadcastPath: path,
 			trackName: name,
-			trackPriority: config?.trackPriority ?? 0,
+			subscriberPriority: config?.priority ?? 0,
+			subscriberOrdered: config?.ordered ? 1 : 0,
+			subscriberMaxLatency: config?.maxLatency ?? 0,
+			startGroup: config?.startGroup ? config.startGroup + 1 : 0,
+			endGroup: config?.endGroup ? config.endGroup + 1 : 0,
 		});
 		err = await req.encode(stream.writable);
 		if (err) {
@@ -185,6 +227,18 @@ export class Session {
 		// Add queue for incoming group streams
 		const queue = new Queue<[ReceiveStream, GroupMessage]>();
 		this.#queues.set(subscribeId, queue);
+
+		// Read the type byte for the first response
+		const [msgType, , typeErr] = await readVarint(stream.readable);
+		if (typeErr) {
+			console.error("moq: failed to read SUBSCRIBE response type:", typeErr);
+			return [undefined, typeErr];
+		}
+		if (msgType !== 0x0) {
+			const respErr = new Error(`moq: unexpected first SUBSCRIBE response type: ${msgType}`);
+			console.error(respErr.message);
+			return [undefined, respErr];
+		}
 
 		const rsp = new SubscribeOkMessage({});
 		err = await rsp.decode(stream.readable);
@@ -200,6 +254,9 @@ export class Session {
 			rsp,
 		);
 
+		// Start background reading of subscribe responses (Ok updates, Drops)
+		subscribeStream.readSubscribeResponses();
+
 		const track = new TrackReader(
 			path,
 			name,
@@ -212,6 +269,52 @@ export class Session {
 		);
 
 		return [track, undefined];
+	}
+
+	async fetch(
+		req: FetchRequest,
+	): Promise<[GroupReader, undefined] | [undefined, Error]> {
+		const [stream, openErr] = await this.#webtransport.openStream();
+		if (openErr) {
+			console.error("moq: failed to open fetch stream:", openErr);
+			return [undefined, openErr];
+		}
+
+		// Send STREAM_TYPE
+		let [, err] = await writeVarint(
+			stream.writable,
+			BiStreamTypes.FetchStreamType,
+		);
+		if (err) {
+			console.error("moq: failed to write fetch stream type:", err);
+			return [undefined, err];
+		}
+
+		// Send FETCH message
+		const msg = new FetchMessage({
+			broadcastPath: req.broadcastPath,
+			trackName: req.trackName,
+			priority: req.priority,
+			groupSequence: req.groupSequence,
+		});
+		err = await msg.encode(stream.writable);
+		if (err) {
+			console.error("moq: failed to encode FETCH message:", err);
+			return [undefined, err];
+		}
+
+		const group = new GroupReader(
+			this.#ctx,
+			stream.readable,
+			new GroupMessage({ sequence: req.groupSequence }),
+		);
+
+		// Cancel the group when the request is done
+		req.done().then(() => {
+			group.cancel(GroupErrorCode.ExpiredGroup);
+		}).catch(() => {});
+
+		return [group, undefined];
 	}
 
 	async #handleGroupStream(reader: ReceiveStream): Promise<void> {
@@ -275,6 +378,83 @@ export class Session {
 		await this.mux.serveAnnouncement(aw, aw.prefix);
 	}
 
+	async #handleProbeStream(stream: Stream): Promise<void> {
+		const quic = this.#webtransport as unknown as ProbeStatsCapable;
+		if (!quic.getStats) {
+			cancelStreamWithError(stream, PROBE_STREAM_ERROR_CODE);
+			return;
+		}
+
+		try {
+			for (;;) {
+				const req = new ProbeMessage({});
+				const err = await req.decode(stream.readable);
+				if (err) {
+					if (err instanceof EOFError) {
+						return;
+					}
+					throw err;
+				}
+
+				const stats = await quic.getStats();
+				const bitrate = stats.estimatedSendRate;
+				if (bitrate == null) {
+					continue;
+				}
+
+				const rsp = new ProbeMessage({ bitrate });
+				const encErr = await rsp.encode(stream.writable);
+				if (encErr) {
+					throw encErr;
+				}
+			}
+		} catch (err) {
+			console.warn(`moq: probe stream error: ${err}`);
+			cancelStreamWithError(stream, PROBE_STREAM_ERROR_CODE);
+		}
+	}
+
+	async #handleFetchStream(stream: Stream): Promise<void> {
+		const handler = this.#fetchHandler;
+		if (!handler) {
+			cancelStreamWithError(stream, FetchErrorCode.InternalError);
+			return;
+		}
+
+		const fm = new FetchMessage({});
+		const err = await fm.decode(stream.readable);
+		if (err) {
+			console.error("Failed to decode FetchMessage:", err);
+			cancelStreamWithError(stream, FetchErrorCode.InternalError);
+			return;
+		}
+
+		const [fetchCtx, cancelFetch] = withCancelCause(this.#ctx);
+
+		const req = new FetchRequest({
+			broadcastPath: validateBroadcastPath(fm.broadcastPath),
+			trackName: fm.trackName,
+			priority: fm.priority,
+			groupSequence: fm.groupSequence,
+			done: fetchCtx.done(),
+		});
+
+		const group = new GroupWriter(
+			fetchCtx,
+			stream.writable,
+			new GroupMessage({ sequence: fm.groupSequence }),
+		);
+
+		try {
+			await handler.serveFetch(group, req);
+		} catch (e) {
+			console.error("moq: fetch handler error:", e);
+			await group.cancel(FetchErrorCode.InternalError).catch(() => {});
+		} finally {
+			cancelFetch(undefined);
+		}
+	}
+
 	async #listenBiStreams(): Promise<void> {
 		const pendingHandles: Promise<void>[] = [];
 		try {
@@ -306,9 +486,15 @@ export class Session {
 					case BiStreamTypes.AnnounceStreamType:
 						pendingHandles.push(this.#handleAnnounceStream(stream));
 						break;
+					case BiStreamTypes.FetchStreamType:
+						pendingHandles.push(this.#handleFetchStream(stream));
+						break;
+					case BiStreamTypes.ProbeStreamType:
+						pendingHandles.push(this.#handleProbeStream(stream));
+						break;
 					default:
-						console.warn(`Unknown bidirectional stream type: ${num}`);
-						break; // Ignore unknown stream types
+						cancelStreamWithError(stream, SessionErrorCode.InternalError);
+						break;
 				}
 			}
 		} catch (error) {
@@ -356,8 +542,9 @@ export class Session {
 						pendingHandles.push(this.#handleGroupStream(stream));
 						break;
 					default:
-						console.warn(`Unknown unidirectional stream type: ${num}`);
-						break; // Ignore unknown stream types
+						// Unknown stream types are stream-local and non-fatal for extension probing.
+						stream.cancel(SessionErrorCode.InternalError).catch(() => {});
+						break;
 				}
 			}
 		} catch (error) {

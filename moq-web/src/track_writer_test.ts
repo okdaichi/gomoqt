@@ -17,7 +17,7 @@ Deno.test("TrackWriter", async (t) => {
 				subscribeId: 99,
 				broadcastPath: "/test",
 				trackName: "test",
-				trackPriority: 0,
+				subscriberPriority: 0,
 			});
 			const rss = new ReceiveSubscribeStream(ctx, stream, subscribe);
 			const writtenData: Uint8Array[] = [];
@@ -43,7 +43,7 @@ Deno.test("TrackWriter", async (t) => {
 				subscribeId: 99,
 				broadcastPath: "/test",
 				trackName: "test",
-				trackPriority: 0,
+				subscriberPriority: 0,
 			});
 			const rss = new ReceiveSubscribeStream(ctx, stream, subscribe);
 			const openUni = async () => [undefined, new Error("no stream")] as [undefined, Error];
@@ -63,7 +63,7 @@ Deno.test("TrackWriter", async (t) => {
 				subscribeId: 21,
 				broadcastPath: "/t",
 				trackName: "test",
-				trackPriority: 0,
+				subscriberPriority: 0,
 			});
 			const rss = new ReceiveSubscribeStream(ctx, stream, subscribe);
 			const cancelCalls: number[] = [];
@@ -103,7 +103,7 @@ Deno.test("TrackWriter", async (t) => {
 				subscribeId: 0,
 				broadcastPath: "/test/",
 				trackName: "name",
-				trackPriority: 0,
+				subscriberPriority: 0,
 			});
 			const rss = new ReceiveSubscribeStream(ctx, stream, subscribe);
 
@@ -136,7 +136,7 @@ Deno.test("TrackWriter", async (t) => {
 				subscribeId: 0,
 				broadcastPath: "/test/",
 				trackName: "name",
-				trackPriority: 0,
+				subscriberPriority: 0,
 			});
 			const rss = new ReceiveSubscribeStream(ctx, stream, subscribe);
 

@@ -1,19 +1,34 @@
 package message
 
 import (
+	"errors"
 	"io"
 )
 
-/*
- * SUBSCRIBE_OK Message {
- *   Group Frequency (varint),
- * }
- */
+var ErrInvalidSubscribeOkMessageType = errors.New("invalid message type for SubscribeOkMessage")
+
+// SubscribeOkMessage is the publisher response to SUBSCRIBE.
+// The first encoded field is a type tag, fixed to 0x0 for SUBSCRIBE_OK.
 type SubscribeOkMessage struct {
+	PublisherPriority   uint8
+	PublisherOrdered    uint8
+	PublisherMaxLatency uint64
+	StartGroup          uint64
+	EndGroup            uint64
 }
 
+const MessageTypeSubscribeOk uint64 = 0x0
+
 func (som SubscribeOkMessage) Len() int {
-	return 0
+	var l int
+
+	l += 1 // PublisherPriority (uint8)
+	l += 1 // PublisherOrdered (uint8)
+	l += VarintLen(som.PublisherMaxLatency)
+	l += VarintLen(som.StartGroup)
+	l += VarintLen(som.EndGroup)
+
+	return l
 }
 
 func (som SubscribeOkMessage) Encode(w io.Writer) error {
@@ -21,6 +36,11 @@ func (som SubscribeOkMessage) Encode(w io.Writer) error {
 	b := make([]byte, 0, msgLen+VarintLen(uint64(msgLen)))
 
 	b, _ = WriteMessageLength(b, uint64(msgLen))
+	b = append(b, som.PublisherPriority)
+	b = append(b, som.PublisherOrdered)
+	b, _ = WriteVarint(b, som.PublisherMaxLatency)
+	b, _ = WriteVarint(b, som.StartGroup)
+	b, _ = WriteVarint(b, som.EndGroup)
 
 	_, err := w.Write(b)
 
@@ -38,6 +58,34 @@ func (som *SubscribeOkMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
+
+	if len(b) < 2 {
+		return ErrMessageTooShort
+	}
+	som.PublisherPriority = b[0]
+	som.PublisherOrdered = b[1]
+	b = b[2:]
+
+	num, n, err := ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	som.PublisherMaxLatency = num
+	b = b[n:]
+
+	num, n, err = ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	som.StartGroup = num
+	b = b[n:]
+
+	num, n, err = ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	som.EndGroup = num
+	b = b[n:]
 
 	if len(b) != 0 {
 		return ErrMessageTooShort

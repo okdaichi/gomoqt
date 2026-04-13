@@ -15,7 +15,13 @@ func TestSubscribeOkMessage_EncodeDecode(t *testing.T) {
 		wantErr bool
 	}{
 		"valid message": {
-			input: message.SubscribeOkMessage{},
+			input: message.SubscribeOkMessage{
+				PublisherPriority:   1,
+				PublisherOrdered:    0,
+				PublisherMaxLatency: 100,
+				StartGroup:          0,
+				EndGroup:            0,
+			},
 		},
 	}
 
@@ -63,11 +69,18 @@ func TestSubscribeOkMessage_DecodeErrors(t *testing.T) {
 	t.Run("extra data", func(t *testing.T) {
 		var som message.SubscribeOkMessage
 		var buf bytes.Buffer
-		buf.WriteByte(0x01) // length varint = 1
-		buf.WriteByte(0x00) // extra (fills to 1 byte)
+		// Construct a valid message and append bytes after it.
+		// The decoder should consume only the declared message length and leave
+		// trailing bytes unread.
+		buf.WriteByte(0x05) // length varint = 5
+		buf.WriteByte(0x01) // PublisherPriority = 1
+		buf.WriteByte(0x00) // PublisherOrdered = 0
+		buf.WriteByte(0x0a) // PublisherMaxLatency = 10
+		buf.WriteByte(0x00) // StartGroup = 0
+		buf.WriteByte(0x00) // EndGroup = 0
+		buf.WriteByte(0xFF) // trailing byte after the message
 		src := bytes.NewReader(buf.Bytes())
 		err := som.Decode(src)
-		assert.Error(t, err)
-		assert.Equal(t, message.ErrMessageTooShort, err)
+		assert.NoError(t, err)
 	})
 }

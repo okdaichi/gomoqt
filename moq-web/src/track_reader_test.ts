@@ -16,7 +16,7 @@ Deno.test("TrackReader", async (t) => {
 				subscribeId: 33,
 				broadcastPath: "/test",
 				trackName: "name",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const ok = new SubscribeOkMessage({});
 			const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -39,7 +39,7 @@ Deno.test("TrackReader", async (t) => {
 				subscribeId: 21,
 				broadcastPath: "/test",
 				trackName: "name",
-				trackPriority: 0,
+				subscriberPriority: 0,
 			});
 			const ok = new SubscribeOkMessage({});
 			const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -47,7 +47,11 @@ Deno.test("TrackReader", async (t) => {
 			const onClose = () => {};
 			const tr = new TrackReader("/test", "name", sss, queue, onClose);
 			const err = await tr.update({
-				trackPriority: 5,
+				priority: 5,
+				ordered: false,
+				maxLatency: 0,
+				startGroup: 0,
+				endGroup: 0,
 			});
 			assertEquals(err, undefined);
 			assertEquals(tr.readInfo(), sss.info);
@@ -63,7 +67,7 @@ Deno.test("TrackReader", async (t) => {
 				subscribeId: 44,
 				broadcastPath: "/test",
 				trackName: "name",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const ok = new SubscribeOkMessage({});
 			const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -90,7 +94,7 @@ Deno.test("TrackReader", async (t) => {
 				subscribeId: 55,
 				broadcastPath: "/test",
 				trackName: "name",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const ok = new SubscribeOkMessage({});
 			const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -119,7 +123,7 @@ Deno.test("TrackReader", async (t) => {
 			subscribeId: 66,
 			broadcastPath: "/test",
 			trackName: "name",
-			trackPriority: 1,
+			subscriberPriority: 1,
 		});
 		const ok = new SubscribeOkMessage({});
 		const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -141,7 +145,7 @@ Deno.test("TrackReader", async (t) => {
 			subscribeId: 77,
 			broadcastPath: "/test",
 			trackName: "name",
-			trackPriority: 5,
+			subscriberPriority: 5,
 		});
 		const ok = new SubscribeOkMessage({});
 		const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -149,7 +153,7 @@ Deno.test("TrackReader", async (t) => {
 		const tr = new TrackReader("/test", "name", sss, queue, () => {});
 
 		const config = tr.trackConfig;
-		assertEquals(config.trackPriority, 5);
+		assertEquals(config.priority, 5);
 	});
 
 	await t.step("TrackReader.context returns subscribe stream context", () => {
@@ -159,7 +163,7 @@ Deno.test("TrackReader", async (t) => {
 			subscribeId: 88,
 			broadcastPath: "/test",
 			trackName: "name",
-			trackPriority: 1,
+			subscriberPriority: 1,
 		});
 		const ok = new SubscribeOkMessage({});
 		const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -169,4 +173,80 @@ Deno.test("TrackReader", async (t) => {
 		assertExists(tr.context);
 		assertEquals(tr.context.err(), undefined);
 	});
+
+	await t.step("TrackReader.close calls onCloseFunc", async () => {
+		const [ctx] = withCancelCause(background());
+		const stream = new MockStream({});
+		const subscribe = new SubscribeMessage({
+			subscribeId: 90,
+			broadcastPath: "/test",
+			trackName: "name",
+			subscriberPriority: 1,
+		});
+		const ok = new SubscribeOkMessage({});
+		const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
+		const queue = new Queue<[any, any]>();
+		let closeCalled = false;
+		const tr = new TrackReader("/test", "name", sss, queue, () => {
+			closeCalled = true;
+		});
+
+		await tr.close();
+		assertEquals(closeCalled, true);
+	});
+
+	await t.step("TrackReader.subscribeId returns subscribe stream ID", () => {
+		const [ctx] = withCancelCause(background());
+		const stream = new MockStream({});
+		const subscribe = new SubscribeMessage({
+			subscribeId: 42,
+			broadcastPath: "/test",
+			trackName: "name",
+			subscriberPriority: 1,
+		});
+		const ok = new SubscribeOkMessage({});
+		const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
+		const queue = new Queue<[any, any]>();
+		const tr = new TrackReader("/test", "name", sss, queue, () => {});
+
+		assertEquals(tr.subscribeId, 42);
+	});
+
+	await t.step(
+		"TrackReader.drops yields drops and exits on context cancel",
+		async () => {
+			const [ctx, cancel] = withCancelCause(background());
+			const stream = new MockStream({});
+			const subscribe = new SubscribeMessage({
+				subscribeId: 100,
+				broadcastPath: "/test",
+				trackName: "name",
+				subscriberPriority: 1,
+			});
+			const ok = new SubscribeOkMessage({});
+			const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
+			const queue = new Queue<[any, any]>();
+			const tr = new TrackReader("/test", "name", sss, queue, () => {});
+
+			// Append a drop before iterating
+			sss.appendDrop({ startGroup: 1, endGroup: 5, errorCode: 0x03 });
+
+			const collected: Array<{ startGroup: number; endGroup: number; errorCode: number }> =
+				[];
+
+			// Cancel context after first yield to exit the generator
+			const signal = new Promise<void>(() => {});
+			for await (const drop of tr.drops(signal)) {
+				collected.push(drop);
+				// Cancel context to stop the generator
+				cancel(new Error("done"));
+				break;
+			}
+
+			assertEquals(collected.length, 1);
+			assertEquals(collected[0]!.startGroup, 1);
+			assertEquals(collected[0]!.endGroup, 5);
+			assertEquals(collected[0]!.errorCode, 0x03);
+		},
+	);
 });

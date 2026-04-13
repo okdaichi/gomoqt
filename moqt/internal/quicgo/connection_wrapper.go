@@ -18,11 +18,6 @@ func wrapConnection(conn *quicgo_quicgo.Conn) transport.StreamConn {
 	}
 }
 
-// WrapConnection converts a quic-go connection to the transport.StreamConn abstraction.
-func WrapConnection(conn *quicgo_quicgo.Conn) transport.StreamConn {
-	return wrapConnection(conn)
-}
-
 var _ transport.StreamConn = (*connWrapper)(nil)
 
 type connWrapper struct {
@@ -80,6 +75,10 @@ func (wrapper *connWrapper) RemoteAddr() net.Addr {
 	return wrapper.conn.RemoteAddr()
 }
 
-func (wrapper connWrapper) Unwrap() *quicgo_quicgo.Conn {
+func (wrapper *connWrapper) QUICConn() *quicgo_quicgo.Conn {
 	return wrapper.conn
+}
+
+func (wrapper *connWrapper) ConnectionStats() quicgo_quicgo.ConnectionStats {
+	return wrapper.conn.ConnectionStats()
 }

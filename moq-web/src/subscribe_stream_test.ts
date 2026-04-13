@@ -28,12 +28,16 @@ Deno.test("SendSubscribeStream.update writes update to writable", async () => {
 		subscribeId: 1,
 		broadcastPath: "/test",
 		trackName: "t",
-		trackPriority: 0,
+		subscriberPriority: 0,
 	});
 	const ok = new SubscribeOkMessage({});
 	const sss = new SendSubscribeStream(ctx, s, subscribe, ok);
 	const err = await sss.update({
-		trackPriority: 1,
+		priority: 1,
+		ordered: false,
+		maxLatency: 0,
+		startGroup: 0,
+		endGroup: 0,
 	});
 	assertEquals(err, undefined);
 	assertEquals(writtenData.length > 0, true);
@@ -56,7 +60,7 @@ Deno.test("SendSubscribeStream closeWithError cancels stream", async () => {
 		subscribeId: 1,
 		broadcastPath: "/test",
 		trackName: "t",
-		trackPriority: 0,
+		subscriberPriority: 0,
 	});
 	const ok = new SubscribeOkMessage({});
 	const sss = new SendSubscribeStream(ctx, s, subscribe, ok);
@@ -82,12 +86,12 @@ Deno.test("ReceiveSubscribeStream writeInfo sends SUBSCRIBE_OK and prevents doub
 		subscribeId: 42,
 		broadcastPath: "/test",
 		trackName: "t",
-		trackPriority: 0,
+		subscriberPriority: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
-	const err = await rss.writeInfo({});
+	const err = await rss.writeInfo();
 	assertEquals(err, undefined);
-	const err2 = await rss.writeInfo({});
+	const err2 = await rss.writeInfo();
 	assertEquals(err2, undefined);
 });
 
@@ -103,12 +107,12 @@ Deno.test("ReceiveSubscribeStream writeInfo returns error when context canceled"
 		subscribeId: 42,
 		broadcastPath: "/test",
 		trackName: "t",
-		trackPriority: 0,
+		subscriberPriority: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
 	cancel(new Error("canceled"));
 	await new Promise((r) => setTimeout(r, 0));
-	const err = await rss.writeInfo({});
+	const err = await rss.writeInfo();
 	assertEquals(err?.message, "canceled");
 });
 
@@ -124,7 +128,7 @@ Deno.test("ReceiveSubscribeStream close closes stream", async () => {
 		subscribeId: 42,
 		broadcastPath: "/test",
 		trackName: "t",
-		trackPriority: 0,
+		subscriberPriority: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
 	await rss.close();
@@ -142,7 +146,7 @@ Deno.test("ReceiveSubscribeStream close does nothing if context canceled", async
 		subscribeId: 42,
 		broadcastPath: "/test",
 		trackName: "t",
-		trackPriority: 0,
+		subscriberPriority: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
 	cancel(new Error("canceled"));
@@ -162,7 +166,7 @@ Deno.test("ReceiveSubscribeStream closeWithError does nothing if context cancele
 		subscribeId: 42,
 		broadcastPath: "/test",
 		trackName: "t",
-		trackPriority: 0,
+		subscriberPriority: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
 	cancel(new Error("canceled"));
@@ -176,7 +180,7 @@ Deno.test("ReceiveSubscribeStream updated waiters are notified upon update", asy
 		subscribeId: 10,
 		broadcastPath: "/x",
 		trackName: "t",
-		trackPriority: 0,
+		subscriberPriority: 0,
 	});
 	// Encode update message to get data for readable
 	const encoderWrittenData: Uint8Array[] = [];
@@ -187,7 +191,7 @@ Deno.test("ReceiveSubscribeStream updated waiters are notified upon update", asy
 		}),
 	};
 	const update = new SubscribeUpdateMessage({
-		trackPriority: 5,
+		subscriberPriority: 5,
 	});
 	await update.encode(encoderStream);
 	const total = encoderWrittenData.reduce((acc, arr) => acc + arr.length, 0);
@@ -217,7 +221,7 @@ Deno.test("ReceiveSubscribeStream updated waiters are notified upon update", asy
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s2, sub);
 	await new Promise((r) => setTimeout(r, 0));
-	assertEquals(rss.trackConfig.trackPriority, 5);
+	assertEquals(rss.trackConfig.priority, 5);
 });
 
 Deno.test("ReceiveSubscribeStream closeWithError cancels streams and broadcasts cond", async () => {
@@ -242,7 +246,7 @@ Deno.test("ReceiveSubscribeStream closeWithError cancels streams and broadcasts 
 		subscribeId: 20,
 		broadcastPath: "/x",
 		trackName: "t",
-		trackPriority: 0,
+		subscriberPriority: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, sub);
 	await rss.closeWithError(2);
@@ -250,7 +254,37 @@ Deno.test("ReceiveSubscribeStream closeWithError cancels streams and broadcasts 
 	assertEquals(readableCancelCalls.length >= 0, true);
 });
 
-Deno.test("ReceiveSubscribeStream writeInfo is only executed once even with concurrent calls", async () => {
+Deno.test("ReceiveSubscribeStream writeInfo sends SUBSCRIBE_OK on every call", async () => {
+	const [ctx] = withCancelCause(background());
+	const writtenData: Uint8Array[] = [];
+	const mockWritable = new MockSendStream({
+		write: spy(async (p: Uint8Array) => {
+			writtenData.push(new Uint8Array(p));
+			return [p.length, undefined] as [number, Error | undefined];
+		}),
+	});
+	const mockReadable = new MockReceiveStream({});
+	const s = new MockStream({
+		writable: mockWritable,
+		readable: mockReadable,
+	});
+	const subscribe = new SubscribeMessage({
+		subscribeId: 99,
+		broadcastPath: "/test",
+		trackName: "t",
+		subscriberPriority: 0,
+	});
+	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
+
+	// Each writeInfo call should send a SUBSCRIBE_OK (1 type byte + 6 encode writes = 7 each)
+	await rss.writeInfo();
+	await rss.writeInfo();
+	await rss.writeInfo();
+
+	assertEquals(writtenData.length, 21);
+});
+
+Deno.test("ReceiveSubscribeStream ensureInfo is only executed once even with concurrent calls", async () => {
 	const [ctx] = withCancelCause(background());
 	const writtenData: Uint8Array[] = [];
 	const mockWritable = new MockSendStream({
@@ -270,20 +304,20 @@ Deno.test("ReceiveSubscribeStream writeInfo is only executed once even with conc
 		subscribeId: 99,
 		broadcastPath: "/test",
 		trackName: "t",
-		trackPriority: 0,
+		subscriberPriority: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
 
-	// Call writeInfo concurrently
+	// Call ensureInfo concurrently
 	const results = await Promise.all([
-		rss.writeInfo({}),
-		rss.writeInfo({}),
-		rss.writeInfo({}),
+		rss.ensureInfo(),
+		rss.ensureInfo(),
+		rss.ensureInfo(),
 	]);
 	// All should be undefined (no error)
 	for (const r of results) {
 		assertEquals(r, undefined);
 	}
-	// Only one SUBSCRIBE_OK should be written
-	assertEquals(writtenData.length, 1);
+	// Only one SUBSCRIBE_OK should be written (1 type byte + 6 encode writes = 7)
+	assertEquals(writtenData.length, 7);
 });

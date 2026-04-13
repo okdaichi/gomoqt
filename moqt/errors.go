@@ -3,6 +3,8 @@ package moqt
 import (
 	"errors"
 	"fmt"
+
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 var (
@@ -15,9 +17,6 @@ var (
 
 	// ErrServerClosed is returned when the server has been closed.
 	ErrServerClosed = errors.New("moqt: server closed")
-
-	// ErrClientClosed is returned when the client has been closed.
-	ErrClientClosed = errors.New("moqt: client closed")
 )
 
 /*
@@ -29,33 +28,33 @@ var (
 type AnnounceErrorCode uint32
 
 const (
-	InternalAnnounceErrorCode AnnounceErrorCode = 0x0
+	AnnounceErrorCodeInternal AnnounceErrorCode = 0x0
 
-	// Subscriber
-	DuplicatedAnnounceErrorCode    AnnounceErrorCode = 0x1
-	InvalidAnnounceStatusErrorCode AnnounceErrorCode = 0x2 // TODO: Is this necessary?
+	// Subscriber-side errors.
+	AnnounceErrorCodeDuplicated    AnnounceErrorCode = 0x1
+	AnnounceErrorCodeInvalidStatus AnnounceErrorCode = 0x2
 	UninterestedErrorCode          AnnounceErrorCode = 0x3
 
-	// Publisher
-	BannedPrefixErrorCode  AnnounceErrorCode = 0x4 // TODO: Is this necessary?
-	InvalidPrefixErrorCode AnnounceErrorCode = 0x5 // TODO: Is this necessary?
+	// Publisher-side errors.
+	BannedPrefixErrorCode          AnnounceErrorCode = 0x4
+	AnnounceErrorCodeInvalidPrefix AnnounceErrorCode = 0x5
 )
 
-// AnnounceErrorText returns a text for the announce error code.
+// String returns a text for the announce error code.
 // It returns an empty string if the code is unknown.
-func AnnounceErrorText(code AnnounceErrorCode) string {
+func (code AnnounceErrorCode) String() string {
 	switch code {
-	case InternalAnnounceErrorCode:
+	case AnnounceErrorCodeInternal:
 		return "moqt: internal error"
-	case DuplicatedAnnounceErrorCode:
+	case AnnounceErrorCodeDuplicated:
 		return "moqt: duplicated broadcast path"
-	case InvalidAnnounceStatusErrorCode:
+	case AnnounceErrorCodeInvalidStatus:
 		return "moqt: invalid announce status"
 	case UninterestedErrorCode:
 		return "moqt: uninterested"
 	case BannedPrefixErrorCode:
 		return "moqt: banned prefix"
-	case InvalidPrefixErrorCode:
+	case AnnounceErrorCodeInvalidPrefix:
 		return "moqt: invalid prefix"
 	default:
 		return ""
@@ -63,10 +62,10 @@ func AnnounceErrorText(code AnnounceErrorCode) string {
 }
 
 // AnnounceError wraps a QUIC stream error with announcement-specific error codes.
-type AnnounceError struct{ *StreamError }
+type AnnounceError struct{ *transport.StreamError }
 
 func (err AnnounceError) Error() string {
-	text := AnnounceErrorText(err.AnnounceErrorCode())
+	text := err.AnnounceErrorCode().String()
 	if text != "" {
 		return text
 	}
@@ -86,42 +85,33 @@ func (err AnnounceError) AnnounceErrorCode() AnnounceErrorCode {
 type SubscribeErrorCode uint32
 
 const (
-	InternalSubscribeErrorCode SubscribeErrorCode = 0x00
+	SubscribeErrorCodeInternal SubscribeErrorCode = 0x00
 
-	// Error code used internally, basically not used in the application.
-	// These error codes are used before subscribe negotiation is completed,
+	// Range and identity validation errors.
+	SubscribeErrorCodeInvalidRange SubscribeErrorCode = 0x01
+	SubscribeErrorCodeDuplicateID  SubscribeErrorCode = 0x02
+	SubscribeErrorCodeNotFound     SubscribeErrorCode = 0x03
+	SubscribeErrorCodeUnauthorized SubscribeErrorCode = 0x04
 
-	//
-	InvalidRangeErrorCode SubscribeErrorCode = 0x01
-	//
-	DuplicateSubscribeIDErrorCode SubscribeErrorCode = 0x02
-	//
-	TrackNotFoundErrorCode SubscribeErrorCode = 0x03
-	//
-	UnauthorizedSubscribeErrorCode SubscribeErrorCode = 0x04 // TODO: Is this necessary?
-	// Subscriber
-	SubscribeTimeoutErrorCode SubscribeErrorCode = 0x05
-	// ClosedTrackErrorCode           SubscribeErrorCode = 0x07 // TODO: Is this necessary?
-
-	// Error code used by the application.
-	// These error codes are used after subscribe negotiation is completed.
+	// Subscriber-side timeout.
+	SubscribeErrorCodeTimeout SubscribeErrorCode = 0x05
 )
 
-// SubscribeErrorText returns a text for the subscribe error code.
+// String returns a text for the subscribe error code.
 // It returns an empty string if the code is unknown.
-func SubscribeErrorText(code SubscribeErrorCode) string {
+func (code SubscribeErrorCode) String() string {
 	switch code {
-	case InternalSubscribeErrorCode:
+	case SubscribeErrorCodeInternal:
 		return "moqt: internal error"
-	case InvalidRangeErrorCode:
+	case SubscribeErrorCodeInvalidRange:
 		return "moqt: invalid range"
-	case DuplicateSubscribeIDErrorCode:
+	case SubscribeErrorCodeDuplicateID:
 		return "moqt: duplicated id"
-	case TrackNotFoundErrorCode:
+	case SubscribeErrorCodeNotFound:
 		return "moqt: track does not exist"
-	case UnauthorizedSubscribeErrorCode:
+	case SubscribeErrorCodeUnauthorized:
 		return "moqt: unauthorized"
-	case SubscribeTimeoutErrorCode:
+	case SubscribeErrorCodeTimeout:
 		return "moqt: timeout"
 	default:
 		return ""
@@ -129,10 +119,10 @@ func SubscribeErrorText(code SubscribeErrorCode) string {
 }
 
 // SubscribeError wraps a QUIC stream error with subscription-specific error codes.
-type SubscribeError struct{ *StreamError }
+type SubscribeError struct{ *transport.StreamError }
 
 func (err SubscribeError) Error() string {
-	text := SubscribeErrorText(err.SubscribeErrorCode())
+	text := err.SubscribeErrorCode().String()
 	if text != "" {
 		return text
 	}
@@ -141,6 +131,77 @@ func (err SubscribeError) Error() string {
 
 func (err SubscribeError) SubscribeErrorCode() SubscribeErrorCode {
 	return SubscribeErrorCode(err.ErrorCode)
+}
+
+type FetchErrorCode uint32
+
+const (
+	FetchErrorCodeInternal FetchErrorCode = 0x00
+	FetchErrorCodeTimeout  FetchErrorCode = 0x01
+)
+
+// String returns a text for the fetch error code.
+// It returns an empty string if the code is unknown.
+func (code FetchErrorCode) String() string {
+	switch code {
+	case FetchErrorCodeInternal:
+		return "moqt: internal error"
+	case FetchErrorCodeTimeout:
+		return "moqt: timeout"
+	default:
+		return ""
+	}
+}
+
+type FetchError struct{ *transport.StreamError }
+
+func (err FetchError) Error() string {
+	text := err.FetchErrorCode().String()
+	if text != "" {
+		return text
+	}
+	return err.StreamError.Error()
+}
+
+func (err FetchError) FetchErrorCode() FetchErrorCode {
+	return FetchErrorCode(err.ErrorCode)
+}
+
+type ProbeErrorCode uint32
+
+const (
+	ProbeErrorCodeInternal     ProbeErrorCode = 0x00
+	ProbeErrorCodeTimeout      ProbeErrorCode = 0x01
+	ProbeErrorCodeNotSupported ProbeErrorCode = 0x02
+)
+
+// String returns a text for the probe error code.
+// It returns an empty string if the code is unknown.
+func (code ProbeErrorCode) String() string {
+	switch code {
+	case ProbeErrorCodeInternal:
+		return "moqt: internal error"
+	case ProbeErrorCodeTimeout:
+		return "moqt: timeout"
+	case ProbeErrorCodeNotSupported:
+		return "moqt: not supported"
+	default:
+		return ""
+	}
+}
+
+type ProbeError struct{ *transport.StreamError }
+
+func (err ProbeError) Error() string {
+	text := err.ProbeErrorCode().String()
+	if text != "" {
+		return text
+	}
+	return err.StreamError.Error()
+}
+
+func (err ProbeError) ProbeErrorCode() ProbeErrorCode {
+	return ProbeErrorCode(err.ErrorCode)
 }
 
 /*
@@ -165,9 +226,9 @@ const (
 	SetupFailedErrorCode SessionErrorCode = 0x13
 )
 
-// SessionErrorText returns a text for the session error code.
+// String returns a text for the session error code.
 // It returns an empty string if the code is unknown.
-func SessionErrorText(code SessionErrorCode) string {
+func (code SessionErrorCode) String() string {
 	switch code {
 	case NoError:
 		return "moqt: no error"
@@ -193,7 +254,7 @@ func SessionErrorText(code SessionErrorCode) string {
 }
 
 // SessionError wraps a QUIC application error with session-specific error codes.
-type SessionError struct{ *ApplicationError }
+type SessionError struct{ *transport.ApplicationError }
 
 func (err SessionError) Error() string {
 	var role string
@@ -202,7 +263,7 @@ func (err SessionError) Error() string {
 	} else {
 		role = "local"
 	}
-	text := SessionErrorText(err.SessionErrorCode())
+	text := err.SessionErrorCode().String()
 	if text != "" {
 		return fmt.Sprintf("%s (%s)", text, role)
 	}
@@ -225,15 +286,15 @@ const (
 
 	OutOfRangeErrorCode         GroupErrorCode = 0x02
 	ExpiredGroupErrorCode       GroupErrorCode = 0x03
-	SubscribeCanceledErrorCode  GroupErrorCode = 0x04 // TODO: Is this necessary?
+	SubscribeCanceledErrorCode  GroupErrorCode = 0x04
 	PublishAbortedErrorCode     GroupErrorCode = 0x05
 	ClosedSessionGroupErrorCode GroupErrorCode = 0x06
-	InvalidSubscribeIDErrorCode GroupErrorCode = 0x07 // TODO: Is this necessary?
+	InvalidSubscribeIDErrorCode GroupErrorCode = 0x07
 )
 
-// GroupErrorText returns a text for the group error code.
+// String returns a text for the group error code.
 // It returns an empty string if the code is unknown.
-func GroupErrorText(code GroupErrorCode) string {
+func (code GroupErrorCode) String() string {
 	switch code {
 	case InternalGroupErrorCode:
 		return "moqt: internal error"
@@ -255,10 +316,10 @@ func GroupErrorText(code GroupErrorCode) string {
 }
 
 // GroupError wraps a QUIC stream error with group-specific error codes.
-type GroupError struct{ *StreamError }
+type GroupError struct{ *transport.StreamError }
 
 func (err GroupError) Error() string {
-	text := GroupErrorText(err.GroupErrorCode())
+	text := err.GroupErrorCode().String()
 	if text != "" {
 		return text
 	}

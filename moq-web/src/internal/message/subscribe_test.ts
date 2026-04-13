@@ -9,25 +9,41 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 			subscribeId: 123,
 			broadcastPath: "path",
 			trackName: "track",
-			trackPriority: 1,
+			subscriberPriority: 1,
+			subscriberOrdered: 1,
+			subscriberMaxLatency: 100,
+			startGroup: 5,
+			endGroup: 10,
 		},
 		"large values": {
 			subscribeId: 1000000,
 			broadcastPath: "long/path/to/resource",
 			trackName: "long-track-name-with-hyphens",
-			trackPriority: 255,
+			subscriberPriority: 255,
+			subscriberOrdered: 0,
+			subscriberMaxLatency: 0,
+			startGroup: 0,
+			endGroup: 0,
 		},
 		"zero values": {
 			subscribeId: 0,
 			broadcastPath: "",
 			trackName: "",
-			trackPriority: 0,
+			subscriberPriority: 0,
+			subscriberOrdered: 0,
+			subscriberMaxLatency: 0,
+			startGroup: 0,
+			endGroup: 0,
 		},
 		"single character paths": {
 			subscribeId: 1,
 			broadcastPath: "a",
 			trackName: "b",
-			trackPriority: 1,
+			subscriberPriority: 1,
+			subscriberOrdered: 1,
+			subscriberMaxLatency: 500,
+			startGroup: 0,
+			endGroup: 20,
 		},
 	};
 
@@ -63,9 +79,29 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				`trackName mismatch for ${caseName}`,
 			);
 			assertEquals(
-				decodedMessage.trackPriority,
-				input.trackPriority,
-				`trackPriority mismatch for ${caseName}`,
+				decodedMessage.subscriberPriority,
+				input.subscriberPriority,
+				`subscriberPriority mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.subscriberOrdered,
+				input.subscriberOrdered,
+				`subscriberOrdered mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.subscriberMaxLatency,
+				input.subscriberMaxLatency,
+				`subscriberMaxLatency mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.startGroup,
+				input.startGroup,
+				`startGroup mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.endGroup,
+				input.endGroup,
+				`endGroup mismatch for ${caseName}`,
 			);
 		});
 	}
@@ -129,7 +165,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				subscribeId: 1,
 				broadcastPath: "path",
 				trackName: "track",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -154,7 +190,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				subscribeId: 1,
 				broadcastPath: "path",
 				trackName: "track",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -179,7 +215,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				subscribeId: 1,
 				broadcastPath: "path",
 				trackName: "track",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -204,7 +240,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				subscribeId: 1,
 				broadcastPath: "path",
 				trackName: "track",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -212,7 +248,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 	);
 
 	await t.step(
-		"encode should return error when writeVarint fails for trackPriority",
+		"encode should return error when writeVarint fails for subscriberPriority",
 		async () => {
 			let callCount = 0;
 			const mockWriter: Writer = {
@@ -229,7 +265,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				subscribeId: 1,
 				broadcastPath: "path",
 				trackName: "track",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);

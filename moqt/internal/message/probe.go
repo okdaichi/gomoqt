@@ -4,29 +4,30 @@ import (
 	"io"
 )
 
-type SessionUpdateMessage struct {
-	/*
-	 * Versions selected by the server
-	 */
+// ProbeMessage is sent on the Probe stream (0x4).
+// The subscriber sends a target bitrate; the publisher replies with the
+// measured bitrate.
+type ProbeMessage struct {
+	// Bitrate is the target or measured bitrate in bits per second.
 	Bitrate uint64
 }
 
-func (sum SessionUpdateMessage) Len() int {
-	return VarintLen(sum.Bitrate)
+func (pm ProbeMessage) Len() int {
+	return VarintLen(pm.Bitrate)
 }
 
-func (sum SessionUpdateMessage) Encode(w io.Writer) error {
-	msgLen := sum.Len()
+func (pm ProbeMessage) Encode(w io.Writer) error {
+	msgLen := pm.Len()
 	b := make([]byte, 0, msgLen+VarintLen(uint64(msgLen)))
 
 	b, _ = WriteMessageLength(b, uint64(msgLen))
-	b, _ = WriteVarint(b, sum.Bitrate)
+	b, _ = WriteVarint(b, pm.Bitrate)
 
 	_, err := w.Write(b)
 	return err
 }
 
-func (sum *SessionUpdateMessage) Decode(src io.Reader) error {
+func (pm *ProbeMessage) Decode(src io.Reader) error {
 	size, err := ReadMessageLength(src)
 	if err != nil {
 		return err
@@ -43,7 +44,7 @@ func (sum *SessionUpdateMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
-	sum.Bitrate = num
+	pm.Bitrate = num
 	b = b[n:]
 
 	if len(b) != 0 {

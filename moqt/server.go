@@ -13,11 +13,13 @@ import (
 
 	"github.com/okdaichi/gomoqt/moqt/internal/quicgo"
 	"github.com/okdaichi/gomoqt/moqt/internal/webtransportgo"
+	"github.com/okdaichi/gomoqt/transport"
 	"github.com/quic-go/quic-go"
 )
 
-// ListenAndServe starts a new Server bound to the specified address and TLS configuration and runs it until an error occurs.
-// This is a convenience helper that constructs a Server with the default setup handler and calls its ListenAndServe method.
+// ListenAndServe starts a new Server bound to the specified address and TLS
+// configuration. It is a convenience helper that constructs a Server with the
+// provided settings and calls its ListenAndServe method.
 func ListenAndServe(addr string, tlsConfig *tls.Config) error {
 	server := &Server{
 		Addr:      addr,
@@ -26,57 +28,51 @@ func ListenAndServe(addr string, tlsConfig *tls.Config) error {
 	return server.ListenAndServe()
 }
 
-type QUICListenFunc func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (QUICListener, error)
-
 type WebTransportServer interface {
 	ServeQUICConn(conn StreamConn) error
 	Close() error
 }
 
-// Server is a MOQ server that accepts both WebTransport and raw QUIC connections.
-// It handles session setup, track announcements, and subscriptions according to the MOQ Lite specification.
+// Server is a MOQ server that accepts both WebTransport and native QUIC
+// connections. It handles session setup, track announcements, and subscriptions
+// according to the MOQ Lite specification.
 //
-// The server maintains active sessions and listeners. It provides graceful shutdown capabilities and
-// can serve over multiple listeners simultaneously.
+// The server maintains active sessions and listeners and provides graceful
+// shutdown capabilities.
 type Server struct {
-	/*
-	 * Server's Address
-	 */
+	// Address to listen on, in the form "host:port".
 	Addr string
 
-	/*
-	 * TLS configuration
-	 */
+	// TLS configuration
 	TLSConfig *tls.Config
 
-	/*
-	 * QUIC configuration
-	 */
+	// QUIC configuration
 	QUICConfig *quic.Config
 
-	/*
-	 * MOQ Configuration
-	 */
+	// MoQ configuration
 	Config *Config
 
-	/*
-	 * Listen QUIC function
-	 */
-	ListenFunc QUICListenFunc
+	// ListenFunc is a function that creates a new QUIC listener
+	// If nil, the server will use quic.ListenAddrEarly from the quic-go library.
+	ListenFunc func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (QUICListener, error)
 
-	/*
-	 * WebTransport Server
-	 * If the server is configured with a WebTransport server, it is used to handle WebTransport sessions.
-	 * If not, a default server is used.
-	 */
+	// WebTransport server for handling WebTransport sessions.
+	// If nil, the server will use a default implementation.
 	WebTransportServer WebTransportServer
 
-	//
-	NativeQUICHandler *NativeQUICHandler
+	// TrackMux is used for routing announcements and track subscriptions.
+	// If nil, the server should use a global default mux or initialize a new one.
+	TrackMux *TrackMux
 
-	/*
-	 * Logger
-	 */
+	// Handler serves accepted native QUIC sessions (i.e. connections negotiated with NextProtoMOQ).
+	// If nil, native QUIC connections are not handled.
+	Handler Handler
+
+	// FetchHandler serves incoming FETCH requests on native QUIC sessions.
+	// If nil, FETCH requests are rejected with an internal stream error.
+	FetchHandler FetchHandler
+
+	// Logger for server events and errors. Optional; if nil, logging is disabled.
 	Logger *slog.Logger
 
 	ConnContext func(ctx context.Context, conn StreamConn) context.Context
@@ -85,57 +81,26 @@ type Server struct {
 	listeners     map[QUICListener]struct{}
 	listenerGroup sync.WaitGroup
 
-	sessMu     sync.RWMutex
-	activeSess map[*Session]struct{}
+	connManager *connManager
 
 	initOnce sync.Once
 
 	inShutdown atomic.Bool
-
-	// Channel to signal server shutdown completion
-	// Closed when all sessions are closed
-	doneChan chan struct{}
 }
 
 func (s *Server) init() {
 	s.initOnce.Do(func() {
 		s.listeners = make(map[QUICListener]struct{})
-		s.doneChan = make(chan struct{})
-		s.activeSess = make(map[*Session]struct{})
+		s.connManager = newConnManager()
 		if s.WebTransportServer == nil {
-			s.WebTransportServer = &webtransportgo.Server{ConnContext: s.connContext}
-			return
-		}
-		if wtServer, ok := s.WebTransportServer.(*webtransportgo.Server); ok && wtServer.ConnContext == nil {
-			wtServer.ConnContext = s.connContext
+			s.WebTransportServer = &webtransportgo.Server{}
 		}
 	})
 }
 
 type serverContextKeyType struct{}
 
-var moqServerContextKey = serverContextKeyType{}
-
-func (s *Server) connContext(ctx context.Context, conn StreamConn) context.Context {
-	if s.ConnContext != nil {
-		ctx = s.ConnContext(ctx, conn)
-		if ctx == nil {
-			panic("nil context returned by ConnContext")
-		}
-	}
-
-	ctx = context.WithValue(ctx, moqServerContextKey, s)
-
-	return ctx
-}
-
-// log returns Server.Logger if set, otherwise a discard logger.
-func (s *Server) log() *slog.Logger {
-	if s.Logger != nil {
-		return s.Logger
-	}
-	return slog.New(slog.DiscardHandler)
-}
+var serverContextKey = serverContextKeyType{}
 
 // ServeQUICListener accepts connections on the provided QUIC listener and handles them using the Server's configuration.
 // This runs until the listener is closed or the server shuts down.
@@ -199,26 +164,86 @@ func (s *Server) ServeQUICConn(conn StreamConn) error {
 	}
 	switch protocol := tlsInfo.NegotiatedProtocol; protocol {
 	case NextProtoH3:
-		return s.WebTransportServer.ServeQUICConn(conn)
+		ctx := s.connContext(conn.Context(), conn)
+		wrapped := &streamConnContext{StreamConn: conn, ctx: ctx}
+		return s.WebTransportServer.ServeQUICConn(wrapped)
 	case NextProtoMOQ:
-		if s.NativeQUICHandler != nil {
-			return s.NativeQUICHandler.handleNativeQUIC(conn)
-		}
-		return fmt.Errorf("native QUIC is not supported for protocol: %s", protocol)
+		return s.handleNativeQUIC(conn)
 	default:
 		return fmt.Errorf("unsupported protocol: %s", protocol)
 	}
 }
 
-type Upgrader struct {
-	CheckOrigin          func(r *http.Request) bool
-	ApplicationProtocols []string
-	ReorderingTimeout    time.Duration
-	TrackMux             *TrackMux
-	UpgradeFunc          func(w http.ResponseWriter, r *http.Request) (StreamConn, error)
+func (s *Server) connContext(ctx context.Context, conn StreamConn) context.Context {
+	ctx = context.WithValue(ctx, serverContextKey, s.connManager)
+
+	if s.ConnContext != nil {
+		custom := s.ConnContext(ctx, conn)
+		if custom == nil {
+			panic("ConnContext returned nil")
+		}
+		return custom
+	}
+	return ctx
 }
 
-func (u *Upgrader) upgradeWebTransport(w http.ResponseWriter, r *http.Request) (StreamConn, error) {
+// streamConnContext wraps a StreamConn to override its Context.
+// It also delegates QUICConn() to the inner connection so that
+// webtransportgo.Server can extract the raw *quic.Conn.
+type streamConnContext struct {
+	StreamConn
+	ctx context.Context
+}
+
+func (w *streamConnContext) Context() context.Context {
+	return w.ctx
+}
+
+func (w *streamConnContext) QUICConn() *quic.Conn {
+	type quicConnProvider interface {
+		QUICConn() *quic.Conn
+	}
+	if p, ok := w.StreamConn.(quicConnProvider); ok {
+		return p.QUICConn()
+	}
+	return nil
+}
+
+type WebTransportHandler struct {
+	Config   *Config
+	TrackMux *TrackMux
+
+	// CheckOrigin validates the origin of an incoming upgrade request.
+	// If nil, defaults may allow all origins (behavior defined by upgrader implementation).
+	CheckOrigin func(r *http.Request) bool
+
+	// ApplicationProtocols lists ALPN tokens supported for WebTransport upgrades.
+	// If empty, MOQ's default protocol (NextProtoMOQ) is used.
+	ApplicationProtocols []string
+
+	// ReorderingTimeout sets the maximum wait time for out-of-order packets in WebTransport streams.
+	// Zero means default behavior for the underlying transport stack.
+	ReorderingTimeout time.Duration
+
+	// Handler handles the accepted WebTransport session after successful handshake.
+	Handler Handler
+
+	// FetchHandler handles incoming fetch requests on WebTransport sessions. Optional; when nil, fetch requests are not handled.
+	FetchHandler FetchHandler
+
+	// UpgradeFunc performs a custom upgrade from HTTP request to QUIC StreamConn.
+	// If nil, the default WebTransport upgrader is used.
+	UpgradeFunc func(w http.ResponseWriter, r *http.Request) (WebTransportSession, error)
+
+	// FallbackHandler handles non-WebTransport requests (e.g., plain HTTP on the same endpoint).
+	// Optional; when nil, behavior is determined by the server’s default request handling.
+	FallbackHandler http.Handler
+
+	// Logger for WebTransport events and errors. Optional; if nil, logging is disabled.
+	Logger *slog.Logger
+}
+
+func (u *WebTransportHandler) upgradeWebTransport(w http.ResponseWriter, r *http.Request) (WebTransportSession, error) {
 	if u.UpgradeFunc != nil {
 		return u.UpgradeFunc(w, r)
 	}
@@ -235,46 +260,52 @@ func (u *Upgrader) upgradeWebTransport(w http.ResponseWriter, r *http.Request) (
 	return defaultUpgrader.Upgrade(w, r)
 }
 
-// Upgrade upgrades an incoming HTTP request to a WebTransport session and registers it with the server's session management.
-// It returns the established session or an error if the upgrade fails.
-func (u *Upgrader) Upgrade(w http.ResponseWriter, r *http.Request) (*Session, error) {
-	s, _ := r.Context().Value(moqServerContextKey).(*Server)
-
-	if r.TLS == nil {
-		if s != nil {
-			s.log().Warn("connection rejected: plain HTTP is not supported; use HTTPS",
-				"remote_address", r.RemoteAddr,
-			)
-		}
-		http.Error(w, "plain HTTP is not supported; use HTTPS", http.StatusUpgradeRequired)
-		return nil, fmt.Errorf("plain HTTP connection from %s", r.RemoteAddr)
-	}
-
+// ServeHTTP upgrades an incoming HTTP request to a WebTransport session and
+// dispatches it to the configured handler. If the upgrade fails, it falls back
+// to FallbackHandler or returns a 400 response.
+func (u *WebTransportHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	conn, err := u.upgradeWebTransport(w, r)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upgrade connection: %w", err)
-	}
-	if s == nil {
-		return newSession(conn, u.TrackMux, func() {}), nil
+		u.fallback(w, r)
+		return
 	}
 
-	var sess *Session
-	sess = newSession(conn, u.TrackMux, func() { s.removeSession(sess) })
-	s.addSession(sess)
+	// When WebTransportHandler is used standalone (not via Server),
+	// the context does not contain a connManager.
+	var manager *connManager
+	if v := r.Context().Value(serverContextKey); v != nil {
+		manager = v.(*connManager)
+	}
 
-	return sess, nil
+	sess := newSession(conn, u.TrackMux, manager, u.FetchHandler, u.Logger)
+
+	u.Handler.ServeMOQ(sess)
 }
 
-type NativeQUICHandler struct {
-	TrackMux       *TrackMux
-	SessionHandler func(sess *Session) error
+func (h *WebTransportHandler) fallback(w http.ResponseWriter, r *http.Request) {
+	if h.FallbackHandler != nil {
+		h.FallbackHandler.ServeHTTP(w, r)
+	} else {
+		http.Error(w, "fallback handler not configured", http.StatusBadRequest)
+	}
 }
 
-func (h *NativeQUICHandler) handleNativeQUIC(conn StreamConn) error {
-	if h.SessionHandler != nil {
-		return h.SessionHandler(newSession(conn, h.TrackMux, func() {})) // TODO: implement proper session cleanup callback
+type Handler interface {
+	ServeMOQ(sess *Session)
+}
+
+type HandleFunc func(sess *Session)
+
+func (f HandleFunc) ServeMOQ(sess *Session) {
+	f(sess)
+}
+
+func (s *Server) handleNativeQUIC(conn StreamConn) error {
+	if s.Handler != nil {
+		sess := newSession(conn, s.TrackMux, s.connManager, s.FetchHandler, s.Logger)
+		s.Handler.ServeMOQ(sess)
 	}
-	return fmt.Errorf("no session handler configured for native QUIC handler")
+	return fmt.Errorf("no native QUIC handler configured")
 }
 
 // ListenAndServe starts the server by listening on the server's Address and serving QUIC connections.
@@ -383,30 +414,19 @@ func (s *Server) Close() error {
 	}
 	s.listenerMu.Unlock()
 
+	connectionManager := s.connManager
+	s.connManager = nil
+
 	// Terminate all active sessions
-	s.sessMu.Lock()
-	for sess := range s.activeSess {
+	for conn := range connectionManager.connections {
 		// Close sessions concurrently; log potential errors.
-		go func(sess *Session) {
-			_ = sess.CloseWithError(NoError, SessionErrorText(NoError))
-		}(sess)
+		go func(conn StreamConn) {
+
+		}(conn)
 	}
-	s.sessMu.Unlock()
 
 	// Wait for all sessions to close
-	// If there are no active sessions, close the doneChan now so Close doesn't block.
-	s.sessMu.Lock()
-	if len(s.activeSess) == 0 {
-		select {
-		case <-s.doneChan:
-			// already closed
-		default:
-			close(s.doneChan)
-		}
-	}
-	s.sessMu.Unlock()
-
-	<-s.doneChan
+	<-connectionManager.Done()
 
 	// Close WebTransport server (guard against panics from underlying implementations)
 	if s.WebTransportServer != nil {
@@ -434,9 +454,9 @@ func (s *Server) Close() error {
 	return nil
 }
 
-// Shutdown gracefully shuts down the server. It stops accepting new
-// connections, sends goaway to sessions and waits for active sessions to
-// close, respecting the provided context for timeouts.
+// Shutdown gracefully shuts down the server.
+// It stops accepting new connections, asks active connections to go away,
+// and waits for all tracked connections to close.
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.shuttingDown() {
 		return ErrServerClosed
@@ -452,38 +472,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 	s.listenerMu.Unlock()
 
-	// Send GOAWAY to all sessions
-	s.goAway()
+	connManager := s.connManager
+	s.connManager = nil
 
-	// If there are no active sessions, close the doneChan now so shutdown returns immediately.
-	s.sessMu.Lock()
-	if len(s.activeSess) == 0 {
-		select {
-		case <-s.doneChan:
-			// already closed
-		default:
-			close(s.doneChan)
-		}
+	for conn := range connManager.connections {
+		// Send goaway to sessions concurrently; log potential errors.
+		go func(conn StreamConn) {
+			goAway(ctx, conn)
+		}(conn)
 	}
-	s.sessMu.Unlock()
 
-	// Wait for sessions to close or context timeout
-	select {
-	case <-s.doneChan:
-		// All sessions closed gracefully
-	case <-ctx.Done():
-		// Context canceled, terminate all sessions forcefully
-		s.sessMu.Lock()
-		for sess := range s.activeSess {
-			go func(sess *Session) {
-				_ = sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
-			}(sess)
-		}
-		s.sessMu.Unlock()
-
-		// Wait for all sessions to close
-		<-s.doneChan
-	}
+	// Wait for all sessions to close
+	<-connManager.Done()
 
 	// Close WebTransport server (guard against panics from underlying implementations)
 	if s.WebTransportServer != nil {
@@ -509,6 +509,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.listenerMu.Unlock()
 
 	return nil
+}
+
+// goAway waits for either the connection to close naturally or the shutdown
+// context to be canceled, then closes the connection with a timeout error.
+func goAway(ctx context.Context, conn StreamConn) {
+	select {
+	case <-conn.Context().Done():
+		// Connection already closed; nothing to do
+	case <-ctx.Done():
+		// Context canceled, close connection with error
+		conn.CloseWithError(transport.ConnErrorCode(GoAwayTimeoutErrorCode), GoAwayTimeoutErrorCode.String())
+	}
 }
 
 func (s *Server) addListener(ln QUICListener) {
@@ -537,52 +549,6 @@ func (s *Server) removeListener(ln QUICListener) {
 	}
 }
 
-func (s *Server) addSession(sess *Session) {
-	s.sessMu.Lock()
-	defer s.sessMu.Unlock()
-
-	if sess == nil {
-		return
-	}
-	s.activeSess[sess] = struct{}{}
-}
-
-func (s *Server) removeSession(sess *Session) {
-	s.sessMu.Lock()
-	defer s.sessMu.Unlock()
-
-	if s.activeSess == nil {
-		return
-	}
-
-	_, ok := s.activeSess[sess]
-	if !ok {
-		return
-	}
-
-	delete(s.activeSess, sess)
-
-	// Send completion signal if connections reach zero and server is shutting down
-	if len(s.activeSess) == 0 && s.shuttingDown() {
-		// Close the done channel to signal server is done
-		select {
-		case <-s.doneChan:
-			// Already closed
-		default:
-			close(s.doneChan)
-		}
-	}
-}
-
 func (s *Server) shuttingDown() bool {
 	return s.inShutdown.Load()
-}
-
-func (s *Server) goAway() {
-	s.sessMu.Lock()
-	defer s.sessMu.Unlock()
-
-	for sess := range s.activeSess {
-		_ = sess.goAway("") // TODO: specify URI if needed; log if required
-	}
 }

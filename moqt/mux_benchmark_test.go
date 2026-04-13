@@ -3,10 +3,11 @@ package moqt
 import (
 	"context"
 	"fmt"
-	"github.com/stretchr/testify/mock"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 // BenchmarkTrackMux_NewTrackMux benchmarks TrackMux creation
@@ -87,16 +88,17 @@ func BenchmarkTrackMux_ServeTrack(b *testing.B) {
 	}))
 
 	// Create a test track writer
-	openUniStreamFunc := func() (SendStream, error) {
-		mockSendStream := &MockQUICSendStream{}
-		mockSendStream.On("CancelWrite", mock.Anything).Return()
-		mockSendStream.On("StreamID").Return(StreamID(1))
-		mockSendStream.On("Close").Return(nil)
-		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+	openUniStreamFunc := func() (transport.SendStream, error) {
+		mockSendStream := &FakeQUICSendStream{}
 		return mockSendStream, nil
 	}
 	onCloseTrack := func() {}
-	trackWriter := newTrackWriter(path, TrackName("test_track"), nil, openUniStreamFunc, onCloseTrack)
+	trackWriter := &TrackWriter{
+		BroadcastPath:     path,
+		TrackName:         TrackName("test_track"),
+		openUniStreamFunc: openUniStreamFunc,
+		onCloseTrackFunc:  onCloseTrack,
+	}
 
 	b.ReportAllocs()
 
@@ -126,12 +128,10 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 
 			// Benchmark announcement writer creation (not the blocking operation)
 			for b.Loop() {
-				mockStream := &MockQUICStream{}
-				mockStream.On("Context").Return(ctx)
-				mockStream.On("StreamID").Return(StreamID(1))
-				mockStream.On("Write", mock.Anything).Return(0, nil)
-				mockStream.On("Close").Return(nil)
-				_ = newAnnouncementWriter(mockStream, "/room/")
+				mockStream := &FakeQUICStream{
+					ParentCtx: ctx,
+				}
+				_ = newAnnouncementWriter(mockStream, "/room/", nil)
 			}
 		})
 	}
@@ -470,11 +470,8 @@ func BenchmarkTrackMux_AnnouncementTree(b *testing.B) {
 
 			// Benchmark announcement writer creation and tree structure access
 			for b.Loop() {
-				mockStream := &MockQUICStream{}
-				mockStream.On("Context").Return(context.Background())
-				mockStream.On("Write", mock.Anything).Return(0, nil)
-				mockStream.On("Close").Return(nil)
-				_ = newAnnouncementWriter(mockStream, "/level1/")
+				mockStream := &FakeQUICStream{}
+				_ = newAnnouncementWriter(mockStream, "/level1/", nil)
 			}
 		})
 	}
@@ -588,14 +585,14 @@ func BenchmarkTrackMux_CPUProfileOptimization(b *testing.B) {
 
 				// Operations that will consume CPU cycles
 				mux.TrackHandler(path) // Map lookup
-				trackWriter := newTrackWriter(path, TrackName(fmt.Sprintf("track-%d", i)), nil, func() (SendStream, error) {
-					mockSendStream := &MockQUICSendStream{}
-					mockSendStream.On("CancelWrite", mock.Anything).Return()
-					mockSendStream.On("StreamID").Return(StreamID(1))
-					mockSendStream.On("Close").Return(nil)
-					mockSendStream.On("Write", mock.Anything).Return(0, nil)
-					return mockSendStream, nil
-				}, func() {})
+				trackWriter := &TrackWriter{
+					BroadcastPath: path,
+					TrackName:     TrackName(fmt.Sprintf("track-%d", i)),
+					openUniStreamFunc: func() (transport.SendStream, error) {
+						mockSendStream := &FakeQUICSendStream{}
+						return mockSendStream, nil
+					},
+				}
 				mux.serveTrack(trackWriter)
 			}
 		})

@@ -28,8 +28,17 @@ func main() {
 		return
 	}
 
+	serverDone := make(chan struct{}, 1)
+	mux := moqt.NewTrackMux()
+
 	// Print startup message directly
 	fmt.Printf("[OK] Started on %s\n", *addr)
+
+	fetchHandler := moqt.FetchHandlerFunc(func(w *moqt.GroupWriter, r *moqt.FetchRequest) {
+		frame := moqt.NewFrame(1024)
+		_, _ = frame.Write([]byte("HELLO"))
+		_ = w.WriteFrame(frame)
+	})
 
 	server := moqt.Server{
 		Addr: *addr,
@@ -42,17 +51,10 @@ func main() {
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		},
-	}
-
-	serverDone := make(chan struct{}, 1)
-
-	nativeMux := moqt.NewTrackMux()
-	server.NativeQUICHandler = &moqt.NativeQUICHandler{
-		TrackMux: nativeMux,
-		SessionHandler: func(sess *moqt.Session) error {
-			runInteropSession(sess, nativeMux, serverDone)
-			return nil
-		},
+		FetchHandler: fetchHandler,
+		Handler: moqt.HandleFunc(func(sess *moqt.Session) {
+			runInteropSession(sess, mux, serverDone)
+		}),
 	}
 
 	go func() {
@@ -66,21 +68,17 @@ func main() {
 		}
 	}()
 
+	handler := &moqt.WebTransportHandler{
+		CheckOrigin:  func(r *http.Request) bool { return true },
+		TrackMux:     mux,
+		FetchHandler: fetchHandler,
+		Handler: moqt.HandleFunc(func(sess *moqt.Session) {
+			runInteropSession(sess, mux, serverDone)
+		}),
+	}
+
 	// Serve MOQ over WebTransport
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		upgrader := moqt.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
-			TrackMux:    moqt.NewTrackMux(),
-		}
-
-		sess, err := upgrader.Upgrade(w, r)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to upgrade to moq session: %v\n", err)
-			return
-		}
-
-		go runInteropSession(sess, upgrader.TrackMux, serverDone)
-	})
+	http.Handle("/", handler)
 
 	fmt.Println("Listening...")
 	err := server.ListenAndServe()
@@ -155,7 +153,7 @@ func runInteropSession(sess *moqt.Session, mux *moqt.TrackMux, serverDone chan s
 	fmt.Printf("Discovered broadcast: %s\n", string(ann.BroadcastPath()))
 
 	fmt.Print("Subscribing to broadcast...")
-	track, err := sess.Subscribe(ann.BroadcastPath(), "", nil)
+	track, err := sess.Subscribe(context.Background(), ann.BroadcastPath(), "", nil)
 	if err != nil {
 		fmt.Printf("failed\n  Error: %v\n", err)
 		return
@@ -181,6 +179,12 @@ func runInteropSession(sess *moqt.Session, mux *moqt.TrackMux, serverDone chan s
 		return
 	}
 	fmt.Printf("ok (payload: %s)\n", string(frame.Body()))
+
+	// Wait for client to close the session (e.g. after Probe completes) or timeout.
+	select {
+	case <-sess.Context().Done():
+	case <-time.After(5 * time.Second):
+	}
 }
 
 func generateCert() tls.Certificate {

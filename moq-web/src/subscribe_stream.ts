@@ -1,6 +1,13 @@
 import type { SubscribeMessage } from "./internal/message/mod.ts";
-import { SubscribeOkMessage, SubscribeUpdateMessage } from "./internal/message/mod.ts";
+import {
+	readVarint,
+	SubscribeDropMessage,
+	SubscribeOkMessage,
+	SubscribeUpdateMessage,
+	writeVarint,
+} from "./internal/message/mod.ts";
 import type { Stream } from "./internal/webtransport/mod.ts";
+import type { Reader } from "@okdaichi/golikejs/io";
 import { EOFError } from "@okdaichi/golikejs/io";
 import { Cond, Mutex, Once } from "@okdaichi/golikejs/sync";
 import type { CancelCauseFunc, Context } from "@okdaichi/golikejs/context";
@@ -11,7 +18,30 @@ import type { SubscribeID, TrackPriority } from "./alias.ts";
 import { SubscribeErrorCode } from "./error.ts";
 
 export interface TrackConfig {
-	trackPriority: TrackPriority;
+	priority: TrackPriority;
+	ordered: boolean;
+	maxLatency: number;
+	startGroup: number;
+	endGroup: number;
+}
+
+export interface SubscribeDrop {
+	startGroup: number;
+	endGroup: number;
+	errorCode: number;
+}
+
+const MESSAGE_TYPE_SUBSCRIBE_OK = 0x0;
+const MESSAGE_TYPE_SUBSCRIBE_DROP = 0x1;
+
+function groupSequenceFromWire(v: number): number {
+	if (v === 0) return 0;
+	return v - 1;
+}
+
+function groupSequenceToWire(gs: number): number {
+	if (gs === 0) return 0;
+	return gs + 1;
 }
 
 export class SendSubscribeStream {
@@ -21,6 +51,9 @@ export class SendSubscribeStream {
 	#stream: Stream;
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
+	#mu: Mutex = new Mutex();
+	#cond: Cond = new Cond(this.#mu);
+	#drops: SubscribeDrop[] = [];
 
 	constructor(
 		sessCtx: Context,
@@ -31,10 +64,20 @@ export class SendSubscribeStream {
 		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
 		this.#stream = stream;
 		this.#config = {
-			trackPriority: subscribe.trackPriority,
+			priority: subscribe.subscriberPriority,
+			ordered: subscribe.subscriberOrdered !== 0,
+			maxLatency: subscribe.subscriberMaxLatency,
+			startGroup: groupSequenceFromWire(subscribe.startGroup),
+			endGroup: groupSequenceFromWire(subscribe.endGroup),
 		};
 		this.#id = subscribe.subscribeId;
-		this.#info = ok;
+		this.#info = {
+			priority: ok.publisherPriority,
+			ordered: ok.publisherOrdered !== 0,
+			maxLatency: ok.publisherMaxLatency,
+			startGroup: groupSequenceFromWire(ok.startGroup),
+			endGroup: groupSequenceFromWire(ok.endGroup),
+		};
 	}
 
 	get subscribeId(): SubscribeID {
@@ -49,8 +92,59 @@ export class SendSubscribeStream {
 		return this.#info;
 	}
 
+	appendDrop(drop: SubscribeDrop): void {
+		this.#drops.push(drop);
+		this.#cond.broadcast();
+	}
+
+	pendingDrops(): SubscribeDrop[] {
+		const drops = this.#drops;
+		this.#drops = [];
+		return drops;
+	}
+
+	droppedSignal(): Promise<void> {
+		return this.#cond.wait();
+	}
+
+	async readSubscribeResponses(): Promise<void> {
+		while (true) {
+			const [ok, drop, err] = await readSubscribeResponse(this.#stream.readable);
+			if (err) {
+				return;
+			}
+
+			if (ok) {
+				// Update info (SubscribeOk can be received multiple times)
+				this.#info = {
+					priority: ok.publisherPriority,
+					ordered: ok.publisherOrdered !== 0,
+					maxLatency: ok.publisherMaxLatency,
+					startGroup: groupSequenceFromWire(ok.startGroup),
+					endGroup: groupSequenceFromWire(ok.endGroup),
+				};
+				continue;
+			}
+
+			if (drop) {
+				this.appendDrop({
+					startGroup: drop.startGroup,
+					endGroup: drop.endGroup,
+					errorCode: drop.errorCode,
+				});
+				return;
+			}
+		}
+	}
+
 	async update(update: TrackConfig): Promise<Error | undefined> {
-		const msg = new SubscribeUpdateMessage(update);
+		const msg = new SubscribeUpdateMessage({
+			subscriberPriority: update.priority,
+			subscriberOrdered: update.ordered ? 1 : 0,
+			subscriberMaxLatency: update.maxLatency,
+			startGroup: groupSequenceToWire(update.startGroup),
+			endGroup: groupSequenceToWire(update.endGroup),
+		});
 		const err = await msg.encode(this.#stream.writable);
 		if (err) {
 			return new Error(`Failed to write subscribe update: ${err}`);
@@ -76,8 +170,8 @@ export class ReceiveSubscribeStream {
 	#mu: Mutex = new Mutex();
 	#cond: Cond = new Cond(this.#mu);
 	#stream: Stream;
-	// #info?: Info;
-	#infoOnce: Once = new Once();
+	#responseStarted: boolean = false;
+	#ensureInfoOnce: Once = new Once();
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
 
@@ -89,7 +183,11 @@ export class ReceiveSubscribeStream {
 		this.#stream = stream;
 		this.subscribeId = subscribe.subscribeId;
 		this.#trackConfig = {
-			trackPriority: subscribe.trackPriority,
+			priority: subscribe.subscriberPriority,
+			ordered: subscribe.subscriberOrdered !== 0,
+			maxLatency: subscribe.subscriberMaxLatency,
+			startGroup: groupSequenceFromWire(subscribe.startGroup),
+			endGroup: groupSequenceFromWire(subscribe.endGroup),
 		};
 		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
 
@@ -110,7 +208,11 @@ export class ReceiveSubscribeStream {
 			}
 
 			this.#trackConfig = {
-				trackPriority: msg.trackPriority,
+				priority: msg.subscriberPriority,
+				ordered: msg.subscriberOrdered !== 0,
+				maxLatency: msg.subscriberMaxLatency,
+				startGroup: groupSequenceFromWire(msg.startGroup),
+				endGroup: groupSequenceFromWire(msg.endGroup),
 			};
 
 			this.#cond.broadcast();
@@ -125,53 +227,67 @@ export class ReceiveSubscribeStream {
 		return this.#cond.wait();
 	}
 
-	async writeInfo(_?: Info): Promise<Error | undefined> {
-		return await this.#infoOnce.do(async () => {
-			// if (this.#info) {
-			// 	console.warn(
-			// 		`Info already written for subscribe ID: ${this.subscribeId}`,
-			// 	);
-			// 	return undefined; // Info already written
-			// }
+	async writeInfo(info?: Info): Promise<Error | undefined> {
+		const err = this.context.err();
+		if (err !== undefined) {
+			return err;
+		}
 
-			let err = this.context.err();
-			if (err !== undefined) {
+		const i = info ??
+			{ priority: 0, ordered: false, maxLatency: 0, startGroup: 0, endGroup: 0 };
+		// Write type byte for SUBSCRIBE_OK
+		const [, writeErr] = await writeVarint(this.#stream.writable, MESSAGE_TYPE_SUBSCRIBE_OK);
+		if (writeErr) {
+			return new Error(`moq: failed to write SUBSCRIBE_OK type: ${writeErr}`);
+		}
+
+		const msg = new SubscribeOkMessage({
+			publisherPriority: i.priority,
+			publisherOrdered: i.ordered ? 1 : 0,
+			publisherMaxLatency: i.maxLatency,
+			startGroup: groupSequenceToWire(i.startGroup),
+			endGroup: groupSequenceToWire(i.endGroup),
+		});
+
+		const encErr = await msg.encode(this.#stream.writable);
+		if (encErr) {
+			return new Error(`moq: failed to encode SUBSCRIBE_OK message: ${encErr}`);
+		}
+
+		this.#responseStarted = true;
+
+		return undefined;
+	}
+
+	async ensureInfo(info?: Info): Promise<Error | undefined> {
+		return await this.#ensureInfoOnce.do(() => this.writeInfo(info));
+	}
+
+	async writeDrop(drop: SubscribeDrop): Promise<Error | undefined> {
+		if (!this.#responseStarted) {
+			const err = await this.ensureInfo();
+			if (err) {
 				return err;
 			}
+		}
 
-			const msg = new SubscribeOkMessage({});
+		// Write type byte for SUBSCRIBE_DROP
+		const [, typeErr] = await writeVarint(this.#stream.writable, MESSAGE_TYPE_SUBSCRIBE_DROP);
+		if (typeErr) {
+			return new Error(`moq: failed to write SUBSCRIBE_DROP type: ${typeErr}`);
+		}
 
-			err = await msg.encode(this.#stream.writable);
-			if (err) {
-				return new Error(`moq: failed to encode SUBSCRIBE_OK message: ${err}`);
-			}
-
-			// this.#info = msg;
-
-			return undefined;
+		const msg = new SubscribeDropMessage({
+			startGroup: drop.startGroup,
+			endGroup: drop.endGroup,
+			errorCode: drop.errorCode,
 		});
-		// if (this.#info) {
-		// 	console.warn(
-		// 		`Info already written for subscribe ID: ${this.subscribeId}`,
-		// 	);
-		// 	return undefined; // Info already written
-		// }
+		const err = await msg.encode(this.#stream.writable);
+		if (err) {
+			return new Error(`moq: failed to encode SUBSCRIBE_DROP message: ${err}`);
+		}
 
-		// let err = this.context.err();
-		// if (err !== undefined) {
-		// 	return err;
-		// }
-
-		// const msg = new SubscribeOkMessage({});
-
-		// err = await msg.encode(this.#stream.writable);
-		// if (err) {
-		// 	return new Error(`moq: failed to encode SUBSCRIBE_OK message: ${err}`);
-		// }
-
-		// this.#info = msg;
-
-		// return undefined;
+		return undefined;
 	}
 
 	async close(): Promise<void> {
@@ -197,5 +313,44 @@ export class ReceiveSubscribeStream {
 		await this.#stream.readable.cancel(code);
 
 		this.#cond.broadcast();
+	}
+}
+
+async function readSubscribeResponse(
+	r: Reader,
+): Promise<
+	| [SubscribeOkMessage, undefined, undefined]
+	| [undefined, SubscribeDropMessage, undefined]
+	| [undefined, undefined, Error]
+> {
+	// Read the type byte: 0x0 = SUBSCRIBE_OK, 0x1 = SUBSCRIBE_DROP
+	const [msgType, , err] = await readVarint(r);
+	if (err) {
+		return [undefined, undefined, err];
+	}
+
+	switch (msgType) {
+		case MESSAGE_TYPE_SUBSCRIBE_OK: {
+			const msg = new SubscribeOkMessage({});
+			const decErr = await msg.decode(r);
+			if (decErr) {
+				return [undefined, undefined, decErr];
+			}
+			return [msg, undefined, undefined];
+		}
+		case MESSAGE_TYPE_SUBSCRIBE_DROP: {
+			const msg = new SubscribeDropMessage({});
+			const decErr = await msg.decode(r);
+			if (decErr) {
+				return [undefined, undefined, decErr];
+			}
+			return [undefined, msg, undefined];
+		}
+		default:
+			return [
+				undefined,
+				undefined,
+				new Error(`unexpected SUBSCRIBE response type: ${msgType}`),
+			];
 	}
 }

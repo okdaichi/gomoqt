@@ -3,23 +3,26 @@ package moqt
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/transport"
 )
 
 // newAnnouncementWriter creates a new AnnouncementWriter for the given stream and prefix.
-func newAnnouncementWriter(stream Stream, prefix prefix) *AnnouncementWriter {
+func newAnnouncementWriter(stream transport.Stream, prefix prefix, logger *slog.Logger) *AnnouncementWriter {
 	if !isValidPrefix(prefix) {
 		panic("invalid prefix for AnnouncementWriter")
 	}
 
 	sas := &AnnouncementWriter{
-		prefix:  prefix,
-		stream:  stream,
-		ctx:     context.WithValue(stream.Context(), biStreamTypeCtxKey, message.StreamTypeAnnounce),
-		actives: make(map[suffix]*activeAnnouncement),
-		initCh:  make(chan struct{}),
+		prefix:   prefix,
+		stream:   stream,
+		ctx:      context.WithValue(stream.Context(), biStreamTypeCtxKey, message.StreamTypeAnnounce),
+		actives:  make(map[suffix]*activeAnnouncement),
+		initDone: make(chan struct{}),
+		logger:   logger,
 	}
 
 	return sas
@@ -29,28 +32,43 @@ func newAnnouncementWriter(stream Stream, prefix prefix) *AnnouncementWriter {
 // It handles initialization, sending active announcements, and cleanup.
 type AnnouncementWriter struct {
 	prefix prefix
-	stream Stream
+	stream transport.Stream
 	ctx    context.Context
+	logger *slog.Logger
 
 	mu      sync.RWMutex
 	actives map[suffix]*activeAnnouncement
 
-	initCh   chan struct{}
+	initDone chan struct{}
 	initOnce sync.Once
+	initErr  error
 }
 
-// init initializes the AnnouncementWriter with the given announcements.
-// It sends an AnnounceInitMessage and sets up end handlers for active announcements.
+func (aw *AnnouncementWriter) logError(msg string, err error, args ...any) {
+	if aw == nil || err == nil {
+		return
+	}
+	if aw.logger != nil {
+		aw.logger.Error(msg, append(args, "error", err)...)
+	}
+}
+
+// init snapshots the currently active announcements, sends an ACTIVE AnnounceMessage
+// for each active track suffix on the announce stream, and sets up end handlers.
 func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) error {
 	var err error
 	aw.initOnce.Do(func() {
+		defer close(aw.initDone)
+
 		if aw.ctx.Err() != nil {
 			err = Cause(aw.ctx)
+			aw.mu.Lock()
+			aw.initErr = err
+			aw.mu.Unlock()
 			return
 		}
 
 		actives := make(map[suffix]*activeAnnouncement)
-		suffixes := make([]suffix, 0, len(announcements))
 
 		for ann := range announcements {
 			if !ann.IsActive() {
@@ -60,31 +78,42 @@ func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) err
 			if !ok {
 				continue
 			}
-			// Always replace with the latest active announcement for the suffix
+			// Always replace with the latest active announcement for the suffix.
 			actives[sfx] = &activeAnnouncement{announcement: ann}
-			suffixes = append(suffixes, sfx)
 		}
 
-		err = message.AnnounceInitMessage{
-			Suffixes: suffixes,
-		}.Encode(aw.stream)
-		if err != nil {
-			var strErr *StreamError
-			if errors.As(err, &strErr) {
-				err = &AnnounceError{StreamError: strErr}
-			}
-			return
-		}
-
+		aw.mu.Lock()
 		aw.actives = actives
+		aw.mu.Unlock()
 
-		// Register end functions for each active announcement
 		for sfx, active := range actives {
+			err = message.AnnounceMessage{
+				AnnounceStatus:      message.ACTIVE,
+				BroadcastPathSuffix: sfx,
+				Hops:                uint64(active.announcement.Hops() + 1),
+			}.Encode(aw.stream)
+			if err != nil {
+				if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
+					err = &AnnounceError{StreamError: strErr}
+				}
+				aw.mu.Lock()
+				aw.initErr = err
+				aw.mu.Unlock()
+				return
+			}
+
+			aw.mu.Lock()
 			aw.registerEndHandler(sfx, active.announcement)
+			aw.mu.Unlock()
 		}
-		close(aw.initCh)
 	})
-	return err
+
+	aw.mu.RLock()
+	defer aw.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	return aw.initErr
 }
 
 // registerEndHandler registers handlers for when the announcement ends.
@@ -97,11 +126,12 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 		current, exists := aw.actives[sfx]
 		if exists && current.announcement == ann {
 			delete(aw.actives, sfx)
-			if err := (message.AnnounceMessage{
-				AnnounceStatus: message.ENDED,
-				TrackSuffix:    sfx,
-			}).Encode(aw.stream); err != nil {
-				// Silently ignore encode errors
+			err := message.AnnounceMessage{
+				AnnounceStatus:      message.ENDED,
+				BroadcastPathSuffix: sfx,
+			}.Encode(aw.stream)
+			if err != nil {
+				aw.logError("failed to encode ANNOUNCE end message", err)
 			}
 		}
 	})
@@ -114,10 +144,10 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 		defer aw.mu.Unlock()
 		delete(aw.actives, sfx)
 		if err := (message.AnnounceMessage{
-			AnnounceStatus: message.ENDED,
-			TrackSuffix:    sfx,
+			AnnounceStatus:      message.ENDED,
+			BroadcastPathSuffix: sfx,
 		}).Encode(aw.stream); err != nil {
-			// Silently ignore encode errors
+			aw.logError("failed to encode ANNOUNCE end message", err)
 		}
 	}
 }
@@ -127,10 +157,17 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error {
 	// Wait for initialization to complete
 	select {
-	case <-aw.initCh:
+	case <-aw.initDone:
 		// Initialization complete
 	case <-aw.ctx.Done():
 		return Cause(aw.ctx)
+	}
+
+	aw.mu.RLock()
+	initErr := aw.initErr
+	aw.mu.RUnlock()
+	if initErr != nil {
+		return initErr
 	}
 
 	if !announcement.IsActive() {
@@ -168,12 +205,12 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 
 	// Encode and send ACTIVE announcement
 	err := message.AnnounceMessage{
-		AnnounceStatus: message.ACTIVE,
-		TrackSuffix:    suffix,
+		AnnounceStatus:      message.ACTIVE,
+		BroadcastPathSuffix: suffix,
+		Hops:                uint64(announcement.Hops() + 1),
 	}.Encode(aw.stream)
 	if err != nil {
-		var strErr *StreamError
-		if errors.As(err, &strErr) {
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
 			return &AnnounceError{
 				StreamError: strErr,
 			}
@@ -227,9 +264,7 @@ func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 		endFunc()
 	}
 
-	strErrCode := StreamErrorCode(code)
-	aw.stream.CancelWrite(strErrCode)
-	aw.stream.CancelRead(strErrCode)
+	cancelStreamWithError(aw.stream, transport.StreamErrorCode(code))
 
 	return nil
 }
