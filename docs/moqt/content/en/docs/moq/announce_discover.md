@@ -41,7 +41,7 @@ if err != nil {
 }
 
 for {
-    ann, err := ar.ReceiveAnnouncement()
+    ann, err := ar.ReceiveAnnouncement(context.Background())
     if err != nil {
         // Handle error
         break

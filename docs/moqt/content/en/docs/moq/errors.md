@@ -1,6 +1,6 @@
 ---
 title: Errors
-weight: 12
+weight: 13
 ---
 
 ## General Error Variables
@@ -9,10 +9,9 @@ The following error variables are defined with the prefix `Err` and are used for
 
 | Variable Name           | Error Message               | Description (inferred)           |
 |-------------------------|-----------------------------|----------------------------------|
-| `moqt.ErrInvalidScheme` | "moqt: invalid scheme"      | Invalid scheme error             |
+| `moqt.ErrInvalidScheme` | "moqt: invalid scheme"      | Invalid URL scheme (only `https` and `moqt` are supported) |
 | `moqt.ErrClosedSession` | "moqt: closed session"      | Session has been closed          |
 | `moqt.ErrServerClosed`  | "moqt: server closed"       | Server has been closed           |
-| `moqt.ErrClientClosed`  | "moqt: client closed"       | Client has been closed           |
 
 ## Protocol Error Types
 
@@ -22,15 +21,17 @@ The following error types are defined to represent specific protocol error scena
 |----------------------|------------------------------------------------------------------|--------------------------------------------------|
 | `moqt.SessionError`  | Error related to session management and protocol                 | `moqt.Session`, or instance originating from it  |
 | `moqt.SubscribeError`| Error during subscribe negotiation or operation                  | `moqt.TrackWriter`, `moqt.TrackReader`           |
-| `moqt.AnnounceError` | Error during announcement phase (e.g., broadcast path issues)    | `moqt.AnnouncementsWriter`, `moqt.AnnouncementsReader` |
+| `moqt.AnnounceError` | Error during announcement phase (e.g., broadcast path issues)    | `moqt.AnnouncementWriter`, `moqt.AnnouncementReader` |
 | `moqt.GroupError`    | Error in group operations (e.g., out of range, expired group)    | `moqt.GroupWriter`, `moqt.GroupReader`           |
+| `moqt.FetchError`    | Error during fetch operations                                    | `moqt.Session.Fetch`                             |
+| `moqt.ProbeError`    | Error during probe operations                                    | `moqt.Session.Probe`                             |
 
 ### Relationship with QUIC errors
 
 The concrete MOQ error types map directly onto the QUIC error primitives:
 
-- `moqt.SessionError` wraps `*quic.ApplicationError` and represents errors that affect the whole QUIC connection (session-level errors).
-- `moqt.AnnounceError`, `moqt.SubscribeError`, and `moqt.GroupError` each wrap `*quic.StreamError` and represent errors that occur on individual QUIC streams (stream-level errors).
+- `moqt.SessionError` wraps `*transport.ApplicationError` and represents errors that affect the whole QUIC connection (session-level errors).
+- `moqt.AnnounceError`, `moqt.SubscribeError`, `moqt.GroupError`, `moqt.FetchError`, and `moqt.ProbeError` each wrap `*transport.StreamError` and represent errors that occur on individual QUIC streams (stream-level errors).
 
 This mapping allows protocol-specific error types to be propagated over QUIC using the appropriate QUIC error mechanism.
 
@@ -41,7 +42,7 @@ Each error type implements the `error` interface and works with Go's standard er
 
 Error codes for each custom error type are summarized below. Click each section to toggle visibility.
 
-{{<tabs items="SessionErrorCode, AnnounceErrorCode, SubscribeErrorCode, GroupErrorCode" >}}
+{{<tabs items="SessionErrorCode, AnnounceErrorCode, SubscribeErrorCode, GroupErrorCode, FetchErrorCode, ProbeErrorCode" >}}
 {{<tab>}}
 | Code Name                    | Value | Description                    |
 |------------------------------|-------|-------------------------------|
@@ -59,24 +60,24 @@ Error codes for each custom error type are summarized below. Click each section 
 {{< tab >}}
 | Code Name                    | Value | Description                    |
 |------------------------------|-------|-------------------------------|
-| `moqt.InternalAnnounceErrorCode`    | 0x0   | Internal error                |
-| `moqt.DuplicatedAnnounceErrorCode`  | 0x1   | Duplicated broadcast path     |
-| `moqt.InvalidAnnounceStatusErrorCode` | 0x2 | Invalid announce status       |
-| `moqt.UninterestedErrorCode`        | 0x3   | Uninterested                  |
-| `moqt.BannedPrefixErrorCode`        | 0x4   | Banned prefix                 |
-| `moqt.InvalidPrefixErrorCode`       | 0x5   | Invalid prefix                |
+| `moqt.AnnounceErrorCodeInternal`     | 0x0   | Internal error                |
+| `moqt.AnnounceErrorCodeDuplicated`   | 0x1   | Duplicated broadcast path     |
+| `moqt.AnnounceErrorCodeInvalidStatus`| 0x2   | Invalid announce status       |
+| `moqt.UninterestedErrorCode`         | 0x3   | Uninterested                  |
+| `moqt.BannedPrefixErrorCode`         | 0x4   | Banned prefix                 |
+| `moqt.AnnounceErrorCodeInvalidPrefix`| 0x5   | Invalid prefix                |
 {{< /tab >}}
 
 
 {{< tab >}}
 | Code Name                    | Value | Description                    |
 |------------------------------|-------|-------------------------------|
-| `moqt.InternalSubscribeErrorCode`   | 0x00  | Internal error                |
-| `moqt.InvalidRangeErrorCode`        | 0x01  | Invalid range                 |
-| `moqt.DuplicateSubscribeIDErrorCode`| 0x02  | Duplicate subscribe ID        |
-| `moqt.TrackNotFoundErrorCode`       | 0x03  | Track not found               |
-| `moqt.UnauthorizedSubscribeErrorCode` | 0x04 | Unauthorized                  |
-| `moqt.SubscribeTimeoutErrorCode`    | 0x05  | Subscribe timeout             |
+| `moqt.SubscribeErrorCodeInternal`    | 0x00  | Internal error                |
+| `moqt.SubscribeErrorCodeInvalidRange`| 0x01  | Invalid range                 |
+| `moqt.SubscribeErrorCodeDuplicateID` | 0x02  | Duplicate subscribe ID        |
+| `moqt.SubscribeErrorCodeNotFound`    | 0x03  | Track not found               |
+| `moqt.SubscribeErrorCodeUnauthorized`| 0x04  | Unauthorized                  |
+| `moqt.SubscribeErrorCodeTimeout`     | 0x05  | Subscribe timeout             |
 {{< /tab >}}
 
 
@@ -90,6 +91,21 @@ Error codes for each custom error type are summarized below. Click each section 
 | `moqt.PublishAbortedErrorCode`      | 0x05  | Publish aborted               |
 | `moqt.ClosedSessionGroupErrorCode`  | 0x06  | Closed session                |
 | `moqt.InvalidSubscribeIDErrorCode`  | 0x07  | Invalid subscribe ID          |
+{{< /tab >}}
+
+{{< tab >}}
+| Code Name                    | Value | Description                    |
+|------------------------------|-------|-------------------------------|
+| `moqt.FetchErrorCodeInternal`       | 0x00  | Internal error                |
+| `moqt.FetchErrorCodeTimeout`        | 0x01  | Fetch timeout                 |
+{{< /tab >}}
+
+{{< tab >}}
+| Code Name                    | Value | Description                    |
+|------------------------------|-------|-------------------------------|
+| `moqt.ProbeErrorCodeInternal`       | 0x00  | Internal error                |
+| `moqt.ProbeErrorCodeTimeout`        | 0x01  | Probe timeout                 |
+| `moqt.ProbeErrorCodeNotSupported`   | 0x02  | Probe not supported           |
 {{< /tab >}}
 {{< /tabs >}}
 

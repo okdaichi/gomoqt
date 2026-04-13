@@ -3,7 +3,7 @@ title: Session
 weight: 3
 ---
 
-MOQ Session is established when a client connects to a QUIC server and offers to set up a new session and the server accepts the request.
+A MOQ Session is established when a client dials a server (via `moqt.Dialer`) or a server accepts a connection (via `moqt.Handler`). The session manages subscriptions, announcements, fetches, and probes over the underlying QUIC connection.
 
 ## Implementation
 
@@ -11,24 +11,38 @@ MOQ Session is established when a client connects to a QUIC server and offers to
 
 ```go
 type Session struct {
-    // Embedded Fields
-    Version          Version          // through internal stream
-    Path             string           // through internal stream
-    Versions         []Version        // through internal stream
-    ClientExtensions *Parameters      // through internal stream
-    SetupRequest     *SetupRequest    // through internal stream
-    ServerExtensions *Parameters      // through internal stream
     // contains filtered or unexported fields
 }
 
+func (s *Session) Subscribe(ctx context.Context, path BroadcastPath, name TrackName, config *SubscribeConfig) (*TrackReader, error)
 func (s *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error)
+func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error)
+func (s *Session) Probe(bitrate uint64) (uint64, error)
 func (s *Session) CloseWithError(code SessionErrorCode, msg string) error
-func (s *Session) Context() context.Context  // through internal stream
-func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackConfig) (*TrackReader, error)
-func (s *Session) Updated() <-chan struct{}  // through internal stream
+func (s *Session) Context() context.Context
+func (s *Session) ConnectionState() ConnectionState
+func (s *Session) LocalAddr() net.Addr
+func (s *Session) RemoteAddr() net.Addr
 ```
 
-Outgoing requests such as subscribing to tracks or discovering available tracks are handled by the session.
+Outgoing requests such as subscribing to tracks, fetching specific groups, probing bitrate, or discovering available tracks are handled by the session.
+
+## Connection State
+
+After a session is established, you can retrieve connection metadata via `ConnectionState()`:
+
+```go
+    state := sess.ConnectionState()
+    fmt.Println("Protocol version:", state.Version) // e.g., "moq-lite-03"
+    fmt.Println("TLS state:", state.TLS)
+```
+
+The `ConnectionState` struct contains:
+
+| Field     | Type                      | Description                                 |
+|-----------|---------------------------|---------------------------------------------|
+| `Version` | `string`                  | The negotiated MOQ protocol version (e.g., `"moq-lite-03"`) |
+| `TLS`     | `*tls.ConnectionState`     | TLS connection state when available          |
 
 ## Subscribe to a Track
 
@@ -42,34 +56,16 @@ Outgoing requests such as subscribing to tracks or discovering available tracks 
     {{< card link="../announce_discover/#discover-broadcasts" title="Discover Broadcasts" icon="external-link">}}
 {{</cards>}}
 
-## Session State Updates
-
-Peers can send session state updates (such as bitrate changes) via the SESSION_UPDATE message. The implementation monitors connection bitrate and sends updates when significant shifts are detected.
-
-Session state updates are sourced from QUIC connection statistics and processed internally by the session's bitrate monitor.
-
-### Detect Session Updates
-
-When the remote peer sends a session state update, you can be notified via the `Updated()` channel:
-
-```go
-var sess *moqt.Session
-
-select {
-case <-sess.Updated():
-    // Session state has been updated by the peer
-    // React to bitrate changes or other session parameters
-case <-sess.Context().Done():
-    // Session closed
-}
-```
-
-The `Updated()` channel signals when the peer has sent a SESSION_UPDATE message, typically indicating a significant change in network conditions or bitrate.
-
-## Terminate Session
+## Fetch a Group
 
 {{<cards>}}
-    {{< card link="../terminate/#terminate-a-session" title="Terminate a Session" icon="external-link">}}
+    {{< card link="../fetch/" title="Fetch" icon="external-link">}}
+{{</cards>}}
+
+## Probe Bitrate
+
+{{<cards>}}
+    {{< card link="../probe/" title="Probe" icon="external-link">}}
 {{</cards>}}
 
 ## Incoming Requests
@@ -85,7 +81,7 @@ Incoming requests, such as track subscriptions and discovery broadcasts, are han
 ### Announce Broadcasts
 
 {{<cards>}}
-    {{< card link="../announce/#announce-broadcasts" title="Announce Broadcasts" icon="external-link">}}
+    {{< card link="../announce_discover/#announce-broadcasts" title="Announce Broadcasts" icon="external-link">}}
 {{</cards>}}
 
 ## Terminating a Session
@@ -99,8 +95,4 @@ func (s *Session) CloseWithError(code SessionErrorCode, msg string) error
 - `code`: Error code (e.g., from built-in codes)
 - `msg`: Descriptive message
 
-Prefer reserved error codes for standard reasons. See [Built-in Error Codes](http://localhost:1313/gomoqt/docs/moq/errors/#built-in-error-codes) for details.
-
-## 📝 Future Work
-
-- Bitrate Notification: (#XXX)
+Prefer reserved error codes for standard reasons. See [Built-in Error Codes](errors/#built-in-error-codes) for details.

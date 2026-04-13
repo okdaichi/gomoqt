@@ -12,8 +12,8 @@ Consuming a track involves reading media data from a `moqt.TrackReader`, which p
     // Create a new session
     // This differs from if it is client-side or server-side
     var sess *moqt.Session
-    var config *moqt.TrackConfig
-    tr, err := sess.Subscribe("/broadcast_path", "track_name", config)
+    var config *moqt.SubscribeConfig
+    tr, err := sess.Subscribe(context.Background(), "/broadcast_path", "track_name", config)
     if err != nil {
         // Handle error
         return

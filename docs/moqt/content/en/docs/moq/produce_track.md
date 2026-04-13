@@ -19,9 +19,8 @@ Producing a track involves writing media data to a `moqt.TrackWriter`, which man
     mux.PublishFunc(ctx, "/broadcast_path", func(tw *moqt.TrackWriter) {
         defer tw.Close() // Always close when done
 
-        var seq moqt.GroupSequence = 1
         for {
-            gw, err := tw.OpenGroup(seq) // Create a new group
+            gw, err := tw.OpenGroup() // Create a new group
             if err != nil {
                 // Handle error
                 return
@@ -36,8 +35,6 @@ Producing a track involves writing media data to a `moqt.TrackWriter`, which man
                 // Handle error
                 return
             }
-
-            seq++
         }
     })
 ```
@@ -85,18 +82,29 @@ When the other side (client or server) subscribes to a broadcast path, the regis
 
 ## Create a Group
 
-To start a new group within a track, use `(moqt.TrackWriter).OpenGroup` method. This creates a new group with the specified sequence number and returns a `moqt.GroupWriter` for writing frames to that group.
+To start a new group within a track, use `(moqt.TrackWriter).OpenGroup` method. This creates a new group with an automatically incremented sequence number and returns a `moqt.GroupWriter` for writing frames to that group.
+
+For explicit sequence control, use `(moqt.TrackWriter).OpenGroupAt` method with a specific `GroupSequence`.
 
 
 ```go
     var tw *moqt.TrackWriter
-    gw, err := tw.OpenGroup(1) // Start group with sequence number 1
+    gw, err := tw.OpenGroup() // Auto-incrementing sequence
     if err != nil {
         // Handle error
         return
     }
     defer gw.Close() // Always close when done
     // Use gw to write frames
+```
+
+```go
+    // Or use OpenGroupAt for explicit sequence control
+    gw, err := tw.OpenGroupAt(moqt.GroupSequence(42))
+    if err != nil {
+        // Handle error
+        return
+    }
 ```
 
 > [!NOTE] Note: Group Ordering

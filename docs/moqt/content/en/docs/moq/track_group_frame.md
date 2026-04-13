@@ -27,12 +27,15 @@ type TrackWriter struct {
 
 func (*TrackWriter) Close() error
 func (*TrackWriter) CloseWithError(SubscribeErrorCode)
-func (*TrackWriter) OpenGroup(GroupSequence) (*GroupWriter, error)
-func (TrackWriter) SubscribeID() SubscribeID            // through internal stream
-func (*TrackWriter) TrackConfig() *TrackConfig          // through internal stream
-func (TrackWriter) Updated() <-chan struct{}            // through internal stream
-func (*TrackWriter) WriteInfo(Info) error               // through internal stream
-func (TrackWriter) Context() context.Context            // through internal stream
+func (*TrackWriter) OpenGroup() (*GroupWriter, error)
+func (*TrackWriter) OpenGroupAt(GroupSequence) (*GroupWriter, error)
+func (*TrackWriter) SkipGroups(n uint64)
+func (*TrackWriter) DropGroups(SubscribeDrop) error
+func (*TrackWriter) DropNextGroups(n uint64, code SubscribeErrorCode) error
+func (*TrackWriter) WriteInfo(PublishInfo) error
+func (*TrackWriter) TrackConfig() *SubscribeConfig
+func (*TrackWriter) Updated() <-chan struct{}
+func (*TrackWriter) Context() context.Context
 ```
 
 ### `moqt.TrackReader`
@@ -48,11 +51,12 @@ type TrackReader struct {
 
 func (*TrackReader) AcceptGroup(context.Context) (*GroupReader, error)
 func (*TrackReader) Close() error
-func (*TrackReader) CloseWithError(SubscribeErrorCode) error
-func (*TrackReader) Update(*TrackConfig) error          // through internal stream
-func (*TrackReader) TrackConfig() *TrackConfig          // through internal stream
-func (TrackReader) SubscribeID() SubscribeID            // through internal stream
-func (TrackReader) Context() context.Context            // through internal stream
+func (*TrackReader) CloseWithError(SubscribeErrorCode)
+func (*TrackReader) Update(*SubscribeConfig) error
+func (*TrackReader) TrackConfig() *SubscribeConfig
+func (*TrackReader) SubscribeID() SubscribeID
+func (*TrackReader) Drops(context.Context) iter.Seq[SubscribeDrop]
+func (*TrackReader) Context() context.Context
 ```
 
 ## Group

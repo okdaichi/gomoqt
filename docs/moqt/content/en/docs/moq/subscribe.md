@@ -12,10 +12,10 @@ To subscribe to a track, you need to call the `(moqt.Session).Subscribe` method.
 
 ```go
     var session *moqt.Session
-    config := &moqt.TrackConfig{
-        // Specify track configuration options here
+    config := &moqt.SubscribeConfig{
+        // Specify subscription configuration options here
     }
-    tr, err := session.Subscribe("/broadcast_path", "track_name", config)
+    tr, err := session.Subscribe(context.Background(), "/broadcast_path", "track_name", config)
     if err != nil {
         // Handle error
         return
@@ -25,14 +25,15 @@ To subscribe to a track, you need to call the `(moqt.Session).Subscribe` method.
     // Handle the TrackReader
 ```
 
-- **Broadcast Path**: The path to the broadcast you want to subscribe to. This is an unique string that identifies the broadcast.
+- **Context**: The context is used while opening the stream, sending SUBSCRIBE, and waiting for the response.
+- **Broadcast Path**: The path to the broadcast you want to subscribe to. This is a unique string that identifies the broadcast.
 - **Track Name**:
   The track name is an identifier for the track within the broadcast.
-- **Track Config**:
-  The track config is used to specify additional options for the track subscription, such as the priority or range.
+- **Subscribe Config**:
+  The subscribe config is used to specify additional options for the track subscription, such as priority, ordering, latency, or group range. If nil, a zero-value config is used.
 
 
-By specifying options in the `moqt.TrackConfig` when calling `(moqt.Session).Subscribe`, you can configure the initial subscription parameters.
+By specifying options in the `moqt.SubscribeConfig` when calling `(moqt.Session).Subscribe`, you can configure the initial subscription parameters.
 
 ### Control Subscription
 
@@ -41,8 +42,8 @@ You can adjust the subscription parameters at any time by calling the `(moqt.Tra
 ```go
     var tr *moqt.TrackReader
 
-    config := &moqt.TrackConfig{
-        // Specify updated track configuration options here
+    config := &moqt.SubscribeConfig{
+        // Specify updated subscription configuration options here
     }
     tr.Update(config)
 
@@ -55,7 +56,7 @@ Before subscribing to a track, you may want to discover available broadcasts.
 To do this, peers can specify the prefix for the broadcast path they are interested in and listen for announcements.
 
 {{<cards>}}
-    {{< card link="../announce/#discover-broadcasts" title="Discover Broadcasts" icon="external-link">}}
+    {{< card link="../announce_discover/#discover-broadcasts" title="Discover Broadcasts" icon="external-link">}}
 {{</cards>}}
 
 After receiving an `moqt.Announcement`, broadcast path can be obtained using the `(moqt.Announcement).BroadcastPath` method.
@@ -65,7 +66,7 @@ After receiving an `moqt.Announcement`, broadcast path can be obtained using the
 
     path := ann.BroadcastPath()
 
-    tr, err := sess.Subscribe(path, /* specific track name */, nil)
+    tr, err := sess.Subscribe(context.Background(), path, /* specific track name */, nil)
     if err != nil {
         // Handle error
         return
