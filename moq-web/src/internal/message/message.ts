@@ -287,6 +287,25 @@ export async function readStringArray(
 
 // ============================================================
 // Byte array parsing utilities (for parsing message body from buffer)
+/**
+ * Writes a single unsigned byte to the writer.
+ * Returns number of bytes written and any error.
+ */
+export async function writeUint8(
+	w: Writer,
+	v: number,
+): Promise<[number, Error | undefined]> {
+	return await w.write(new Uint8Array([v & 0xff]));
+}
+
+/**
+ * Parses a single unsigned byte from a byte array at the given offset.
+ * Returns [value, bytesRead=1].
+ */
+export function parseUint8(buf: Uint8Array, offset: number): [number, number] {
+	return [buf[offset]!, 1];
+}
+
 // ============================================================
 
 /**

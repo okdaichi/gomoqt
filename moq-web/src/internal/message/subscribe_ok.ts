@@ -1,9 +1,11 @@
 import type { Reader, Writer } from "@okdaichi/golikejs/io";
 import {
+	parseUint8,
 	parseVarint,
 	readFull,
 	readVarint,
 	varintLen,
+	writeUint8,
 	writeVarint,
 } from "./message.ts";
 
@@ -35,8 +37,8 @@ export class SubscribeOkMessage {
 	 */
 	get len(): number {
 		return (
-			varintLen(this.publisherPriority) +
-			varintLen(this.publisherOrdered) +
+			1 + // publisherPriority (uint8)
+			1 + // publisherOrdered (uint8)
 			varintLen(this.publisherMaxLatency) +
 			varintLen(this.startGroup) +
 			varintLen(this.endGroup)
@@ -53,10 +55,10 @@ export class SubscribeOkMessage {
 		[, err] = await writeVarint(w, msgLen);
 		if (err) return err;
 
-		[, err] = await writeVarint(w, this.publisherPriority);
+		[, err] = await writeUint8(w, this.publisherPriority);
 		if (err) return err;
 
-		[, err] = await writeVarint(w, this.publisherOrdered);
+		[, err] = await writeUint8(w, this.publisherOrdered);
 		if (err) return err;
 
 		[, err] = await writeVarint(w, this.publisherMaxLatency);
@@ -88,12 +90,12 @@ export class SubscribeOkMessage {
 		let offset = 0;
 
 		[this.publisherPriority, offset] = (() => {
-			const [val, n] = parseVarint(buf, offset);
+			const [val, n] = parseUint8(buf, offset);
 			return [val, offset + n];
 		})();
 
 		[this.publisherOrdered, offset] = (() => {
-			const [val, n] = parseVarint(buf, offset);
+			const [val, n] = parseUint8(buf, offset);
 			return [val, offset + n];
 		})();
 

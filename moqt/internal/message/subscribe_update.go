@@ -17,8 +17,8 @@ type SubscribeUpdateMessage struct {
 func (su SubscribeUpdateMessage) Len() int {
 	var l int
 
-	l += VarintLen(uint64(su.SubscriberPriority))
-	l += VarintLen(uint64(su.SubscriberOrdered))
+	l += 1 // SubscriberPriority (uint8)
+	l += 1 // SubscriberOrdered (uint8)
 	l += VarintLen(su.SubscriberMaxLatency)
 	l += VarintLen(su.StartGroup)
 	l += VarintLen(su.EndGroup)
@@ -31,8 +31,8 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, msgLen+VarintLen(uint64(msgLen)))
 
 	p, _ = WriteMessageLength(p, uint64(msgLen))
-	p, _ = WriteVarint(p, uint64(su.SubscriberPriority))
-	p, _ = WriteVarint(p, uint64(su.SubscriberOrdered))
+	p = append(p, su.SubscriberPriority)
+	p = append(p, su.SubscriberOrdered)
 	p, _ = WriteVarint(p, su.SubscriberMaxLatency)
 	p, _ = WriteVarint(p, su.StartGroup)
 	p, _ = WriteVarint(p, su.EndGroup)
@@ -55,21 +55,14 @@ func (sum *SubscribeUpdateMessage) Decode(src io.Reader) error {
 		return err
 	}
 
+	if len(b) < 2 {
+		return ErrMessageTooShort
+	}
+	sum.SubscriberPriority = b[0]
+	sum.SubscriberOrdered = b[1]
+	b = b[2:]
+
 	num, n, err := ReadVarint(b)
-	if err != nil {
-		return err
-	}
-	sum.SubscriberPriority = uint8(num)
-	b = b[n:]
-
-	num, n, err = ReadVarint(b)
-	if err != nil {
-		return err
-	}
-	sum.SubscriberOrdered = uint8(num)
-	b = b[n:]
-
-	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}

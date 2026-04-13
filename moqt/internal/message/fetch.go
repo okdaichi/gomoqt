@@ -13,7 +13,7 @@ func (f FetchMessage) Len() int {
 	var l int
 	l += StringLen(f.BroadcastPath)
 	l += StringLen(f.TrackName)
-	l += VarintLen(uint64(f.Priority))
+	l += 1 // Priority (uint8)
 	l += VarintLen(f.GroupSequence)
 	return l
 }
@@ -26,7 +26,7 @@ func (f FetchMessage) Encode(w io.Writer) error {
 	b = append(b, f.BroadcastPath...)
 	b, _ = WriteVarint(b, uint64(len(f.TrackName)))
 	b = append(b, f.TrackName...)
-	b, _ = WriteVarint(b, uint64(f.Priority))
+	b = append(b, f.Priority)
 	b, _ = WriteVarint(b, f.GroupSequence)
 	_, err := w.Write(b)
 	return err
@@ -59,14 +59,13 @@ func (f *FetchMessage) Decode(src io.Reader) error {
 	f.TrackName = str
 	b = b[n:]
 
-	num, n, err := ReadVarint(b)
-	if err != nil {
-		return err
+	if len(b) < 1 {
+		return ErrMessageTooShort
 	}
-	f.Priority = uint8(num)
-	b = b[n:]
+	f.Priority = b[0]
+	b = b[1:]
 
-	num, n, err = ReadVarint(b)
+	num, n, err := ReadVarint(b)
 	if err != nil {
 		return err
 	}

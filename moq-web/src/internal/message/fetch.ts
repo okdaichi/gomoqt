@@ -1,12 +1,14 @@
 import type { Reader, Writer } from "@okdaichi/golikejs/io";
 import {
 	parseString,
+	parseUint8,
 	parseVarint,
 	readFull,
 	readVarint,
 	stringLen,
 	varintLen,
 	writeString,
+	writeUint8,
 	writeVarint,
 } from "./message.ts";
 
@@ -34,7 +36,7 @@ export class FetchMessage {
 		return (
 			stringLen(this.broadcastPath) +
 			stringLen(this.trackName) +
-			varintLen(this.priority) +
+			1 + // priority (uint8)
 			varintLen(this.groupSequence)
 		);
 	}
@@ -52,7 +54,7 @@ export class FetchMessage {
 		[, err] = await writeString(w, this.trackName);
 		if (err) return err;
 
-		[, err] = await writeVarint(w, this.priority);
+		[, err] = await writeUint8(w, this.priority);
 		if (err) return err;
 
 		[, err] = await writeVarint(w, this.groupSequence);
@@ -85,7 +87,7 @@ export class FetchMessage {
 		})();
 
 		[this.priority, offset] = (() => {
-			const [val, n] = parseVarint(buf, offset);
+			const [val, n] = parseUint8(buf, offset);
 			return [val, offset + n];
 		})();
 

@@ -22,8 +22,8 @@ const MessageTypeSubscribeOk uint64 = 0x0
 func (som SubscribeOkMessage) Len() int {
 	var l int
 
-	l += VarintLen(uint64(som.PublisherPriority))
-	l += VarintLen(uint64(som.PublisherOrdered))
+	l += 1 // PublisherPriority (uint8)
+	l += 1 // PublisherOrdered (uint8)
 	l += VarintLen(som.PublisherMaxLatency)
 	l += VarintLen(som.StartGroup)
 	l += VarintLen(som.EndGroup)
@@ -36,8 +36,8 @@ func (som SubscribeOkMessage) Encode(w io.Writer) error {
 	b := make([]byte, 0, msgLen+VarintLen(uint64(msgLen)))
 
 	b, _ = WriteMessageLength(b, uint64(msgLen))
-	b, _ = WriteVarint(b, uint64(som.PublisherPriority))
-	b, _ = WriteVarint(b, uint64(som.PublisherOrdered))
+	b = append(b, som.PublisherPriority)
+	b = append(b, som.PublisherOrdered)
 	b, _ = WriteVarint(b, som.PublisherMaxLatency)
 	b, _ = WriteVarint(b, som.StartGroup)
 	b, _ = WriteVarint(b, som.EndGroup)
@@ -59,21 +59,14 @@ func (som *SubscribeOkMessage) Decode(src io.Reader) error {
 		return err
 	}
 
+	if len(b) < 2 {
+		return ErrMessageTooShort
+	}
+	som.PublisherPriority = b[0]
+	som.PublisherOrdered = b[1]
+	b = b[2:]
+
 	num, n, err := ReadVarint(b)
-	if err != nil {
-		return err
-	}
-	som.PublisherPriority = uint8(num)
-	b = b[n:]
-
-	num, n, err = ReadVarint(b)
-	if err != nil {
-		return err
-	}
-	som.PublisherOrdered = uint8(num)
-	b = b[n:]
-
-	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}

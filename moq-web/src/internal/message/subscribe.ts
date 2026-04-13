@@ -1,12 +1,14 @@
 import type { Reader, Writer } from "@okdaichi/golikejs/io";
 import {
 	parseString,
+	parseUint8,
 	parseVarint,
 	readFull,
 	readVarint,
 	stringLen,
 	varintLen,
 	writeString,
+	writeUint8,
 	writeVarint,
 } from "./message.ts";
 
@@ -50,8 +52,8 @@ export class SubscribeMessage {
 			varintLen(this.subscribeId) +
 			stringLen(this.broadcastPath) +
 			stringLen(this.trackName) +
-			varintLen(this.subscriberPriority) +
-			varintLen(this.subscriberOrdered) +
+			1 + // subscriberPriority (uint8)
+			1 + // subscriberOrdered (uint8)
 			varintLen(this.subscriberMaxLatency) +
 			varintLen(this.startGroup) +
 			varintLen(this.endGroup)
@@ -77,10 +79,10 @@ export class SubscribeMessage {
 		[, err] = await writeString(w, this.trackName);
 		if (err) return err;
 
-		[, err] = await writeVarint(w, this.subscriberPriority);
+		[, err] = await writeUint8(w, this.subscriberPriority);
 		if (err) return err;
 
-		[, err] = await writeVarint(w, this.subscriberOrdered);
+		[, err] = await writeUint8(w, this.subscriberOrdered);
 		if (err) return err;
 
 		[, err] = await writeVarint(w, this.subscriberMaxLatency);
@@ -130,12 +132,12 @@ export class SubscribeMessage {
 		})();
 
 		[this.subscriberPriority, offset] = (() => {
-			const [val, n] = parseVarint(buf, offset);
+			const [val, n] = parseUint8(buf, offset);
 			return [val, offset + n];
 		})();
 
 		[this.subscriberOrdered, offset] = (() => {
-			const [val, n] = parseVarint(buf, offset);
+			const [val, n] = parseUint8(buf, offset);
 			return [val, offset + n];
 		})();
 
