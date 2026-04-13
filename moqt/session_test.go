@@ -24,7 +24,20 @@ func testSubscribeRequest(tb testing.TB, config *SubscribeConfig) *SubscribeRequ
 }
 
 func newTestSession(conn StreamConn) *Session {
-	return newSession(conn, NewTrackMux(), nil, nil)
+	return newSession(conn, NewTrackMux(), nil, nil, nil)
+}
+
+func newTestSessionWithConn(tb testing.TB, opts ...func(*FakeStreamConn)) (*Session, *FakeStreamConn) {
+	tb.Helper()
+	conn := &FakeStreamConn{}
+	for _, opt := range opts {
+		opt(conn)
+	}
+	session := newTestSession(conn)
+	tb.Cleanup(func() {
+		_ = session.CloseWithError(NoError, "")
+	})
+	return session, conn
 }
 
 func TestNewSession(t *testing.T) {
@@ -45,7 +58,7 @@ func TestNewSession(t *testing.T) {
 			conn.OpenStreamFunc = func() (transport.Stream, error) { return nil, io.EOF }
 			conn.OpenStreamFunc = func() (transport.Stream, error) { return nil, io.EOF }
 
-			session := newSession(conn, tt.mux, nil, nil)
+			session := newSession(conn, tt.mux, nil, nil, nil)
 
 			if tt.expectOK {
 				assert.NotNil(t, session, "newSession should not return nil")
@@ -63,17 +76,14 @@ func TestNewSession(t *testing.T) {
 }
 
 func TestNewSessionConnectionState(t *testing.T) {
-	conn := &FakeStreamConn{}
-	conn.TLSFunc = func() *tls.ConnectionState { return &tls.ConnectionState{NegotiatedProtocol: NextProtoMOQ} }
-
-	session := newTestSession(conn)
+	session, _ := newTestSessionWithConn(t, func(conn *FakeStreamConn) {
+		conn.TLSFunc = func() *tls.ConnectionState { return &tls.ConnectionState{NegotiatedProtocol: NextProtoMOQ} }
+	})
 
 	state := session.ConnectionState()
 	assert.Equal(t, moqtVersion, state.Version, "ConnectionState() should expose the MOQ version")
 	require.NotNil(t, state.TLS, "ConnectionState().TLS should be populated")
 	assert.Equal(t, NextProtoMOQ, state.TLS.NegotiatedProtocol, "TLS negotiated protocol should reflect quic")
-
-	_ = session.CloseWithError(NoError, "")
 }
 
 func TestNewSessionWithNilMux(t *testing.T) {
@@ -91,7 +101,7 @@ func TestNewSessionWithNilMux(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			conn := &FakeStreamConn{}
 
-			session := newSession(conn, tt.mux, nil, nil)
+			session := newSession(conn, tt.mux, nil, nil, nil)
 
 			if tt.expectDefault {
 				assert.Equal(t, DefaultMux, session.mux, "should use DefaultMux when nil mux is provided")
@@ -104,13 +114,9 @@ func TestNewSessionWithNilMux(t *testing.T) {
 }
 
 func TestNewSession_WithNilLogger(t *testing.T) {
-	conn := &FakeStreamConn{}
-
-	session := newTestSession(conn)
+	session, _ := newTestSessionWithConn(t)
 
 	assert.NotNil(t, session, "session should be created with nil logger")
-
-	_ = session.CloseWithError(NoError, "")
 }
 
 func TestNewSession_ClosureOnContextCancel(t *testing.T) {
@@ -150,9 +156,7 @@ func TestSession_CloseWithError(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			conn := &FakeStreamConn{}
-
-			session := newTestSession(conn)
+			session, _ := newTestSessionWithConn(t)
 
 			err := session.CloseWithError(tt.code, tt.msg)
 			assert.NoError(t, err, "CloseWithError should not return error")
@@ -538,30 +542,20 @@ func TestSession_Subscribe_DecodeSubscribeOkError(t *testing.T) {
 }
 
 func TestSession_Context(t *testing.T) {
-	conn := &FakeStreamConn{}
-
-	session := newTestSession(conn)
+	session, _ := newTestSessionWithConn(t)
 
 	ctx := session.Context()
 	assert.NotNil(t, ctx, "Context should not be nil")
-
-	// Cleanup
-	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_nextSubscribeID(t *testing.T) {
-	conn := &FakeStreamConn{}
-
-	session := newTestSession(conn)
+	session, _ := newTestSessionWithConn(t)
 
 	id1 := session.nextSubscribeID()
 	id2 := session.nextSubscribeID()
 
 	assert.NotEqual(t, id1, id2, "nextSubscribeID should return unique IDs")
 	assert.True(t, id2 > id1, "Subsequent IDs should be larger")
-
-	// Cleanup
-	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
@@ -666,9 +660,7 @@ func TestSession_ConcurrentAccess(t *testing.T) {
 }
 
 func TestSession_ContextCancellation(t *testing.T) {
-	conn := &FakeStreamConn{}
-
-	session := newTestSession(conn)
+	session, _ := newTestSessionWithConn(t)
 
 	ctx := session.Context()
 	assert.NotNil(t, ctx)
@@ -691,7 +683,7 @@ func TestSession_WithRealMux(t *testing.T) {
 
 	mux := NewTrackMux()
 
-	session := newSession(conn, mux, nil, nil)
+	session := newSession(conn, mux, nil, nil, nil)
 
 	assert.Equal(t, mux, session.mux, "Mux should be set correctly in the session")
 

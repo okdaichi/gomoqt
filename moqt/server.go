@@ -215,6 +215,9 @@ type WebTransportHandler struct {
 	// FallbackHandler handles non-WebTransport requests (e.g., plain HTTP on the same endpoint).
 	// Optional; when nil, behavior is determined by the server’s default request handling.
 	FallbackHandler http.Handler
+
+	// Logger for WebTransport events and errors. Optional; if nil, logging is disabled.
+	Logger *slog.Logger
 }
 
 func (u *WebTransportHandler) upgradeWebTransport(w http.ResponseWriter, r *http.Request) (WebTransportSession, error) {
@@ -246,7 +249,7 @@ func (u *WebTransportHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 	manager := r.Context().Value(serverContextKey).(*connManager)
 
-	sess := newSession(conn, u.TrackMux, manager, u.FetchHandler)
+	sess := newSession(conn, u.TrackMux, manager, u.FetchHandler, u.Logger)
 
 	u.Handler.ServeMOQ(sess)
 }

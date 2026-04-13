@@ -2,15 +2,19 @@ package moqt
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"sync"
 	"testing"
-	"time"
-
-	"github.com/okdaichi/gomoqt/transport"
 )
+
+func newBenchmarkReceiveStream(reader io.Reader) *FakeQUICReceiveStream {
+	return &FakeQUICReceiveStream{ReadFunc: reader.Read}
+}
+
+func newBenchmarkSendStream(writer io.Writer) *FakeQUICSendStream {
+	return &FakeQUICSendStream{WriteFunc: writer.Write}
+}
 
 // BenchmarkGroupReader_ReadFrame benchmarks reading frames from a group
 func BenchmarkGroupReader_ReadFrame(b *testing.B) {
@@ -37,7 +41,7 @@ func BenchmarkGroupReader_ReadFrame(b *testing.B) {
 			reader := bytes.NewReader(repeatingData)
 
 			// Wrap the reader to implement ReceiveStream
-			recvStream := &mockReceiveStream{Reader: reader}
+			recvStream := newBenchmarkReceiveStream(reader)
 
 			groupReader := newGroupReader(GroupSequence(1), recvStream, nil)
 
@@ -53,7 +57,7 @@ func BenchmarkGroupReader_ReadFrame(b *testing.B) {
 				if err == io.EOF {
 					b.ResetTimer()
 					reader = bytes.NewReader(repeatingData)
-					recvStream = &mockReceiveStream{Reader: reader}
+					recvStream = newBenchmarkReceiveStream(reader)
 					groupReader = newGroupReader(GroupSequence(1), recvStream, nil)
 					continue
 				}
@@ -72,7 +76,7 @@ func BenchmarkGroupWriter_WriteFrame(b *testing.B) {
 	for _, size := range frameSizes {
 		b.Run(fmt.Sprintf("size-%d", size), func(b *testing.B) {
 			// Use a discard writer to avoid memory accumulation
-			sendStream := &mockSendStream{Writer: io.Discard}
+			sendStream := newBenchmarkSendStream(io.Discard)
 
 			groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupWriterManager())
 
@@ -127,7 +131,7 @@ func BenchmarkGroupReader_ConcurrentRead(b *testing.B) {
 					defer wg.Done()
 
 					reader := bytes.NewReader(repeatingData)
-					recvStream := &mockReceiveStream{Reader: reader}
+					recvStream := newBenchmarkReceiveStream(reader)
 					groupReader := newGroupReader(GroupSequence(1), recvStream, nil)
 					frame := NewFrame(frameSize)
 
@@ -165,7 +169,7 @@ func BenchmarkGroupWriter_ConcurrentWrite(b *testing.B) {
 				go func() {
 					defer wg.Done()
 
-					sendStream := &mockSendStream{Writer: io.Discard}
+					sendStream := newBenchmarkSendStream(io.Discard)
 					groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupWriterManager())
 
 					frame := NewFrame(frameSize)
@@ -213,7 +217,7 @@ func BenchmarkFrame_EncodeDecodeCycle(b *testing.B) {
 				// Decode
 				readFrame := NewFrame(size)
 				reader := bytes.NewReader(buf.Bytes())
-				recvStream := &mockReceiveStream{Reader: reader}
+				recvStream := newBenchmarkReceiveStream(reader)
 				groupReader := newGroupReader(GroupSequence(1), recvStream, nil)
 
 				err = groupReader.ReadFrame(readFrame)
@@ -242,7 +246,7 @@ func BenchmarkGroupReader_MemoryAllocation(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		reader := bytes.NewReader(repeatingData)
-		recvStream := &mockReceiveStream{Reader: reader}
+		recvStream := newBenchmarkReceiveStream(reader)
 		groupReader := newGroupReader(GroupSequence(1), recvStream, nil)
 
 		frame := NewFrame(frameSize)
@@ -258,7 +262,7 @@ func BenchmarkGroupWriter_MemoryAllocation(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		sendStream := &mockSendStream{Writer: io.Discard}
+		sendStream := newBenchmarkSendStream(io.Discard)
 		groupWriter := newGroupWriter(sendStream, GroupSequence(1), newGroupWriterManager())
 
 		frame := NewFrame(frameSize)
@@ -295,23 +299,3 @@ func BenchmarkFrame_ReuseVsAllocate(b *testing.B) {
 		}
 	})
 }
-
-// Mock implementations for testing
-
-type mockReceiveStream struct {
-	*bytes.Reader
-}
-
-func (m *mockReceiveStream) CancelRead(transport.StreamErrorCode) {}
-func (m *mockReceiveStream) SetReadDeadline(t time.Time) error {
-	return nil
-}
-
-type mockSendStream struct {
-	io.Writer
-}
-
-func (m *mockSendStream) CancelWrite(transport.StreamErrorCode) {}
-func (m *mockSendStream) Close() error                          { return nil }
-func (m *mockSendStream) Context() context.Context              { return context.Background() }
-func (m *mockSendStream) SetWriteDeadline(t time.Time) error    { return nil }

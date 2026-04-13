@@ -14,15 +14,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type stubWTServer struct {
-	serveErr error
-	closed   bool
-}
-
-func (s *stubWTServer) ServeQUICConn(conn StreamConn) error { return s.serveErr }
-func (s *stubWTServer) Close() error {
-	s.closed = true
-	return nil
+func newTestNativeQUICConn(tb testing.TB, opts ...func(*FakeStreamConn)) *FakeStreamConn {
+	tb.Helper()
+	conn := &FakeStreamConn{}
+	conn.TLSFunc = func() *tls.ConnectionState {
+		return &tls.ConnectionState{NegotiatedProtocol: NextProtoMOQ}
+	}
+	for _, opt := range opts {
+		opt(conn)
+	}
+	return conn
 }
 
 func TestServer_Init(t *testing.T) {
@@ -85,7 +86,7 @@ func TestServer_ServeQUICConn_UnsupportedProtocol(t *testing.T) {
 }
 
 func TestServer_ServeQUICConn_WebTransport(t *testing.T) {
-	s := &Server{WebTransportServer: &stubWTServer{}}
+	s := &Server{WebTransportServer: &FakeWebTransportServer{}}
 	conn := &FakeStreamConn{}
 	conn.TLSFunc = func() *tls.ConnectionState {
 		return &tls.ConnectionState{NegotiatedProtocol: NextProtoH3}
@@ -103,10 +104,7 @@ func TestServer_ServeQUICConn_NativeQUICCallsHandlerAndReturnsError(t *testing.T
 		}),
 	}
 
-	conn := &FakeStreamConn{}
-	conn.TLSFunc = func() *tls.ConnectionState {
-		return &tls.ConnectionState{NegotiatedProtocol: NextProtoMOQ}
-	}
+	conn := newTestNativeQUICConn(t)
 
 	err := s.ServeQUICConn(conn)
 	assert.Error(t, err)
@@ -116,10 +114,7 @@ func TestServer_ServeQUICConn_NativeQUICCallsHandlerAndReturnsError(t *testing.T
 
 func TestServer_ServeQUICConn_NativeQUICWithoutHandlerReturnsError(t *testing.T) {
 	s := &Server{}
-	conn := &FakeStreamConn{}
-	conn.TLSFunc = func() *tls.ConnectionState {
-		return &tls.ConnectionState{NegotiatedProtocol: NextProtoMOQ}
-	}
+	conn := newTestNativeQUICConn(t)
 
 	err := s.ServeQUICConn(conn)
 	assert.Error(t, err)
@@ -177,7 +172,13 @@ func TestServer_ListenAndServeTLS_InvalidKeyPair(t *testing.T) {
 }
 
 func TestServer_Close_ClosesListenersAndWTServer(t *testing.T) {
-	s := &Server{WebTransportServer: &stubWTServer{}}
+	closed := false
+	s := &Server{WebTransportServer: &FakeWebTransportServer{
+		CloseFunc: func() error {
+			closed = true
+			return nil
+		},
+	}}
 	s.init()
 
 	ln := &FakeEarlyListener{}
@@ -187,7 +188,7 @@ func TestServer_Close_ClosesListenersAndWTServer(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, s.shuttingDown())
 	assert.True(t, ln.closed)
-	assert.True(t, s.WebTransportServer.(*stubWTServer).closed)
+	assert.True(t, closed)
 }
 
 func TestServer_Shutdown_NoSessions(t *testing.T) {
@@ -209,7 +210,7 @@ func TestServer_addRemoveSession_ShutdownCompletesWhenLastSessionLeaves(t *testi
 
 	conn := &FakeStreamConn{}
 
-	sess := newSession(conn, nil, nil, nil)
+	sess := newSession(conn, nil, nil, nil, nil)
 	t.Cleanup(func() { _ = sess.CloseWithError(NoError, "") })
 
 	s.connManager.addConn(conn)

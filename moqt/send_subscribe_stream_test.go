@@ -13,14 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 func newTestSendSubscribeStreamFromStream(stream transport.Stream, config *SubscribeConfig) *sendSubscribeStream {
 	if config == nil {
 		config = &SubscribeConfig{}
 	}
 
 	substr := newSendSubscribeStream(SubscribeID(1), stream, config, nil)
-	substr.startResponseLoop()
+	go substr.readSubscribeResponses()
 	return substr
 }
 
@@ -33,7 +32,7 @@ func newTestSendSubscribeStream(tb testing.TB, config *SubscribeConfig) *sendSub
 	mockStream := &FakeQUICStream{}
 
 	substr := newSendSubscribeStream(SubscribeID(1), mockStream, config, nil)
-	substr.startResponseLoop()
+	go substr.readSubscribeResponses()
 
 	return substr
 }

@@ -46,7 +46,7 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 			}
 
 			mux := NewTrackMux()
-			session := newSession(conn, mux, nil, nil)
+			session := newSession(conn, mux, nil, nil, nil)
 
 			// Pre-generate paths
 			paths := make([]BroadcastPath, size)
@@ -106,7 +106,7 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 			}
 
 			mux := NewTrackMux()
-			session := newSession(conn, mux, nil, nil)
+			session := newSession(conn, mux, nil, nil, nil)
 
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -136,7 +136,7 @@ func BenchmarkSession_TrackReaderOperations(b *testing.B) {
 	conn := &FakeStreamConn{}
 
 	mux := NewTrackMux()
-	session := newSession(conn, mux, nil, nil)
+	session := newSession(conn, mux, nil, nil, nil)
 
 	b.ReportAllocs()
 
@@ -166,7 +166,7 @@ func BenchmarkSession_TrackWriterOperations(b *testing.B) {
 	conn := &FakeStreamConn{}
 
 	mux := NewTrackMux()
-	session := newSession(conn, mux, nil, nil)
+	session := newSession(conn, mux, nil, nil, nil)
 
 	b.ReportAllocs()
 
@@ -205,7 +205,7 @@ func BenchmarkSession_MapLookup(b *testing.B) {
 			conn := &FakeStreamConn{}
 
 			mux := NewTrackMux()
-			session := newSession(conn, mux, nil, nil)
+			session := newSession(conn, mux, nil, nil, nil)
 
 			// Pre-populate with track readers
 			for i := range size {
@@ -251,7 +251,7 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 				conn := &FakeStreamConn{}
 
 				mux := NewTrackMux()
-				session := newSession(conn, mux, nil, nil)
+				session := newSession(conn, mux, nil, nil, nil)
 
 				// Create many track readers
 				for j := range size {
@@ -281,7 +281,7 @@ func BenchmarkSession_ContextCancellation(b *testing.B) {
 		conn.ParentCtx = ctx
 
 		mux := NewTrackMux()
-		session := newSession(conn, mux, nil, nil)
+		session := newSession(conn, mux, nil, nil, nil)
 
 		// Cancel context
 		cancel()

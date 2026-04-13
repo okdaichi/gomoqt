@@ -54,7 +54,7 @@ func newSession(
 	mux *TrackMux,
 	manager *connManager,
 	fetchHandler FetchHandler,
-	logger ...*slog.Logger,
+	logger *slog.Logger,
 ) *Session {
 	if mux == nil {
 		mux = DefaultMux
@@ -66,13 +66,10 @@ func newSession(
 		conn:         conn,
 		mux:          mux,
 		fetchHandler: fetchHandler,
-		logger:       nil,
+		logger:       logger,
 		trackReaders: make(map[SubscribeID]*TrackReader),
 		trackWriters: make(map[SubscribeID]*TrackWriter),
 		connManager:  manager,
-	}
-	if len(logger) > 0 {
-		sess.logger = logger[0]
 	}
 
 	// Listen bidirectional streams
@@ -267,7 +264,7 @@ func (s *Session) Subscribe(ctx context.Context, req *SubscribeRequest) (*TrackR
 		StartGroup: groupSequenceFromWire(okMsg.StartGroup),
 		EndGroup:   groupSequenceFromWire(okMsg.EndGroup),
 	})
-	substr.startResponseLoop()
+	go substr.readSubscribeResponses()
 
 	return track, nil
 }

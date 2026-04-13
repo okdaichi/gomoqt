@@ -18,36 +18,33 @@ func newSendSubscribeStream(id SubscribeID, stream transport.Stream, initConfig 
 	return substr
 }
 
-func (substr *sendSubscribeStream) startResponseLoop() {
-	go func() {
-		for {
-			ok, drop, err := readSubscribeResponse(substr.stream)
-			if err != nil {
-				return
-			}
-
-			if ok != nil {
-				substr.updateInfo(PublishInfo{
-					Priority:   TrackPriority(ok.PublisherPriority),
-					Ordered:    boolFromWireFlag(ok.PublisherOrdered),
-					MaxLatency: ok.PublisherMaxLatency,
-					StartGroup: groupSequenceFromWire(ok.StartGroup),
-					EndGroup:   groupSequenceFromWire(ok.EndGroup),
-				})
-				continue
-			}
-
-			if drop != nil {
-				substr.notifyDrop(SubscribeDrop{
-					StartGroup: groupSequenceFromWire(drop.StartGroup),
-					EndGroup:   groupSequenceFromWire(drop.EndGroup),
-					ErrorCode:  SubscribeErrorCode(drop.ErrorCode),
-				})
-				return
-			}
+func (substr *sendSubscribeStream) readSubscribeResponses() {
+	for {
+		ok, drop, err := readSubscribeResponse(substr.stream)
+		if err != nil {
+			return
 		}
 
-	}()
+		if ok != nil {
+			substr.updateInfo(PublishInfo{
+				Priority:   TrackPriority(ok.PublisherPriority),
+				Ordered:    boolFromWireFlag(ok.PublisherOrdered),
+				MaxLatency: ok.PublisherMaxLatency,
+				StartGroup: groupSequenceFromWire(ok.StartGroup),
+				EndGroup:   groupSequenceFromWire(ok.EndGroup),
+			})
+			continue
+		}
+
+		if drop != nil {
+			substr.notifyDrop(SubscribeDrop{
+				StartGroup: groupSequenceFromWire(drop.StartGroup),
+				EndGroup:   groupSequenceFromWire(drop.EndGroup),
+				ErrorCode:  SubscribeErrorCode(drop.ErrorCode),
+			})
+			return
+		}
+	}
 }
 
 type sendSubscribeStream struct {
