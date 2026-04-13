@@ -5,16 +5,32 @@ import { Buffer } from "@okdaichi/golikejs/bytes";
 Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
 	const testCases = {
 		"normal case": {
-			trackPriority: 1,
+			subscriberPriority: 1,
+			subscriberOrdered: 1,
+			subscriberMaxLatency: 100,
+			startGroup: 5,
+			endGroup: 10,
 		},
 		"zero values": {
-			trackPriority: 0,
+			subscriberPriority: 0,
+			subscriberOrdered: 0,
+			subscriberMaxLatency: 0,
+			startGroup: 0,
+			endGroup: 0,
 		},
 		"max priority": {
-			trackPriority: 255,
+			subscriberPriority: 255,
+			subscriberOrdered: 0,
+			subscriberMaxLatency: 0,
+			startGroup: 0,
+			endGroup: 0,
 		},
 		"mid priority": {
-			trackPriority: 10,
+			subscriberPriority: 10,
+			subscriberOrdered: 1,
+			subscriberMaxLatency: 500,
+			startGroup: 0,
+			endGroup: 20,
 		},
 	};
 
@@ -33,9 +49,29 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 			const decodeErr = await decodedMessage.decode(readBuffer);
 			assertEquals(decodeErr, undefined, `decode failed for ${caseName}`);
 			assertEquals(
-				decodedMessage.trackPriority,
-				input.trackPriority,
-				`trackPriority mismatch for ${caseName}`,
+				decodedMessage.subscriberPriority,
+				input.subscriberPriority,
+				`subscriberPriority mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.subscriberOrdered,
+				input.subscriberOrdered,
+				`subscriberOrdered mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.subscriberMaxLatency,
+				input.subscriberMaxLatency,
+				`subscriberMaxLatency mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.startGroup,
+				input.startGroup,
+				`startGroup mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.endGroup,
+				input.endGroup,
+				`endGroup mismatch for ${caseName}`,
 			);
 		});
 	}

@@ -373,7 +373,7 @@ Deno.test({
 					subscribeId: 1,
 					broadcastPath: "/test/path",
 					trackName: "name",
-					trackPriority: 0,
+					subscriberPriority: 0,
 				});
 				const buf = await encodeMessageToUint8Array(async (w) => {
 					await writeVarint(w, BiStreamTypes.SubscribeStreamType);
@@ -477,7 +477,10 @@ Deno.test({
 
 		await t.step("subscribe succeeds with valid messages", async () => {
 			const ok = new SubscribeOkMessage({});
-			const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+			const okBytes = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, 0);
+				return await ok.encode(w);
+			});
 
 			const mock = new MockWebTransportSession({
 				openStreamResponses: [okBytes],
@@ -533,7 +536,10 @@ Deno.test({
 
 		await t.step("listening for group stream enqueues to track", async () => {
 			const ok = new SubscribeOkMessage({});
-			const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+			const okBytes = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, 0);
+				return await ok.encode(w);
+			});
 
 			const groupMsg = new GroupMessage({
 				subscribeId: 0,
@@ -636,7 +642,10 @@ Deno.test({
 			"multiple subscribes get different subscribe IDs",
 			async () => {
 				const ok = new SubscribeOkMessage({});
-				const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+				const okBytes = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, 0);
+					return await ok.encode(w);
+				});
 
 				const mock = new MockWebTransportSession({
 					openStreamResponses: [okBytes, okBytes, okBytes],
@@ -707,7 +716,10 @@ Deno.test({
 			"subscribe with trackConfig passes config values",
 			async () => {
 				const ok = new SubscribeOkMessage({});
-				const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+				const okBytes = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, 0);
+					return await ok.encode(w);
+				});
 
 				const mock = new MockWebTransportSession({
 					openStreamResponses: [okBytes],
@@ -719,14 +731,14 @@ Deno.test({
 				const [track, err] = await session.subscribe(
 					"/test/path",
 					"track-name",
-					{ trackPriority: 5 },
+					{ priority: 5, ordered: false, maxLatency: 0, startGroup: 0, endGroup: 0 },
 				);
 				assertExists(track);
 				assertEquals(err, undefined);
 
 				// Verify track config is reflected
 				const config = track.trackConfig;
-				assertEquals(config.trackPriority, 5);
+				assertEquals(config.priority, 5);
 
 				await session.close();
 			},

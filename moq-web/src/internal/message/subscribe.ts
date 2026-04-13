@@ -14,20 +14,32 @@ export interface SubscribeMessageInit {
 	subscribeId?: number;
 	broadcastPath?: string;
 	trackName?: string;
-	trackPriority?: number;
+	subscriberPriority?: number;
+	subscriberOrdered?: number;
+	subscriberMaxLatency?: number;
+	startGroup?: number;
+	endGroup?: number;
 }
 
 export class SubscribeMessage {
 	subscribeId: number;
 	broadcastPath: string;
 	trackName: string;
-	trackPriority: number;
+	subscriberPriority: number;
+	subscriberOrdered: number;
+	subscriberMaxLatency: number;
+	startGroup: number;
+	endGroup: number;
 
 	constructor(init: SubscribeMessageInit = {}) {
 		this.subscribeId = init.subscribeId ?? 0;
 		this.broadcastPath = init.broadcastPath ?? "";
 		this.trackName = init.trackName ?? "";
-		this.trackPriority = init.trackPriority ?? 0;
+		this.subscriberPriority = init.subscriberPriority ?? 0;
+		this.subscriberOrdered = init.subscriberOrdered ?? 0;
+		this.subscriberMaxLatency = init.subscriberMaxLatency ?? 0;
+		this.startGroup = init.startGroup ?? 0;
+		this.endGroup = init.endGroup ?? 0;
 	}
 
 	/**
@@ -38,13 +50,16 @@ export class SubscribeMessage {
 			varintLen(this.subscribeId) +
 			stringLen(this.broadcastPath) +
 			stringLen(this.trackName) +
-			varintLen(this.trackPriority)
+			varintLen(this.subscriberPriority) +
+			varintLen(this.subscriberOrdered) +
+			varintLen(this.subscriberMaxLatency) +
+			varintLen(this.startGroup) +
+			varintLen(this.endGroup)
 		);
 	}
 
 	/**
 	 * Encodes the message to the writer.
-	 * Go-style: encode(w io.Writer) error
 	 */
 	async encode(w: Writer): Promise<Error | undefined> {
 		const msgLen = this.len;
@@ -62,7 +77,19 @@ export class SubscribeMessage {
 		[, err] = await writeString(w, this.trackName);
 		if (err) return err;
 
-		[, err] = await writeVarint(w, this.trackPriority);
+		[, err] = await writeVarint(w, this.subscriberPriority);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.subscriberOrdered);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.subscriberMaxLatency);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.startGroup);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.endGroup);
 		if (err) return err;
 
 		return undefined;
@@ -70,7 +97,6 @@ export class SubscribeMessage {
 
 	/**
 	 * Decodes the message from the reader.
-	 * Go-style: decode(r io.Reader) error
 	 */
 	async decode(r: Reader): Promise<Error | undefined> {
 		let err: Error | undefined;
@@ -88,25 +114,45 @@ export class SubscribeMessage {
 		// Parse fields from the buffer
 		let offset = 0;
 
-		// subscribeId
-		const [subscribeId, n1] = parseVarint(buf, offset);
-		this.subscribeId = subscribeId;
-		offset += n1;
+		[this.subscribeId, offset] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
 
-		// broadcastPath
-		const [broadcastPath, n2] = parseString(buf, offset);
-		this.broadcastPath = broadcastPath;
-		offset += n2;
+		[this.broadcastPath, offset] = (() => {
+			const [val, n] = parseString(buf, offset);
+			return [val, offset + n];
+		})();
 
-		// trackName
-		const [trackName, n3] = parseString(buf, offset);
-		this.trackName = trackName;
-		offset += n3;
+		[this.trackName, offset] = (() => {
+			const [val, n] = parseString(buf, offset);
+			return [val, offset + n];
+		})();
 
-		// trackPriority
-		const [trackPriority, n4] = parseVarint(buf, offset);
-		this.trackPriority = trackPriority;
-		offset += n4;
+		[this.subscriberPriority, offset] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
+
+		[this.subscriberOrdered, offset] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
+
+		[this.subscriberMaxLatency, offset] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
+
+		[this.startGroup, offset] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
+
+		[this.endGroup, offset] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
 
 		return undefined;
 	}

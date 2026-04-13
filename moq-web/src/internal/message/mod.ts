@@ -6,4 +6,5 @@ export * from "./probe.ts";
 export * from "./subscribe.ts";
 export * from "./subscribe_ok.ts";
 export * from "./subscribe_update.ts";
+export * from "./subscribe_drop.ts";
 export * from "./group.ts";

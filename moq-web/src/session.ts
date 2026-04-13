@@ -209,7 +209,11 @@ export class Session {
 			subscribeId: subscribeId,
 			broadcastPath: path,
 			trackName: name,
-			trackPriority: config?.trackPriority ?? 0,
+			subscriberPriority: config?.priority ?? 0,
+			subscriberOrdered: config?.ordered ? 1 : 0,
+			subscriberMaxLatency: config?.maxLatency ?? 0,
+			startGroup: config?.startGroup ? config.startGroup + 1 : 0,
+			endGroup: config?.endGroup ? config.endGroup + 1 : 0,
 		});
 		err = await req.encode(stream.writable);
 		if (err) {
@@ -220,6 +224,18 @@ export class Session {
 		// Add queue for incoming group streams
 		const queue = new Queue<[ReceiveStream, GroupMessage]>();
 		this.#queues.set(subscribeId, queue);
+
+		// Read the type byte for the first response
+		const [msgType, , typeErr] = await readVarint(stream.readable);
+		if (typeErr) {
+			console.error("moq: failed to read SUBSCRIBE response type:", typeErr);
+			return [undefined, typeErr];
+		}
+		if (msgType !== 0x0) {
+			const respErr = new Error(`moq: unexpected first SUBSCRIBE response type: ${msgType}`);
+			console.error(respErr.message);
+			return [undefined, respErr];
+		}
 
 		const rsp = new SubscribeOkMessage({});
 		err = await rsp.decode(stream.readable);
@@ -234,6 +250,9 @@ export class Session {
 			req,
 			rsp,
 		);
+
+		// Start background reading of subscribe responses (Ok updates, Drops)
+		subscribeStream.readSubscribeResponses();
 
 		const track = new TrackReader(
 			path,

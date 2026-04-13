@@ -13,23 +13,29 @@ import {
 export interface AnnounceMessageInit {
 	suffix?: string;
 	active?: boolean;
+	hops?: number;
 }
 
 export class AnnounceMessage {
 	suffix: string;
 	active: boolean;
+	hops: number;
 
 	constructor(init: AnnounceMessageInit = {}) {
 		this.suffix = init.suffix ?? "";
 		this.active = init.active ?? false;
+		this.hops = init.hops ?? 0;
 	}
 
 	/**
 	 * Returns the length of the message body (excluding the length prefix).
 	 */
 	get len(): number {
-		// AnnounceStatus is sent as a varint (not boolean)
-		return varintLen(this.active ? 1 : 0) + stringLen(this.suffix);
+		return (
+			varintLen(this.active ? 1 : 0) +
+			stringLen(this.suffix) +
+			varintLen(this.hops)
+		);
 	}
 
 	/**
@@ -49,6 +55,9 @@ export class AnnounceMessage {
 		[, err] = await writeString(w, this.suffix);
 		if (err) return err;
 
+		[, err] = await writeVarint(w, this.hops);
+		if (err) return err;
+
 		return undefined;
 	}
 
@@ -56,12 +65,15 @@ export class AnnounceMessage {
 	 * Decodes the message from the reader.
 	 */
 	async decode(r: Reader): Promise<Error | undefined> {
-		const [msgLen, , err1] = await readVarint(r);
-		if (err1) return err1;
+		let err: Error | undefined;
+
+		let msgLen: number;
+		[msgLen, , err] = await readVarint(r);
+		if (err) return err;
 
 		const buf = new Uint8Array(msgLen);
-		const [, err2] = await readFull(r, buf);
-		if (err2) return err2;
+		[, err] = await readFull(r, buf);
+		if (err) return err;
 
 		let offset = 0;
 
@@ -70,7 +82,15 @@ export class AnnounceMessage {
 		this.active = status === 1;
 		offset += n1;
 
-		[this.suffix] = parseString(buf, offset);
+		[this.suffix, offset] = (() => {
+			const [val, n] = parseString(buf, offset);
+			return [val, offset + n];
+		})();
+
+		[this.hops] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
 
 		return undefined;
 	}

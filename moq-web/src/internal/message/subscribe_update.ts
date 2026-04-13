@@ -1,15 +1,33 @@
 import type { Reader, Writer } from "@okdaichi/golikejs/io";
-import { parseVarint, readFull, readVarint, varintLen, writeVarint } from "./message.ts";
+import {
+	parseVarint,
+	readFull,
+	readVarint,
+	varintLen,
+	writeVarint,
+} from "./message.ts";
 
 export interface SubscribeUpdateMessageInit {
-	trackPriority?: number;
+	subscriberPriority?: number;
+	subscriberOrdered?: number;
+	subscriberMaxLatency?: number;
+	startGroup?: number;
+	endGroup?: number;
 }
 
 export class SubscribeUpdateMessage {
-	trackPriority: number;
+	subscriberPriority: number;
+	subscriberOrdered: number;
+	subscriberMaxLatency: number;
+	startGroup: number;
+	endGroup: number;
 
 	constructor(init: SubscribeUpdateMessageInit = {}) {
-		this.trackPriority = init.trackPriority ?? 0;
+		this.subscriberPriority = init.subscriberPriority ?? 0;
+		this.subscriberOrdered = init.subscriberOrdered ?? 0;
+		this.subscriberMaxLatency = init.subscriberMaxLatency ?? 0;
+		this.startGroup = init.startGroup ?? 0;
+		this.endGroup = init.endGroup ?? 0;
 	}
 
 	/**
@@ -17,7 +35,11 @@ export class SubscribeUpdateMessage {
 	 */
 	get len(): number {
 		return (
-			varintLen(this.trackPriority)
+			varintLen(this.subscriberPriority) +
+			varintLen(this.subscriberOrdered) +
+			varintLen(this.subscriberMaxLatency) +
+			varintLen(this.startGroup) +
+			varintLen(this.endGroup)
 		);
 	}
 
@@ -31,7 +53,19 @@ export class SubscribeUpdateMessage {
 		[, err] = await writeVarint(w, msgLen);
 		if (err) return err;
 
-		[, err] = await writeVarint(w, this.trackPriority);
+		[, err] = await writeVarint(w, this.subscriberPriority);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.subscriberOrdered);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.subscriberMaxLatency);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.startGroup);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.endGroup);
 		if (err) return err;
 
 		return undefined;
@@ -41,16 +75,39 @@ export class SubscribeUpdateMessage {
 	 * Decodes the message from the reader.
 	 */
 	async decode(r: Reader): Promise<Error | undefined> {
-		const [msgLen, , err1] = await readVarint(r);
-		if (err1) return err1;
+		let err: Error | undefined;
+
+		let msgLen: number;
+		[msgLen, , err] = await readVarint(r);
+		if (err) return err;
 
 		const buf = new Uint8Array(msgLen);
-		const [, err2] = await readFull(r, buf);
-		if (err2) return err2;
+		[, err] = await readFull(r, buf);
+		if (err) return err;
 
 		let offset = 0;
 
-		[this.trackPriority, offset] = (() => {
+		[this.subscriberPriority, offset] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
+
+		[this.subscriberOrdered, offset] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
+
+		[this.subscriberMaxLatency, offset] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
+
+		[this.startGroup, offset] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
+
+		[this.endGroup, offset] = (() => {
 			const [val, n] = parseVarint(buf, offset);
 			return [val, offset + n];
 		})();
