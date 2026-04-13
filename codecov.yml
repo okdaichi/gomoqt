@@ -1,0 +1,21 @@
+ignore:
+  # Pure delegation wrappers over quic-go and webtransport-go types.
+  # These files contain zero logic (every function is a one-line delegate),
+  # so measuring their coverage adds no signal.
+  - "moqt/internal/quicgo/connection_wrapper.go"
+  - "moqt/internal/quicgo/listener_wrapper.go"
+  - "moqt/internal/quicgo/stream_wrapper.go"
+  - "moqt/internal/quicgo/dialer.go"
+  - "moqt/internal/webtransportgo/session_wrapper.go"
+  - "moqt/internal/webtransportgo/stream_wrapper.go"
+
+coverage:
+  status:
+    project:
+      default:
+        target: 75%
+        threshold: 2%
+    patch:
+      default:
+        target: 70%
+        threshold: 5%
