@@ -165,7 +165,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				subscribeId: 1,
 				broadcastPath: "path",
 				trackName: "track",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -190,7 +190,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				subscribeId: 1,
 				broadcastPath: "path",
 				trackName: "track",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -215,7 +215,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				subscribeId: 1,
 				broadcastPath: "path",
 				trackName: "track",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -240,7 +240,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				subscribeId: 1,
 				broadcastPath: "path",
 				trackName: "track",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -248,7 +248,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 	);
 
 	await t.step(
-		"encode should return error when writeVarint fails for trackPriority",
+		"encode should return error when writeVarint fails for subscriberPriority",
 		async () => {
 			let callCount = 0;
 			const mockWriter: Writer = {
@@ -265,7 +265,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				subscribeId: 1,
 				broadcastPath: "path",
 				trackName: "track",
-				trackPriority: 1,
+				subscriberPriority: 1,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
