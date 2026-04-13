@@ -290,8 +290,8 @@ func (w *TrackWriter) openGroupWithSequence(seq GroupSequence) (*GroupWriter, er
 		return nil, Cause(w.Context())
 	}
 
-	// Write the INFO message to the receive subscribe stream.
-	err := w.WriteInfo(PublishInfo{
+	// Ensure the first SUBSCRIBE_OK has been sent before opening a group.
+	err := w.subscribeStream.ensureInfo(PublishInfo{
 		StartGroup: seq,
 	})
 	if err != nil {

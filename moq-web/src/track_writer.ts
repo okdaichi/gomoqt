@@ -94,7 +94,7 @@ export class TrackWriter {
 		seq: number,
 	): Promise<[GroupWriter, undefined] | [undefined, Error]> {
 		let err: Error | undefined;
-		err = await this.#subscribeStream.writeInfo();
+		err = await this.#subscribeStream.ensureInfo();
 		if (err) {
 			return [undefined, err];
 		}

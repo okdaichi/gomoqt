@@ -64,6 +64,22 @@ func (substr *receiveSubscribeStream) SubscribeID() SubscribeID {
 	return substr.subscribeID
 }
 
+func (substr *receiveSubscribeStream) ensureInfo(info PublishInfo) error {
+	substr.mu.Lock()
+	if substr.responseStarted {
+		substr.mu.Unlock()
+		return nil
+	}
+	err := substr.writeInfoLocked(info)
+	substr.mu.Unlock()
+
+	if err != nil {
+		_ = substr.closeWithError(SubscribeErrorCodeInternal)
+	}
+
+	return err
+}
+
 func (substr *receiveSubscribeStream) writeInfo(info PublishInfo) error {
 	substr.mu.Lock()
 	err := substr.writeInfoLocked(info)

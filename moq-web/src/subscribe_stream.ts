@@ -170,8 +170,8 @@ export class ReceiveSubscribeStream {
 	#mu: Mutex = new Mutex();
 	#cond: Cond = new Cond(this.#mu);
 	#stream: Stream;
-	#infoOnce: Once = new Once();
 	#responseStarted: boolean = false;
+	#ensureInfoOnce: Once = new Once();
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
 
@@ -228,41 +228,43 @@ export class ReceiveSubscribeStream {
 	}
 
 	async writeInfo(info?: Info): Promise<Error | undefined> {
-		return await this.#infoOnce.do(async () => {
-			let err = this.context.err();
-			if (err !== undefined) {
-				return err;
-			}
+		const err = this.context.err();
+		if (err !== undefined) {
+			return err;
+		}
 
-			const i = info ?? { priority: 0, ordered: false, maxLatency: 0, startGroup: 0, endGroup: 0 };
-			// Write type byte for SUBSCRIBE_OK
-			[, err] = await writeVarint(this.#stream.writable, MESSAGE_TYPE_SUBSCRIBE_OK);
-			if (err) {
-				return new Error(`moq: failed to write SUBSCRIBE_OK type: ${err}`);
-			}
+		const i = info ?? { priority: 0, ordered: false, maxLatency: 0, startGroup: 0, endGroup: 0 };
+		// Write type byte for SUBSCRIBE_OK
+		let [, writeErr] = await writeVarint(this.#stream.writable, MESSAGE_TYPE_SUBSCRIBE_OK);
+		if (writeErr) {
+			return new Error(`moq: failed to write SUBSCRIBE_OK type: ${writeErr}`);
+		}
 
-			const msg = new SubscribeOkMessage({
-				publisherPriority: i.priority,
-				publisherOrdered: i.ordered ? 1 : 0,
-				publisherMaxLatency: i.maxLatency,
-				startGroup: groupSequenceToWire(i.startGroup),
-				endGroup: groupSequenceToWire(i.endGroup),
-			});
-
-			err = await msg.encode(this.#stream.writable);
-			if (err) {
-				return new Error(`moq: failed to encode SUBSCRIBE_OK message: ${err}`);
-			}
-
-			this.#responseStarted = true;
-
-			return undefined;
+		const msg = new SubscribeOkMessage({
+			publisherPriority: i.priority,
+			publisherOrdered: i.ordered ? 1 : 0,
+			publisherMaxLatency: i.maxLatency,
+			startGroup: groupSequenceToWire(i.startGroup),
+			endGroup: groupSequenceToWire(i.endGroup),
 		});
+
+		const encErr = await msg.encode(this.#stream.writable);
+		if (encErr) {
+			return new Error(`moq: failed to encode SUBSCRIBE_OK message: ${encErr}`);
+		}
+
+		this.#responseStarted = true;
+
+		return undefined;
+	}
+
+	async ensureInfo(info?: Info): Promise<Error | undefined> {
+		return await this.#ensureInfoOnce.do(() => this.writeInfo(info));
 	}
 
 	async writeDrop(drop: SubscribeDrop): Promise<Error | undefined> {
 		if (!this.#responseStarted) {
-			const err = await this.writeInfo();
+			const err = await this.ensureInfo();
 			if (err) {
 				return err;
 			}
