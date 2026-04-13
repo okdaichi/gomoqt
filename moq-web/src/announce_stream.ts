@@ -10,7 +10,6 @@ import { validateBroadcastPath } from "./broadcast_path.ts";
 import type { BroadcastPath } from "./broadcast_path.ts";
 import { WebTransportStreamError } from "./internal/webtransport/error.ts";
 import { Queue } from "./internal/queue.ts";
-import { AnnounceInitMessage } from "./internal/message/announce_init.ts";
 import { AnnounceError, AnnounceErrorCode } from "./error.ts";
 import { Stream } from "./internal/webtransport/stream.ts";
 
@@ -90,12 +89,13 @@ export class AnnouncementWriter {
 			}
 		}
 
-		const msg = new AnnounceInitMessage({
-			suffixes: Array.from(this.#announcements.keys()),
-		});
-		const err = await msg.encode(this.#stream.writable);
-		if (err) {
-			return err;
+		// Send ACTIVE AnnounceMessage for each initial announcement
+		for (const [sfx, announcement] of this.#announcements.entries()) {
+			const msg = new AnnounceMessage({ suffix: sfx, active: true, hops: announcement.hops + 1 });
+			const err = await msg.encode(this.#stream.writable);
+			if (err) {
+				return err;
+			}
 		}
 
 		// Resolve the initialization promise
@@ -211,7 +211,6 @@ export class AnnouncementReader {
 		sessCtx: Context,
 		stream: Stream,
 		announcePlease: AnnouncePleaseMessage,
-		aim: AnnounceInitMessage,
 	) {
 		this.#stream = stream;
 		const prefix = announcePlease.prefix;
@@ -220,14 +219,6 @@ export class AnnouncementReader {
 		}
 		this.prefix = prefix;
 		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
-
-		// Set initial announcements
-		for (const suffix of aim.suffixes) {
-			const path = validateBroadcastPath(prefix + suffix);
-			const announcement = new Announcement(path, this.context.done());
-			this.#announcements.set(suffix, announcement);
-			this.#queue.enqueue(announcement);
-		}
 
 		// Start reading messages from the stream
 		this.#readNext();
@@ -307,6 +298,7 @@ export class AnnouncementReader {
 				const announcement = new Announcement(
 					validateBroadcastPath(fullPath),
 					this.context.done(),
+					msg.hops,
 				);
 				this.#announcements.set(msg.suffix, announcement);
 				this.#queue.enqueue(announcement);
@@ -364,12 +356,14 @@ export class AnnouncementReader {
 
 export class Announcement {
 	readonly broadcastPath: BroadcastPath;
+	readonly hops: number;
 	#done: Promise<void>;
 	#signalFunc: () => void;
 	#active: boolean = true;
 
-	constructor(path: string, signal: Promise<void>) {
+	constructor(path: string, signal: Promise<void>, hops: number = 0) {
 		this.broadcastPath = validateBroadcastPath(path);
+		this.hops = hops;
 
 		let resolveFunc: () => void;
 		this.#done = new Promise<void>((resolve) => {

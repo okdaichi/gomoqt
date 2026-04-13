@@ -3,7 +3,6 @@ import { spy } from "@std/testing/mock";
 import { Announcement, AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
 import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import {
-	AnnounceInitMessage,
 	AnnounceMessage,
 	AnnouncePleaseMessage,
 } from "./internal/message/mod.ts";
@@ -209,17 +208,22 @@ Deno.test("AnnouncementWriter", async (t) => {
 });
 
 Deno.test("AnnouncementReader", async (t) => {
-	await t.step("initial announcements enqueued", async () => {
+	await t.step("receives announcements from stream", async () => {
 		const [ctx, cancel] = withCancelCause(background());
-		const mockStream = new MockStream({});
+		const buf = Buffer.make(256);
+		const am = new AnnounceMessage({ suffix: "a", active: true });
+		await am.encode(buf);
+		const mockStream = new MockStream({
+			readable: new MockReceiveStream({ read: (p) => buf.read(p) }),
+		});
 		const req = new AnnouncePleaseMessage({ prefix: "/x/" });
-		const aim = new AnnounceInitMessage({ suffixes: ["a", "b"] });
-		const reader = new AnnouncementReader(ctx, mockStream, req, aim);
+		const reader = new AnnouncementReader(ctx, mockStream, req);
 		const [ann, err] = await reader.receive(Promise.resolve());
 		assertEquals(err, undefined);
 		assertExists(ann);
 		if (ann) {
 			assertEquals(ann.isActive(), true);
+			assertEquals(ann.broadcastPath, "/x/a");
 		}
 		cancel(new Error("test cleanup"));
 	});
@@ -228,11 +232,12 @@ Deno.test("AnnouncementReader", async (t) => {
 		"handles duplicate ANNOUNCE messages by closing with error",
 		async () => {
 			const [ctx, cancel] = withCancelCause(background());
-			const aim = new AnnounceInitMessage({ suffixes: ["a"] });
-			// Encode ANNOUNCE message for same suffix 'a'
-			const buf = Buffer.make(128);
-			const am = new AnnounceMessage({ suffix: "a", active: true });
-			await am.encode(buf);
+			// Encode two ANNOUNCE messages for same suffix 'a' (both active)
+			const buf = Buffer.make(256);
+			const am1 = new AnnounceMessage({ suffix: "a", active: true });
+			await am1.encode(buf);
+			const am2 = new AnnounceMessage({ suffix: "a", active: true });
+			await am2.encode(buf);
 			// Create mock stream with the data
 			const writableCancel = spy(async (_code: number) => {});
 			const mockStream = new MockStream({
@@ -240,7 +245,7 @@ Deno.test("AnnouncementReader", async (t) => {
 				readable: new MockReceiveStream({ read: (p) => buf.read(p) }),
 			});
 			const req = new AnnouncePleaseMessage({ prefix: "/" });
-			new AnnouncementReader(ctx, mockStream, req, aim);
+			new AnnouncementReader(ctx, mockStream, req);
 			await new Promise((r) => setTimeout(r, 10));
 			assertEquals(writableCancel.calls.length >= 0, true);
 			cancel(new Error("test cleanup"));
@@ -268,10 +273,9 @@ Deno.test("AnnouncementReader", async (t) => {
 			});
 
 			const apm = new AnnouncePleaseMessage({ prefix: "/" });
-			const aim = new AnnounceInitMessage({ suffixes: [] });
 
 			const [ctx, cancel] = withCancelCause(background());
-			new AnnouncementReader(ctx, mockStream, apm, aim);
+			new AnnouncementReader(ctx, mockStream, apm);
 			await new Promise((r) => setTimeout(r, 50));
 			assertEquals(writableCancel.calls.length > 0, true);
 			assertEquals(readableCancel.calls.length > 0, true);
@@ -284,8 +288,7 @@ Deno.test("AnnouncementReader", async (t) => {
 		const mockStream = new MockStream({});
 
 		const apm = new AnnouncePleaseMessage({ prefix: "/test/" });
-		const aim = new AnnounceInitMessage({ suffixes: [] });
-		const ar = new AnnouncementReader(ctx, mockStream, apm, aim);
+		const ar = new AnnouncementReader(ctx, mockStream, apm);
 		await ar.close();
 
 		const [ann, err] = await ar.receive(new Promise(() => {}));
@@ -304,8 +307,7 @@ Deno.test("AnnouncementReader", async (t) => {
 				writable: new MockSendStream({ close: closeSpy }),
 			});
 			const req = new AnnouncePleaseMessage({ prefix: "/x/" });
-			const aim = new AnnounceInitMessage({ suffixes: [] });
-			const reader = new AnnouncementReader(ctx, mockStream, req, aim);
+			const reader = new AnnouncementReader(ctx, mockStream, req);
 			await reader.close();
 			assertEquals(closeSpy.calls.length, 0);
 		},
@@ -325,8 +327,7 @@ Deno.test("AnnouncementReader", async (t) => {
 				}),
 			});
 			const req = new AnnouncePleaseMessage({ prefix: "/x/" });
-			const aim = new AnnounceInitMessage({ suffixes: [] });
-			const reader = new AnnouncementReader(ctx, mockStream, req, aim);
+			const reader = new AnnouncementReader(ctx, mockStream, req);
 			await reader.closeWithError(1);
 			assertEquals(writableCancel.calls.length, 0);
 			assertEquals(readableCancel.calls.length, 0);
@@ -348,10 +349,9 @@ Deno.test("AnnouncementReader", async (t) => {
 			});
 
 			const apm = new AnnouncePleaseMessage({ prefix: "/" });
-			const aim = new AnnounceInitMessage({ suffixes: [] }); // Start empty
 
 			const [ctx, cancel] = withCancelCause(background());
-			const ar = new AnnouncementReader(ctx, mockStream, apm, aim);
+			const ar = new AnnouncementReader(ctx, mockStream, apm);
 			await new Promise((r) => setTimeout(r, 30));
 
 			// Should have enqueued one announcement
@@ -367,6 +367,9 @@ Deno.test("AnnouncementReader", async (t) => {
 		"handles ANNOUNCE message with active false ending existing announcement",
 		async () => {
 			const buf = Buffer.make(256);
+			// First send active=true, then active=false for the same suffix
+			const activeMsg = new AnnounceMessage({ suffix: "a", active: true });
+			await activeMsg.encode(buf);
 			const activeFalseMsg = new AnnounceMessage({
 				suffix: "a",
 				active: false,
@@ -378,12 +381,11 @@ Deno.test("AnnouncementReader", async (t) => {
 			});
 
 			const apm = new AnnouncePleaseMessage({ prefix: "/" });
-			const aim = new AnnounceInitMessage({ suffixes: ["a"] }); // Start with 'a' active
 
 			const [ctx, cancel] = withCancelCause(background());
-			const ar = new AnnouncementReader(ctx, mockStream, apm, aim);
+			const ar = new AnnouncementReader(ctx, mockStream, apm);
 
-			// First receive the initial announcement
+			// First receive the announcement from the stream
 			const [ann1, err1] = await ar.receive(Promise.resolve());
 			assertEquals(err1, undefined);
 			assertExists(ann1);

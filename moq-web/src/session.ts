@@ -1,6 +1,6 @@
 import {
-	AnnounceInitMessage,
 	AnnouncePleaseMessage,
+	FetchMessage,
 	GroupMessage,
 	ProbeMessage,
 	readVarint,
@@ -25,13 +25,22 @@ import type { TrackConfig } from "./subscribe_stream.ts";
 import { type BroadcastPath, validateBroadcastPath } from "./broadcast_path.ts";
 import { TrackReader } from "./track_reader.ts";
 import { TrackWriter } from "./track_writer.ts";
+import { GroupReader, GroupWriter } from "./group_stream.ts";
 import type { TrackMux } from "./track_mux.ts";
 import { DefaultTrackMux } from "./track_mux.ts";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 import { Queue } from "./internal/queue.ts";
 import type { SubscribeID, TrackName } from "./alias.ts";
+import { FetchRequest } from "./fetch.ts";
+import type { FetchHandler } from "./fetch.ts";
+import { FetchErrorCode, GroupErrorCode, SessionErrorCode } from "./error.ts";
 
 const PROBE_STREAM_ERROR_CODE = 0x1;
+
+function cancelStreamWithError(stream: Stream, code: number): void {
+	stream.readable.cancel(code).catch(() => {});
+	stream.writable.cancel(code).catch(() => {});
+}
 
 type ProbeStatsCapable = {
 	getStats?: () => Promise<{ estimatedSendRate: number | null }>;
@@ -41,6 +50,8 @@ export interface SessionInit {
 	transport: StreamConn;
 
 	mux?: TrackMux;
+
+	fetchHandler?: FetchHandler;
 }
 
 export class Session {
@@ -53,6 +64,7 @@ export class Session {
 	#subscribeIDCounter: number = 0;
 
 	readonly mux: TrackMux;
+	#fetchHandler?: FetchHandler;
 
 	#queues: Map<
 		SubscribeID,
@@ -62,6 +74,7 @@ export class Session {
 	constructor(options: SessionInit) {
 		this.#webtransport = options.transport;
 		this.mux = options.mux ?? DefaultTrackMux;
+		this.#fetchHandler = options.fetchHandler;
 		const [ctx, cancel] = withCancelCause(background());
 		this.#ctx = ctx;
 		this.#cancelFunc = cancel;
@@ -161,17 +174,7 @@ export class Session {
 
 		// debug log removed
 
-		// Receive AnnounceInitMessage
-		const rsp = new AnnounceInitMessage({});
-		err = await rsp.decode(stream.readable);
-		if (err) {
-			console.error("moq: failed to receive ANNOUNCE_INIT message:", err);
-			return [undefined, err];
-		}
-
-		// debug log removed
-
-		return [new AnnouncementReader(this.#ctx, stream, req, rsp), undefined];
+		return [new AnnouncementReader(this.#ctx, stream, req), undefined];
 	}
 
 	async subscribe(
@@ -268,6 +271,48 @@ export class Session {
 		return [track, undefined];
 	}
 
+	async fetch(
+		req: FetchRequest,
+	): Promise<[GroupReader, undefined] | [undefined, Error]> {
+		const [stream, openErr] = await this.#webtransport.openStream();
+		if (openErr) {
+			console.error("moq: failed to open fetch stream:", openErr);
+			return [undefined, openErr];
+		}
+
+		// Send STREAM_TYPE
+		let [, err] = await writeVarint(
+			stream.writable,
+			BiStreamTypes.FetchStreamType,
+		);
+		if (err) {
+			console.error("moq: failed to write fetch stream type:", err);
+			return [undefined, err];
+		}
+
+		// Send FETCH message
+		const msg = new FetchMessage({
+			broadcastPath: req.broadcastPath,
+			trackName: req.trackName,
+			priority: req.priority,
+			groupSequence: req.groupSequence,
+		});
+		err = await msg.encode(stream.writable);
+		if (err) {
+			console.error("moq: failed to encode FETCH message:", err);
+			return [undefined, err];
+		}
+
+		const group = new GroupReader(this.#ctx, stream.readable, new GroupMessage({ sequence: req.groupSequence }));
+
+		// Cancel the group when the request is done
+		req.done().then(() => {
+			group.cancel(GroupErrorCode.ExpiredGroup);
+		}).catch(() => {});
+
+		return [group, undefined];
+	}
+
 	async #handleGroupStream(reader: ReceiveStream): Promise<void> {
 		const req = new GroupMessage({});
 		const err = await req.decode(reader);
@@ -332,8 +377,7 @@ export class Session {
 	async #handleProbeStream(stream: Stream): Promise<void> {
 		const quic = this.#webtransport as unknown as ProbeStatsCapable;
 		if (!quic.getStats) {
-			await stream.readable.cancel(PROBE_STREAM_ERROR_CODE).catch(() => {});
-			await stream.writable.cancel(PROBE_STREAM_ERROR_CODE).catch(() => {});
+			cancelStreamWithError(stream, PROBE_STREAM_ERROR_CODE);
 			return;
 		}
 
@@ -362,8 +406,44 @@ export class Session {
 			}
 		} catch (err) {
 			console.warn(`moq: probe stream error: ${err}`);
-			await stream.readable.cancel(PROBE_STREAM_ERROR_CODE).catch(() => {});
-			await stream.writable.cancel(PROBE_STREAM_ERROR_CODE).catch(() => {});
+			cancelStreamWithError(stream, PROBE_STREAM_ERROR_CODE);
+		}
+	}
+
+	async #handleFetchStream(stream: Stream): Promise<void> {
+		const handler = this.#fetchHandler;
+		if (!handler) {
+			cancelStreamWithError(stream, FetchErrorCode.InternalError);
+			return;
+		}
+
+		const fm = new FetchMessage({});
+		const err = await fm.decode(stream.readable);
+		if (err) {
+			console.error("Failed to decode FetchMessage:", err);
+			cancelStreamWithError(stream, FetchErrorCode.InternalError);
+			return;
+		}
+
+		const [fetchCtx, cancelFetch] = withCancelCause(this.#ctx);
+
+		const req = new FetchRequest({
+			broadcastPath: validateBroadcastPath(fm.broadcastPath),
+			trackName: fm.trackName,
+			priority: fm.priority,
+			groupSequence: fm.groupSequence,
+			done: fetchCtx.done(),
+		});
+
+		const group = new GroupWriter(fetchCtx, stream.writable, new GroupMessage({ sequence: fm.groupSequence }));
+
+		try {
+			await handler.serveFetch(group, req);
+		} catch (e) {
+			console.error("moq: fetch handler error:", e);
+			await group.cancel(FetchErrorCode.InternalError).catch(() => {});
+		} finally {
+			cancelFetch(undefined);
 		}
 	}
 
@@ -398,12 +478,15 @@ export class Session {
 					case BiStreamTypes.AnnounceStreamType:
 						pendingHandles.push(this.#handleAnnounceStream(stream));
 						break;
+					case BiStreamTypes.FetchStreamType:
+						pendingHandles.push(this.#handleFetchStream(stream));
+						break;
 					case BiStreamTypes.ProbeStreamType:
 						pendingHandles.push(this.#handleProbeStream(stream));
 						break;
 					default:
-						console.warn(`Unknown bidirectional stream type: ${num}`);
-						break; // Ignore unknown stream types
+						cancelStreamWithError(stream, SessionErrorCode.InternalError);
+						break;
 				}
 			}
 		} catch (error) {
@@ -451,8 +534,9 @@ export class Session {
 						pendingHandles.push(this.#handleGroupStream(stream));
 						break;
 					default:
-						console.warn(`Unknown unidirectional stream type: ${num}`);
-						break; // Ignore unknown stream types
+						// Unknown stream types are stream-local and non-fatal for extension probing.
+						stream.cancel(SessionErrorCode.InternalError).catch(() => {});
+						break;
 				}
 			}
 		} catch (error) {

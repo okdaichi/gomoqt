@@ -2,7 +2,6 @@ import { assertEquals, assertExists, assertInstanceOf } from "@std/assert";
 import { spy } from "@std/testing/mock";
 import { Session } from "./session.ts";
 import {
-	AnnounceInitMessage,
 	AnnouncePleaseMessage,
 	GroupMessage,
 	ProbeMessage,
@@ -317,27 +316,6 @@ Deno.test({
 		);
 
 		await t.step(
-			"acceptAnnounce returns error when ANNOUNCE_INIT decode fails",
-			async () => {
-				const truncatedBytes = new Uint8Array([0x80]);
-
-				const mock = new MockWebTransportSession({
-					openStreamResponses: [truncatedBytes],
-				});
-
-				const session = new Session({ transport: mock });
-				await session.ready;
-
-				const [reader, err] = await session.acceptAnnounce(
-					"/test/" as TrackPrefix,
-				);
-				assertEquals(reader, undefined);
-				assertExists(err);
-				await session.close();
-			},
-		);
-
-		await t.step(
 			"subscribe returns error when SUBSCRIBE_OK decode fails",
 			async () => {
 				const truncatedBytes = new Uint8Array([0x80]);
@@ -456,11 +434,8 @@ Deno.test({
 		);
 
 		await t.step("acceptAnnounce succeeds with valid messages", async () => {
-			const init = new AnnounceInitMessage({ suffixes: ["suffix"] });
-			const initBytes = await encodeMessageToUint8Array(async (w) => init.encode(w));
-
 			const mock = new MockWebTransportSession({
-				openStreamResponses: [initBytes],
+				openStreamResponses: [new Uint8Array(0)],
 			});
 
 			const session = new Session({ transport: mock });
