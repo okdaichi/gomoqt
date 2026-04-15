@@ -245,8 +245,8 @@ Deno.test("Client - dial() rejects after abort", async () => {
 	);
 });
 
-Deno.test("Client - ALPN constant is moq-lite-03", () => {
-	assertEquals(ALPN, "moq-lite-03");
+Deno.test("Client - ALPN constant is moq-lite-04", () => {
+	assertEquals(ALPN, "moq-lite-04");
 });
 
 // Restore original WebTransport after all tests

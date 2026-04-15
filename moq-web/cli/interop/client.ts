@@ -7,7 +7,19 @@ export async function runClient(
 	transportOptions: WebTransportOptions,
 	debugEnabled: boolean,
 ): Promise<void> {
-	const client = new Client({ transportOptions });
+	// GOAWAY handling
+	let goawayResolve: ((uri: string) => void) | undefined;
+	const goawayPromise = new Promise<string>((resolve) => {
+		goawayResolve = resolve;
+	});
+
+	const client = new Client({
+		transportOptions,
+		onGoaway: (newSessionURI: string) => {
+			console.log(`Received GOAWAY (newSessionURI: ${newSessionURI})`);
+			if (goawayResolve) goawayResolve(newSessionURI);
+		},
+	});
 	const mux = new TrackMux();
 
 	// basic prefixed log functions
@@ -145,7 +157,16 @@ export async function runClient(
 		]);
 	}
 
-	await new Promise((resolve) => setTimeout(resolve, 2000));
+	// Wait for GOAWAY from server
+	await step("Waiting for GOAWAY", async () => {
+		const uri = await Promise.race([
+			goawayPromise,
+			new Promise<string>((_, reject) =>
+				setTimeout(() => reject(new Error("timed out")), 10000)
+			),
+		]);
+		info(`newSessionURI: ${uri}`);
+	});
 
 	await step("Closing session", () => session.closeWithError(0, "no error"));
 }

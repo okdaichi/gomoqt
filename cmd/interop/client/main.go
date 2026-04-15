@@ -13,10 +13,20 @@ import (
 func main() {
 	addr := flag.String("addr", "https://localhost:9000", "server URL for MOQ (https://host:port for WebTransport, moqt://host:port for native QUIC)")
 	flag.Parse()
+
+	goawayCh := make(chan string, 1)
+
 	client := &moqt.Dialer{
 		TLSConfig: &tls.Config{InsecureSkipVerify: true}, // interop uses local self-signed certs
 		Config: &moqt.Config{
 			SetupTimeout: 10 * time.Second,
+		},
+		OnGoaway: func(newSessionURI string) {
+			fmt.Printf("Received GOAWAY (newSessionURI: %s)\n", newSessionURI)
+			select {
+			case goawayCh <- newSessionURI:
+			default:
+			}
 		},
 	}
 
@@ -161,10 +171,12 @@ func main() {
 		fmt.Println("publish handler did not complete in time")
 	}
 
+	// Wait for GOAWAY from server
+	fmt.Print("Waiting for GOAWAY...")
 	select {
-	case <-sess.Context().Done():
-		// fmt.Println("server closed session:", sess.Context().Err())
-	case <-time.After(1 * time.Second):
-		// Close after a short wait
+	case uri := <-goawayCh:
+		fmt.Printf("ok (newSessionURI: %s)\n", uri)
+	case <-time.After(10 * time.Second):
+		fmt.Println("failed (timed out)")
 	}
 }

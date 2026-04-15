@@ -4,4 +4,6 @@ export interface MOQOptions {
 	reconnect?: boolean;
 	/** Low-level WebTransport options forwarded to the `WebTransport` constructor. */
 	transportOptions?: WebTransportOptions;
+	/** Called when the server requests session migration via GOAWAY. */
+	onGoaway?: (newSessionURI: string) => void;
 }

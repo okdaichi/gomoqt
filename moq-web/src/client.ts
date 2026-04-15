@@ -3,8 +3,8 @@ import type { MOQOptions } from "./options.ts";
 import { DefaultTrackMux, TrackMux } from "./track_mux.ts";
 import { WebTransportSession } from "./internal/webtransport/mod.ts";
 
-/** ALPN protocol identifier for MOQ Lite draft-03. */
-export const ALPN = "moq-lite-03";
+/** ALPN protocol identifier for MOQ Lite draft-04. */
+export const ALPN = "moq-lite-04";
 
 const DefaultWebTransportOptions: WebTransportOptions = {
 	allowPooling: false,
@@ -72,6 +72,7 @@ export class Client {
 			const session = new Session({
 				transport: webtransport,
 				mux,
+				onGoaway: this.options.onGoaway,
 			});
 			await session.ready;
 			this.#sessions.add(session);
