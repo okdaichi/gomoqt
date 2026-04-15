@@ -1,4 +1,4 @@
-import { Client, FetchRequest, Frame, TrackMux, TrackWriter } from "@okdaichi/moq";
+import { connect, FetchRequest, Frame, TrackMux, TrackWriter } from "@okdaichi/moq";
 import { background } from "@okdaichi/golikejs/context";
 
 // shared client logic exported as function
@@ -12,15 +12,6 @@ export async function runClient(
 	const goawayPromise = new Promise<string>((resolve) => {
 		goawayResolve = resolve;
 	});
-
-	const client = new Client({
-		transportOptions,
-		onGoaway: (newSessionURI: string) => {
-			console.log(`Received GOAWAY (newSessionURI: ${newSessionURI})`);
-			if (goawayResolve) goawayResolve(newSessionURI);
-		},
-	});
-	const mux = new TrackMux();
 
 	// basic prefixed log functions
 	function info(msg: string, ...args: any[]) {
@@ -56,6 +47,8 @@ export async function runClient(
 	const doneCh: Array<() => void> = [];
 	let done = false;
 
+	const mux = new TrackMux();
+
 	mux.publishFunc(
 		background().done(),
 		"/interop/client",
@@ -82,7 +75,16 @@ export async function runClient(
 
 	debug("Registering /interop/client handler");
 
-	const session = await step("Connecting to server", () => client.dial(addr, mux));
+	const session = await step("Connecting to server", () =>
+		connect(addr, {
+			mux,
+			transportOptions,
+			onGoaway: (newSessionURI: string) => {
+				console.log(`Received GOAWAY (newSessionURI: ${newSessionURI})`);
+				if (goawayResolve) goawayResolve(newSessionURI);
+			},
+		})
+	);
 
 	const announced = await step("Accepting server announcements", async () => {
 		const [a, err] = await session.acceptAnnounce("/");
