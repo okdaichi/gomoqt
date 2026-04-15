@@ -76,15 +76,9 @@ type Server struct {
 	// Logger for server events and errors. Optional; if nil, logging is disabled.
 	Logger *slog.Logger
 
-	// ShutdownURI is sent as the NewSessionURI in the GOAWAY message during
-	// Shutdown. Clients can use this URI to reconnect to a different server.
-	// If empty, no redirect URI is provided.
-	ShutdownURI string
-
-	// OnGoaway is called when the server receives a GOAWAY message from a peer
-	// (e.g. when acting as a relay). The newSessionURI parameter contains the
-	// redirect URI from the GOAWAY message, which may be empty.
-	OnGoaway func(newSessionURI string)
+	// NextSessionURI is the URI sent to clients during Shutdown, allowing them
+	// to reconnect to a different server. If empty, no redirect URI is provided.
+	NextSessionURI string
 
 	ConnContext func(ctx context.Context, conn StreamConn) context.Context
 
@@ -250,10 +244,6 @@ type WebTransportHandler struct {
 	// Optional; when nil, behavior is determined by the server’s default request handling.
 	FallbackHandler http.Handler
 
-	// OnGoaway is called when a GOAWAY message is received from the peer.
-	// The newSessionURI parameter contains the redirect URI, which may be empty.
-	OnGoaway func(newSessionURI string)
-
 	// Logger for WebTransport events and errors. Optional; if nil, logging is disabled.
 	Logger *slog.Logger
 }
@@ -292,7 +282,7 @@ func (u *WebTransportHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		manager = v.(*connManager)
 	}
 
-	sess := newSession(conn, u.TrackMux, manager, u.FetchHandler, u.OnGoaway, u.Logger)
+	sess := newSession(conn, u.TrackMux, manager, u.FetchHandler, nil, u.Logger)
 
 	u.Handler.ServeMOQ(sess)
 }
@@ -317,7 +307,7 @@ func (f HandleFunc) ServeMOQ(sess *Session) {
 
 func (s *Server) handleNativeQUIC(conn StreamConn) error {
 	if s.Handler != nil {
-		sess := newSession(conn, s.TrackMux, s.connManager, s.FetchHandler, s.OnGoaway, s.Logger)
+		sess := newSession(conn, s.TrackMux, s.connManager, s.FetchHandler, nil, s.Logger)
 		s.Handler.ServeMOQ(sess)
 	}
 	return fmt.Errorf("no native QUIC handler configured")
@@ -544,7 +534,7 @@ func (s *Server) goAway(ctx context.Context, conn StreamConn) error {
 	if err != nil {
 		return err
 	}
-	err = message.GoawayMessage{NewSessionURI: s.ShutdownURI}.Encode(stream)
+	err = message.GoawayMessage{NewSessionURI: s.NextSessionURI}.Encode(stream)
 	if err != nil {
 		return err
 	}

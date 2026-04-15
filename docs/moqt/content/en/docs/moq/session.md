@@ -17,7 +17,7 @@ type Session struct {
 func (s *Session) Subscribe(ctx context.Context, path BroadcastPath, name TrackName, config *SubscribeConfig) (*TrackReader, error)
 func (s *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error)
 func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error)
-func (s *Session) Probe(bitrate uint64) (uint64, error)
+func (s *Session) Probe(bitrate uint64) (*ProbeResult, error)
 func (s *Session) CloseWithError(code SessionErrorCode, msg string) error
 func (s *Session) Context() context.Context
 func (s *Session) ConnectionState() ConnectionState
@@ -33,7 +33,7 @@ After a session is established, you can retrieve connection metadata via `Connec
 
 ```go
     state := sess.ConnectionState()
-    fmt.Println("Protocol version:", state.Version) // e.g., "moq-lite-03"
+    fmt.Println("Protocol version:", state.Version) // e.g., "moq-lite-04"
     fmt.Println("TLS state:", state.TLS)
 ```
 
@@ -41,7 +41,7 @@ The `ConnectionState` struct contains:
 
 | Field     | Type                      | Description                                 |
 |-----------|---------------------------|---------------------------------------------|
-| `Version` | `string`                  | The negotiated MOQ protocol version (e.g., `"moq-lite-03"`) |
+| `Version` | `string`                  | The negotiated MOQ protocol version (e.g., `"moq-lite-04"`) |
 | `TLS`     | `*tls.ConnectionState`     | TLS connection state when available          |
 
 ## Subscribe to a Track

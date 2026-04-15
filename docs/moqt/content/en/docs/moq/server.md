@@ -6,7 +6,7 @@ weight: 2
 `moqt.Server` manages server-side operations for the MoQ protocol. It listens for incoming QUIC connections, dispatches them based on ALPN negotiation, and manages their lifecycle.
 
 The server uses ALPN (Application-Layer Protocol Negotiation) to determine the transport:
-- `moq-lite-03` (`moqt.NextProtoMOQ`) — Native QUIC, dispatched to `Server.Handler`
+- `moq-lite-04` (`moqt.NextProtoMOQ`) — Native QUIC, dispatched to `Server.Handler`
 - `h3` (`moqt.NextProtoH3`) — WebTransport via HTTP/3, dispatched to `Server.WebTransportServer`
 
 {{% details title="Overview" closed="true" %}}
@@ -72,6 +72,7 @@ The following table describes the public fields of the `Server` struct:
 | `WebTransportServer`   | `moqt.WebTransportServer`     | WebTransport server for handling WebTransport sessions. If nil, a default implementation is used. |
 | `ListenFunc`           | `func(addr, tlsConfig, quicConfig) (QUICListener, error)` | Custom QUIC listener function. If nil, the default implementation is used. |
 | `ConnContext`          | `func(ctx context.Context, conn StreamConn) context.Context` | Modifies the context used for a new connection. Optional. |
+| `NextSessionURI`       | `string`                    | The URI sent to clients during `Shutdown`, allowing them to reconnect to a different server. If empty, no redirect URI is provided. |
 | `Logger`               | [`*slog.Logger`](https://pkg.go.dev/log/slog#Logger)              | Logger for server events and errors. If nil, logging is disabled. |
 
 {{< tabs items="Using Default QUIC, Using Custom QUIC" >}}
@@ -126,13 +127,13 @@ type WebTransportServer interface {
 `ServeQUICConn` detects the negotiated ALPN protocol and dispatches the connection accordingly:
 
 ```go
-    // Native QUIC (moq-lite-03) → Server.Handler.ServeMOQ(sess)
+    // Native QUIC (moq-lite-04) → Server.Handler.ServeMOQ(sess)
     // HTTP/3 (h3)               → Server.WebTransportServer.ServeQUICConn(conn)
 ```
 
 ### Native QUIC Handler
 
-For native QUIC connections (ALPN `moq-lite-03`), the `Handler` field receives a `*moqt.Session` directly:
+For native QUIC connections (ALPN `moq-lite-04`), the `Handler` field receives a `*moqt.Session` directly:
 
 ```go
 type Handler interface {
@@ -205,9 +206,14 @@ Servers also support immediate and graceful shutdowns.
 
 ### Graceful Shutdown
 
-`(moqt.Server).Shutdown` method allows sessions to close gracefully before forcing termination.
+`(moqt.Server).Shutdown` method notifies all active sessions with `NextSessionURI` as the redirect and waits for them to close gracefully before forcing termination.
 
 ```go
+    server := moqt.Server{
+        NextSessionURI: "https://backup.example.com/moq",
+        // ...
+    }
+
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
     err := server.Shutdown(ctx)
@@ -216,9 +222,4 @@ Servers also support immediate and graceful shutdowns.
     }
 ```
 
-> [!NOTE] Note: GOAWAY message
-> The current implementation does not send a GOAWAY message during shutdown. Immediate session closure occurs when the context is canceled. This will be updated once the GOAWAY message specification is finalized.
-
-## 📝 Future Work
-
-- Implement GOAWAY message: (#XXX)
+If the context expires before all sessions close, remaining connections are closed with a `GoAwayTimeoutErrorCode`.

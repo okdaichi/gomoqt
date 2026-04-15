@@ -737,43 +737,6 @@ func (t *probeMeasurementTracker) smoothedRTT(stats quic.ConnectionStats) uint64
 	return uint64(rtt.Milliseconds())
 }
 
-// Goaway sends a GOAWAY message to the remote peer to initiate graceful
-// session shutdown. The newSessionURI may be empty if no redirect is needed.
-// The method blocks until the peer closes the stream (acknowledging the GOAWAY).
-func (sess *Session) Goaway(newSessionURI string) error {
-	if sess.terminating() {
-		return ErrClosedSession
-	}
-
-	sess.isTerminating.Store(true)
-
-	stream, err := sess.conn.OpenStream()
-	if err != nil {
-		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
-			return &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-
-		return fmt.Errorf("failed to open stream for goaway: %w", err)
-	}
-	defer stream.Close()
-
-	err = message.StreamTypeGoaway.Encode(stream)
-	if err != nil {
-		cancelStreamWithError(stream, transport.StreamErrorCode(InternalSessionErrorCode))
-		return fmt.Errorf("failed to encode goaway stream type: %w", err)
-	}
-
-	err = message.GoawayMessage{NewSessionURI: newSessionURI}.Encode(stream)
-	if err != nil {
-		cancelStreamWithError(stream, transport.StreamErrorCode(InternalSessionErrorCode))
-		return fmt.Errorf("failed to send GOAWAY message: %w", err)
-	}
-
-	return nil
-}
-
 func (sess *Session) handleGoawayStream(stream transport.Stream) error {
 	var gm message.GoawayMessage
 	err := gm.Decode(stream)

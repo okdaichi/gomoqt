@@ -47,5 +47,10 @@ for {
         break
     }
     // Handle announcement
+    fmt.Println("Broadcast:", ann.BroadcastPath())
+    fmt.Println("HopIDs:", ann.HopIDs()) // List of relay hop IDs the announcement traversed
 }
 ```
+
+> [!NOTE] Note: Loop Avoidance
+> When `AcceptAnnounce` is called, the `TrackMux`'s hop ID is automatically sent as `ExcludeHop` in the ANNOUNCE_INTEREST message. This prevents announcement loops in relay topologies. See [Relay — Hop ID and Loop Avoidance](../relay/#hop-id-and-loop-avoidance) for details.
