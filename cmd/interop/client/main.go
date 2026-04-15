@@ -21,7 +21,7 @@ func main() {
 	}
 
 	// Create a custom mux for this session (like http.NewServeMux())
-	mux := moqt.NewTrackMux()
+	mux := moqt.NewTrackMux(0)
 
 	fmt.Print("Connecting to server...")
 	sess, err := client.Dial(context.Background(), *addr, mux)
@@ -112,12 +112,12 @@ func main() {
 
 	// Step 4: Probe the server bitrate
 	fmt.Print("Probing server bitrate...")
-	measuredBitrate, err := sess.Probe(1_000_000)
+	probeResult, err := sess.Probe(1_000_000)
 	if err != nil {
 		fmt.Printf("failed\n  Error: %v\n", err)
 		return
 	}
-	fmt.Printf("ok (measured: %d bps)\n", measuredBitrate)
+	fmt.Printf("ok (measured: %d bps, rtt: %d ms)\n", probeResult.Bitrate, probeResult.RTT)
 
 	// Channel to signal that the publish handler has completed
 	doneCh := make(chan struct{}, 1)

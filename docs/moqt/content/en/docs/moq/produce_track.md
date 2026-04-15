@@ -11,7 +11,7 @@ Producing a track involves writing media data to a `moqt.TrackWriter`, which man
 {{% details title="Overview" closed="true" %}}
 
 ```go
-    mux := moqt.NewTrackMux()
+    mux := moqt.NewTrackMux(0)
 
     // Set the mux to a session
     // This differs from if it is client-side or server-side

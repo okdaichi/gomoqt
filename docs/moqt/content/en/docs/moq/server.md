@@ -13,7 +13,7 @@ The server uses ALPN (Application-Layer Protocol Negotiation) to determine the t
 
 ```go
 func main() {
-    mux := moqt.NewTrackMux()
+    mux := moqt.NewTrackMux(0)
 
     server := moqt.Server{
         Addr: ":9000",

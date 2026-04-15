@@ -29,7 +29,7 @@ func main() {
 	}
 
 	serverDone := make(chan struct{}, 1)
-	mux := moqt.NewTrackMux()
+	mux := moqt.NewTrackMux(0)
 
 	// Print startup message directly
 	fmt.Printf("[OK] Started on %s\n", *addr)
