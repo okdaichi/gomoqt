@@ -83,8 +83,7 @@ export async function runClient(
 				console.log(`Received GOAWAY (newSessionURI: ${newSessionURI})`);
 				if (goawayResolve) goawayResolve(newSessionURI);
 			},
-		})
-	);
+		}));
 
 	const announced = await step("Accepting server announcements", async () => {
 		const [a, err] = await session.acceptAnnounce("/");

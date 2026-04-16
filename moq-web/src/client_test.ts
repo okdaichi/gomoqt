@@ -149,9 +149,10 @@ Deno.test("connect - propagates transport errors", async () => {
 	}
 
 	await assertRejects(
-		() => connect("https://example.com", {
-			transportFactory: (u, o) => new FailingTransport(u, o),
-		}),
+		() =>
+			connect("https://example.com", {
+				transportFactory: (u, o) => new FailingTransport(u, o),
+			}),
 		Error,
 	);
 });
@@ -159,7 +160,9 @@ Deno.test("connect - propagates transport errors", async () => {
 Deno.test("connect - passes onGoaway to session", async () => {
 	let received: string | undefined;
 	const init: ConnectInit = {
-		onGoaway: (uri) => { received = uri; },
+		onGoaway: (uri) => {
+			received = uri;
+		},
 		transportFactory: (u, o) => new MockWebTransport(u, o),
 	};
 

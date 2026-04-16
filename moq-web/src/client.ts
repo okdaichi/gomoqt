@@ -11,7 +11,7 @@ const DefaultWebTransportOptions: WebTransportOptions = {
 	congestionControl: "low-latency",
 	requireUnreliable: true,
 	// deno-lint-ignore no-explicit-any
-	...(({protocols: [ALPN] }) as any),
+	...(({ protocols: [ALPN] }) as any),
 };
 
 /**
@@ -53,8 +53,8 @@ export async function connect(
 		...(init?.transportOptions ?? {}),
 	};
 
-	const factory = init?.transportFactory
-		?? ((u: string | URL, o?: WebTransportOptions) => new WebTransport(u, o));
+	const factory = init?.transportFactory ??
+		((u: string | URL, o?: WebTransportOptions) => new WebTransport(u, o));
 
 	try {
 		const transport = new WebTransportSession(factory(url, transportOptions));
