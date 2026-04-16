@@ -4,15 +4,17 @@ import { assertEquals, assertExists, assertRejects } from "@std/assert";
 // Full integration tests with Session would require complex mock data encoding.
 
 // Mock WebTransport for testing
-class MockWebTransport {
-	ready: Promise<void>;
-	closed: Promise<void>;
-	incomingBidirectionalStreams: ReadableStream;
-	incomingUnidirectionalStreams: ReadableStream;
-	#closeResolve?: () => void;
+// deno-lint-ignore-file no-explicit-any
+class MockWebTransport implements WebTransport {
+	ready: Promise<undefined>;
+	closed: Promise<WebTransportCloseInfo>;
+	incomingBidirectionalStreams: ReadableStream<WebTransportBidirectionalStream>;
+	incomingUnidirectionalStreams: ReadableStream<any>;
+	datagrams: WebTransportDatagramDuplexStream;
+	#closeResolve?: (info: WebTransportCloseInfo) => void;
 
 	constructor(_url: string | URL, _options?: WebTransportOptions) {
-		this.ready = Promise.resolve();
+		this.ready = Promise.resolve(undefined);
 		this.closed = new Promise((resolve) => {
 			this.#closeResolve = resolve;
 		});
@@ -29,11 +31,20 @@ class MockWebTransport {
 				// No incoming unidirectional streams for basic tests
 			},
 		});
+
+		// Mock datagrams (unused in MOQ but required by WebTransport interface)
+		this.datagrams = {
+			readable: new ReadableStream(),
+			writable: new WritableStream(),
+			incomingHighWaterMark: 0,
+			incomingMaxAge: 0,
+			maxDatagramSize: 0,
+			outgoingHighWaterMark: 0,
+			outgoingMaxAge: 0,
+		} as WebTransportDatagramDuplexStream;
 	}
 
-	async createBidirectionalStream(): Promise<
-		{ writable: WritableStream; readable: ReadableStream }
-	> {
+	async createBidirectionalStream(): Promise<WebTransportBidirectionalStream> {
 		const writable = new WritableStream({
 			write(_chunk) {
 				// Mock write implementation
@@ -46,13 +57,21 @@ class MockWebTransport {
 				controller.close();
 			},
 		});
-		return { writable, readable };
+		return { writable, readable } as unknown as WebTransportBidirectionalStream;
+	}
+
+	async createUnidirectionalStream(): Promise<any> {
+		return new WritableStream();
 	}
 
 	close() {
 		if (this.#closeResolve) {
-			this.#closeResolve();
+			this.#closeResolve({});
 		}
+	}
+
+	getStats(): Promise<any> {
+		return Promise.resolve({});
 	}
 }
 

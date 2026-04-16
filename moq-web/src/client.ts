@@ -11,7 +11,7 @@ const DefaultWebTransportOptions: WebTransportOptions = {
 	congestionControl: "low-latency",
 	requireUnreliable: true,
 	// deno-lint-ignore no-explicit-any
-	...(({ protocols: [ALPN] }) as any),
+	...(({protocols: [ALPN] }) as any),
 };
 
 /**
