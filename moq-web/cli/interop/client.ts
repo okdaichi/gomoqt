@@ -47,6 +47,12 @@ export async function runClient(
 	const doneCh: Array<() => void> = [];
 	let done = false;
 
+	// Signal to defer publishing until all probe/fetch steps are done
+	let readyToPublish: () => void = () => {};
+	const readyToPublishPromise = new Promise<void>((resolve) => {
+		readyToPublish = resolve;
+	});
+
 	const mux = new TrackMux();
 
 	mux.publishFunc(
@@ -54,7 +60,9 @@ export async function runClient(
 		"/interop/client",
 		async (track: TrackWriter) => {
 			try {
-				debug("Server subscribed, sending data...");
+				debug("Server subscribed, waiting for ready signal...");
+				await readyToPublishPromise;
+				debug("Ready signal received, sending data...");
 
 				const group = await step("Opening group", async () => {
 					const [g, err] = await track.openGroup();
@@ -148,6 +156,9 @@ export async function runClient(
 		if (err) throw err;
 		info("Fetch payload:", new TextDecoder().decode(frame.bytes));
 	});
+
+	// All probe/fetch steps done — signal publishFunc to proceed
+	readyToPublish();
 
 	debug("Operations completed");
 
