@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **moqt:** added `NewWebTransportServer(handler http.Handler)` factory function that creates a `WebTransportServer` with a custom `http.Handler`, allowing users to inject their own `ServeMux` or router instead of relying on `http.DefaultServeMux`.
+
 ## [v0.13.0] - 2026-04-16
 
 ### Added
