@@ -122,7 +122,14 @@ export async function runClient(
 		info("Received data from server:", new TextDecoder().decode(frame.bytes));
 	});
 
-	// Step 3: Fetch a single group from the server
+	// Step 3: Probe the server bitrate (before Fetch to ensure connection is still up)
+	await step("Probing server bitrate", async () => {
+		const [measuredBitrate, err] = await session.probe(1_000_000);
+		if (err) throw err;
+		info(`Probe result: ${measuredBitrate} bps`);
+	});
+
+	// Step 4: Fetch a single group from the server
 	const fetchGroup = await step("Fetching group from server", async () => {
 		const req = new FetchRequest({
 			broadcastPath: announcement.broadcastPath,
@@ -140,13 +147,6 @@ export async function runClient(
 		const err = await fetchGroup.readFrame(frame);
 		if (err) throw err;
 		info("Fetch payload:", new TextDecoder().decode(frame.bytes));
-	});
-
-	// Step 4: Probe the server bitrate
-	await step("Probing server bitrate", async () => {
-		const [measuredBitrate, err] = await session.probe(1_000_000);
-		if (err) throw err;
-		info(`Probe result: ${measuredBitrate} bps`);
 	});
 
 	debug("Operations completed");
