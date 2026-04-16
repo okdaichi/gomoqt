@@ -34,6 +34,14 @@ type WebTransportServer interface {
 	Close() error
 }
 
+// NewWebTransportServer creates a new WebTransportServer instance utilizing the optional HTTP handler.
+// By default, if the handler is nil, http.DefaultServeMux is used.
+func NewWebTransportServer(handler http.Handler) WebTransportServer {
+	return &webtransportgo.Server{
+		Handler: handler,
+	}
+}
+
 // Server is a MOQ server that accepts both WebTransport and native QUIC
 // connections. It handles session setup, track announcements, and subscriptions
 // according to the MOQ Lite specification.
@@ -98,7 +106,7 @@ func (s *Server) init() {
 		s.listeners = make(map[QUICListener]struct{})
 		s.connManager = newConnManager()
 		if s.WebTransportServer == nil {
-			s.WebTransportServer = &webtransportgo.Server{}
+			s.WebTransportServer = NewWebTransportServer(nil)
 		}
 	})
 }

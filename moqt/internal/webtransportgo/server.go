@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
 	"sync"
 
 	"github.com/okdaichi/gomoqt/transport"
@@ -15,6 +16,7 @@ import (
 // Server is a wrapper for (quic-go/webtransport-go).Server
 type Server struct {
 	internalServer *quicgo_webtransportgo.Server
+	Handler        http.Handler
 	connContexts   sync.Map // *quicgo_quicgo.Conn -> context.Context
 	initOnce       sync.Once
 }
@@ -23,11 +25,15 @@ func (s *Server) init() {
 	s.initOnce.Do(func() {
 		if s.internalServer == nil {
 			s.internalServer = &quicgo_webtransportgo.Server{
-				H3: &http3.Server{},
+				H3: &http3.Server{
+					Handler: s.Handler,
+				},
 			}
 		}
 		if s.internalServer.H3 == nil {
-			s.internalServer.H3 = &http3.Server{}
+			s.internalServer.H3 = &http3.Server{
+				Handler: s.Handler,
+			}
 		}
 		s.internalServer.H3.ConnContext = func(ctx context.Context, c *quicgo_quicgo.Conn) context.Context {
 			if stored, ok := s.connContexts.Load(c); ok {
