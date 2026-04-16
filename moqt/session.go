@@ -75,6 +75,10 @@ func newSession(
 		connManager:  manager,
 	}
 
+	if manager != nil {
+		manager.addConn(conn)
+	}
+
 	// Listen bidirectional streams
 	sess.wg.Go(func() {
 		sess.handleBiStreams()
