@@ -134,3 +134,87 @@ func TestEventTimelineRecordJSON_PreservesExtraFields(t *testing.T) {
 	assert.Contains(t, decoded.ExtraFields, "ext")
 	assert.Equal(t, json.RawMessage(`42`), decoded.ExtraFields["ext"])
 }
+
+func TestEventTimelineRecord_LocationSelector(t *testing.T) {
+	loc := Location{GroupID: 5, ObjectID: 2}
+	record := EventTimelineRecord{
+		Location: &loc,
+		Data:     json.RawMessage(`{"scene":"forest"}`),
+	}
+
+	require.NoError(t, record.Validate())
+
+	data, err := json.Marshal(record)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"l":[5,2]`)
+	assert.Contains(t, string(data), `"data":`)
+
+	var decoded EventTimelineRecord
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	require.NoError(t, decoded.Validate())
+	require.NotNil(t, decoded.Location)
+	assert.Equal(t, uint64(5), decoded.Location.GroupID)
+	assert.Equal(t, uint64(2), decoded.Location.ObjectID)
+	assert.Nil(t, decoded.Wallclock)
+	assert.Nil(t, decoded.MediaTime)
+}
+
+func TestEventTimelineRecord_MediaTimeSelector(t *testing.T) {
+	mediaTime := int64(90000)
+	record := EventTimelineRecord{
+		MediaTime: &mediaTime,
+		Data:      json.RawMessage(`{"type":"keyframe"}`),
+	}
+
+	require.NoError(t, record.Validate())
+
+	data, err := json.Marshal(record)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"m":90000`)
+	assert.Contains(t, string(data), `"data":`)
+
+	var decoded EventTimelineRecord
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	require.NoError(t, decoded.Validate())
+	require.NotNil(t, decoded.MediaTime)
+	assert.Equal(t, int64(90000), *decoded.MediaTime)
+	assert.Nil(t, decoded.Wallclock)
+	assert.Nil(t, decoded.Location)
+}
+
+func TestEventTimelineRecord_AllThreeSelectorsInvalid(t *testing.T) {
+	record := EventTimelineRecord{
+		Wallclock: new(int64(1)),
+		Location:  &Location{GroupID: 1, ObjectID: 0},
+		MediaTime: new(int64(2)),
+		Data:      json.RawMessage(`{}`),
+	}
+
+	err := record.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exactly one of t, l, or m")
+}
+
+func TestLocationJSON_InvalidTypes(t *testing.T) {
+	var loc Location
+	err := json.Unmarshal([]byte(`"not an array"`), &loc)
+	require.Error(t, err)
+}
+
+func TestMediaTimelineEntryJSON_InvalidLocation(t *testing.T) {
+	var entry MediaTimelineEntry
+	err := json.Unmarshal([]byte(`[1,"not a location",2]`), &entry)
+	require.Error(t, err)
+}
+
+func TestMediaTimelineEntryJSON_InvalidTypes(t *testing.T) {
+	var entry MediaTimelineEntry
+	err := json.Unmarshal([]byte(`"not an array"`), &entry)
+	require.Error(t, err)
+}
+
+func TestEventTimelineRecordJSON_InvalidTypes(t *testing.T) {
+	var record EventTimelineRecord
+	err := json.Unmarshal([]byte(`"not an object"`), &record)
+	require.Error(t, err)
+}

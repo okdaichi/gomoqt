@@ -2,6 +2,7 @@ package msf
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/okdaichi/gomoqt/moqt"
@@ -272,6 +273,90 @@ func TestNewBroadcast_RejectsReservedCatalogTrackName(t *testing.T) {
 	}}})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reserved track name")
+}
+
+func TestBroadcast_ServeTrack_NilTrackWriter(t *testing.T) {
+	broadcast, err := NewBroadcast(Catalog{Version: 1})
+	require.NoError(t, err)
+
+	// Should not panic with nil TrackWriter.
+	broadcast.ServeTrack(nil)
+}
+
+func TestBroadcast_ServeTrack_DispatchesToHandler(t *testing.T) {
+	broadcast, err := NewBroadcast(Catalog{Version: 1})
+	require.NoError(t, err)
+
+	servedTracks := make([]*moqt.TrackWriter, 0)
+	handler := &FakeTrackHandler{
+		ServeTrackFunc: func(tw *moqt.TrackWriter) {
+			servedTracks = append(servedTracks, tw)
+		},
+	}
+	err = broadcast.RegisterTrack(Track{
+		Name:      "video",
+		Packaging: PackagingLOC,
+		IsLive:    new(false),
+	}, handler)
+	require.NoError(t, err)
+
+	tw := &moqt.TrackWriter{TrackName: "video"}
+	broadcast.ServeTrack(tw)
+	require.Len(t, servedTracks, 1)
+	assert.Equal(t, tw, servedTracks[0])
+}
+
+func TestBroadcast_NilReceiver(t *testing.T) {
+	var broadcast *Broadcast
+
+	assert.Equal(t, DefaultCatalogTrackName, broadcast.CatalogTrackName())
+	assert.Equal(t, Catalog{}, broadcast.Catalog())
+
+	_, err := broadcast.CatalogBytes()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil broadcast")
+
+	err = broadcast.SetCatalog(Catalog{Version: 1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil broadcast")
+
+	err = broadcast.RegisterTrack(Track{Name: "video"}, &FakeTrackHandler{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil broadcast")
+
+	assert.False(t, broadcast.RemoveTrack("video"))
+
+	h := broadcast.Handler("video")
+	assert.Equal(t, reflect.ValueOf(moqt.NotFoundTrackHandler).Pointer(), reflect.ValueOf(h).Pointer())
+}
+
+func TestBroadcast_SetCatalog_RejectsInvalidCatalog(t *testing.T) {
+	broadcast, err := NewBroadcast(Catalog{Version: 1})
+	require.NoError(t, err)
+
+	err = broadcast.SetCatalog(Catalog{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "catalog version is required")
+}
+
+func TestBroadcast_RegisterTrack_RejectsInvalidCatalogAfterAdd(t *testing.T) {
+	broadcast, err := NewBroadcast(Catalog{Version: 1})
+	require.NoError(t, err)
+
+	handler := &FakeTrackHandler{}
+	err = broadcast.RegisterTrack(Track{
+		Name: "video",
+	}, handler)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "packaging is required")
+}
+
+func TestBroadcast_staleTrackNamesLocked_EmptyCurrent(t *testing.T) {
+	broadcast := &Broadcast{}
+	broadcast.catalog = Catalog{}
+
+	stale := broadcast.staleTrackNamesLocked(Catalog{Tracks: []Track{{Name: "video"}}})
+	assert.Nil(t, stale)
 }
 
 func TestBroadcastSetCatalog_RejectsDuplicateTrackNamesAcrossNamespaces(t *testing.T) {
