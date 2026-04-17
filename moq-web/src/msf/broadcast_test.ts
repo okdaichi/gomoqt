@@ -116,7 +116,11 @@ Deno.test("msf Broadcast catalogTrackName returns custom name", () => {
 Deno.test("msf Broadcast registerTrack rejects nil handler", async () => {
 	const broadcast = new Broadcast({ version: 1, tracks: [] });
 	await assertRejects(
-		() => broadcast.registerTrack({ name: "video", packaging: "cmaf" }, null as unknown as TrackHandler),
+		() =>
+			broadcast.registerTrack(
+				{ name: "video", packaging: "cmaf" },
+				null as unknown as TrackHandler,
+			),
 		Error,
 		"cannot be nil",
 	);
@@ -136,7 +140,8 @@ Deno.test("msf Broadcast registerTrack rejects catalog track name", async () => 
 	const broadcast = new Broadcast({ version: 1, tracks: [] });
 	const handler = new MockTrackHandler();
 	await assertRejects(
-		() => broadcast.registerTrack({ name: DefaultCatalogTrackName, packaging: "cmaf" }, handler),
+		() =>
+			broadcast.registerTrack({ name: DefaultCatalogTrackName, packaging: "cmaf" }, handler),
 		Error,
 		"reserved for the catalog track",
 	);

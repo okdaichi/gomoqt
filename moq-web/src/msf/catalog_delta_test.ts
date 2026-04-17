@@ -1,13 +1,13 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
 	applyCatalogDelta,
+	type CatalogDelta,
 	parseCatalog,
 	parseCatalogDelta,
 	stringifyCatalogDelta,
-	validateCatalogDelta,
-	type CatalogDelta,
 	type TrackClone,
 	type TrackRef,
+	validateCatalogDelta,
 } from "./mod.ts";
 import { ValidationError } from "./mod.ts";
 
@@ -187,7 +187,9 @@ Deno.test("applyCatalogDelta removes tracks", () => {
 });
 
 Deno.test("applyCatalogDelta clones tracks with overrides", () => {
-	const base = parseCatalog('{"version":1,"tracks":[{"name":"video","packaging":"cmaf","bitrate":1000}]}');
+	const base = parseCatalog(
+		'{"version":1,"tracks":[{"name":"video","packaging":"cmaf","bitrate":1000}]}',
+	);
 	const delta: CatalogDelta = {
 		addTracks: [],
 		removeTracks: [],
@@ -205,7 +207,9 @@ Deno.test("applyCatalogDelta clones tracks with overrides", () => {
 });
 
 Deno.test("applyCatalogDelta clones tracks with depends array", () => {
-	const base = parseCatalog('{"version":1,"tracks":[{"name":"mediatimeline","packaging":"mediatimeline","mimeType":"application/json","depends":["video"]}]}');
+	const base = parseCatalog(
+		'{"version":1,"tracks":[{"name":"mediatimeline","packaging":"mediatimeline","mimeType":"application/json","depends":["video"]}]}',
+	);
 	const delta: CatalogDelta = {
 		addTracks: [],
 		removeTracks: [],
@@ -226,7 +230,9 @@ Deno.test("applyCatalogDelta clones tracks with depends array", () => {
 });
 
 Deno.test("applyCatalogDelta clones tracks with extraFields overrides", () => {
-	const base = parseCatalog('{"version":1,"tracks":[{"orig":1,"name":"video","packaging":"cmaf"}]}');
+	const base = parseCatalog(
+		'{"version":1,"tracks":[{"orig":1,"name":"video","packaging":"cmaf"}]}',
+	);
 	const delta: CatalogDelta = {
 		addTracks: [],
 		removeTracks: [],
@@ -242,7 +248,9 @@ Deno.test("applyCatalogDelta clones tracks with extraFields overrides", () => {
 });
 
 Deno.test("applyCatalogDelta updates defaultNamespace, generatedAt, isComplete", () => {
-	const base = parseCatalog('{"version":1,"tracks":[{"namespace":"ns","name":"v","packaging":"cmaf"}]}');
+	const base = parseCatalog(
+		'{"version":1,"tracks":[{"namespace":"ns","name":"v","packaging":"cmaf"}]}',
+	);
 	const delta: CatalogDelta = {
 		defaultNamespace: "new-ns",
 		generatedAt: 99,
@@ -301,7 +309,9 @@ Deno.test("applyCatalogDelta rejects clone of unknown parent", () => {
 });
 
 Deno.test("applyCatalogDelta rejects clone into duplicate track", () => {
-	const base = parseCatalog('{"version":1,"tracks":[{"name":"video","packaging":"cmaf"},{"name":"audio","packaging":"cmaf"}]}');
+	const base = parseCatalog(
+		'{"version":1,"tracks":[{"name":"video","packaging":"cmaf"},{"name":"audio","packaging":"cmaf"}]}',
+	);
 	const delta: CatalogDelta = {
 		addTracks: [],
 		removeTracks: [],
