@@ -218,3 +218,58 @@ func TestEventTimelineRecordJSON_InvalidTypes(t *testing.T) {
 	err := json.Unmarshal([]byte(`"not an object"`), &record)
 	require.Error(t, err)
 }
+
+// --- UnmarshalJSON error paths ---
+
+func TestEventTimelineRecord_UnmarshalJSON_FieldErrors(t *testing.T) {
+	tests := map[string]struct {
+		input string
+	}{
+		"bad t": {`{"t": "not-a-number", "data": {}}`},
+		"bad l": {`{"l": "not-an-array", "data": {}}`},
+		"bad m": {`{"m": "not-a-number", "data": {}}`},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var record EventTimelineRecord
+			err := json.Unmarshal([]byte(tt.input), &record)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestLocation_UnmarshalJSON_InvalidElementTypes(t *testing.T) {
+	tests := map[string]struct {
+		input string
+	}{
+		"first element not number":  {`["not-uint", 3]`},
+		"second element not number": {`[5, "not-uint"]`},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var loc Location
+			err := json.Unmarshal([]byte(tt.input), &loc)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestMediaTimelineEntry_UnmarshalJSON_FieldErrors(t *testing.T) {
+	tests := map[string]struct {
+		input string
+	}{
+		"bad mediaTime": {`["not-a-number", [1,0], 12345]`},
+		"bad location":  {`[2002, "not-an-array", 12345]`},
+		"bad wallclock": {`[2002, [1,0], "not-a-number"]`},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var entry MediaTimelineEntry
+			err := json.Unmarshal([]byte(tt.input), &entry)
+			require.Error(t, err)
+		})
+	}
+}

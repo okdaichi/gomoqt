@@ -1161,3 +1161,257 @@ func TestTrackRef_MarshalJSON_NameOnly(t *testing.T) {
 	_, hasNS := decoded["namespace"]
 	assert.False(t, hasNS)
 }
+
+// --- cloneBoolPtr / cloneRawMessage nil branch coverage ---
+
+func TestTrack_Clone_NilBoolPtr(t *testing.T) {
+	track := Track{Name: "video", Packaging: PackagingLOC} // IsLive nil
+	clone := track.Clone()
+	assert.Nil(t, clone.IsLive)
+}
+
+func TestTrackRef_Clone_NilExtraFields(t *testing.T) {
+	ref := TrackRef{Name: "video"} // ExtraFields nil
+	clone := ref.Clone()
+	assert.NotNil(t, clone.ExtraFields)
+	assert.Empty(t, clone.ExtraFields)
+}
+
+// --- CatalogDelta.Clone nil-slice branches ---
+
+func TestCatalogDelta_Clone_NilSlices(t *testing.T) {
+	delta := CatalogDelta{
+		AddTracks: nil, RemoveTracks: nil, CloneTracks: nil,
+	}
+	clone := delta.Clone()
+	assert.Nil(t, clone.AddTracks)
+	assert.Nil(t, clone.RemoveTracks)
+	assert.Nil(t, clone.CloneTracks)
+}
+
+// --- Track.UnmarshalJSON error paths ---
+
+func TestTrackUnmarshalJSON_InvalidJSON(t *testing.T) {
+	var track Track
+	err := json.Unmarshal([]byte(`"not-an-object"`), &track)
+	require.Error(t, err)
+}
+
+func TestTrack_UnmarshalJSON_FieldErrors(t *testing.T) {
+	tests := map[string]string{
+		"namespace":     `{"namespace": 123}`,
+		"name":          `{"name": 123}`,
+		"packaging":     `{"packaging": 123}`,
+		"eventType":     `{"eventType": 123}`,
+		"role":          `{"role": 123}`,
+		"isLive":        `{"isLive": "notbool"}`,
+		"targetLatency": `{"targetLatency": "notnum"}`,
+		"label":         `{"label": 123}`,
+		"renderGroup":   `{"renderGroup": "notnum"}`,
+		"altGroup":      `{"altGroup": "notnum"}`,
+		"initData":      `{"initData": 123}`,
+		"depends":       `{"depends": "notarray"}`,
+		"temporalId":    `{"temporalId": "notnum"}`,
+		"spatialId":     `{"spatialId": "notnum"}`,
+		"codec":         `{"codec": 123}`,
+		"mimeType":      `{"mimeType": 123}`,
+		"framerate":     `{"framerate": "notnum"}`,
+		"timescale":     `{"timescale": "notnum"}`,
+		"bitrate":       `{"bitrate": "notnum"}`,
+		"width":         `{"width": "notnum"}`,
+		"height":        `{"height": "notnum"}`,
+		"samplerate":    `{"samplerate": "notnum"}`,
+		"channelConfig": `{"channelConfig": 123}`,
+		"displayWidth":  `{"displayWidth": "notnum"}`,
+		"displayHeight": `{"displayHeight": "notnum"}`,
+		"lang":          `{"lang": 123}`,
+		"trackDuration": `{"trackDuration": "notnum"}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			var track Track
+			err := json.Unmarshal([]byte(input), &track)
+			require.Error(t, err, "field %q with invalid type should fail", name)
+		})
+	}
+}
+
+// --- Catalog.UnmarshalJSON error paths ---
+
+func TestCatalogUnmarshalJSON_FieldErrors(t *testing.T) {
+	tests := map[string]struct {
+		input string
+	}{
+		"bad version":     {`{"version": "not-a-number"}`},
+		"bad generatedAt": {`{"version": 1, "generatedAt": "not-a-number"}`},
+		"bad isComplete":  {`{"version": 1, "isComplete": "not-a-bool"}`},
+		"bad tracks":      {`{"version": 1, "tracks": "not-an-array"}`},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseCatalogString(tt.input)
+			require.Error(t, err)
+		})
+	}
+}
+
+// --- decodeOrderedObject error paths ---
+
+func TestDecodeOrderedObject_TruncatedAfterKey(t *testing.T) {
+	// Decode fails when the value is missing after the colon.
+	_, err := decodeOrderedObject([]byte(`{"key":`))
+	require.Error(t, err)
+}
+
+func TestDecodeOrderedObject_TruncatedBeforeClosingBrace(t *testing.T) {
+	// Token() for closing brace fails when `}` is absent.
+	_, err := decodeOrderedObject([]byte(`{"key": 1`))
+	require.Error(t, err)
+}
+
+func TestDecodeOrderedObject_TrailingGarbage(t *testing.T) {
+	// Non-JSON trailing bytes cause a non-EOF error on the second token read.
+	_, err := decodeOrderedObject([]byte(`{"version":1}abc`))
+	require.Error(t, err)
+}
+
+// --- CatalogDelta.UnmarshalJSON error paths ---
+
+func TestCatalogDelta_UnmarshalJSON_IndependentFields(t *testing.T) {
+	tests := map[string]struct {
+		input string
+	}{
+		"version field": {`{"deltaUpdate": true, "version": 1}`},
+		"tracks field":  {`{"deltaUpdate": true, "tracks": []}`},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseCatalogDeltaString(tt.input)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "independent catalog fields are not allowed")
+		})
+	}
+}
+
+func TestCatalogDelta_UnmarshalJSON_FieldErrors(t *testing.T) {
+	tests := map[string]struct {
+		input string
+	}{
+		"bad deltaUpdate":  {`{"deltaUpdate": "not-a-bool"}`},
+		"bad generatedAt":  {`{"deltaUpdate": true, "generatedAt": "not-a-number"}`},
+		"bad isComplete":   {`{"deltaUpdate": true, "isComplete": "not-a-bool"}`},
+		"bad addTracks":    {`{"deltaUpdate": true, "addTracks": "not-an-array"}`},
+		"bad removeTracks": {`{"deltaUpdate": true, "removeTracks": "not-an-array"}`},
+		"bad cloneTracks":  {`{"deltaUpdate": true, "cloneTracks": "not-an-array"}`},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseCatalogDeltaString(tt.input)
+			require.Error(t, err)
+		})
+	}
+}
+
+// --- TrackRef.UnmarshalJSON error paths ---
+
+func TestTrackRef_UnmarshalJSON_FieldErrors(t *testing.T) {
+	tests := map[string]struct {
+		input string
+	}{
+		"invalid JSON":  {`"not-an-object"`},
+		"bad namespace": {`{"namespace": 123}`},
+		"bad name":      {`{"name": 123}`},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var ref TrackRef
+			err := json.Unmarshal([]byte(tt.input), &ref)
+			require.Error(t, err)
+		})
+	}
+}
+
+// --- TrackClone.UnmarshalJSON error paths ---
+
+func TestTrackClone_UnmarshalJSON_FieldErrors(t *testing.T) {
+	tests := map[string]struct {
+		input string
+	}{
+		"invalid JSON":    {`"not-an-object"`},
+		"bad parentName":  {`{"name": "v", "parentName": 123}`},
+		"bad track field": {`{"name": 123, "parentName": "parent"}`},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var clone TrackClone
+			err := json.Unmarshal([]byte(tt.input), &clone)
+			require.Error(t, err)
+		})
+	}
+}
+
+// --- cloneTrack unknown parent ---
+
+func TestCatalogApplyDelta_UnknownParentTrack(t *testing.T) {
+	base := Catalog{
+		Version: 1,
+		Tracks:  []Track{{Name: "video", Packaging: PackagingLOC, IsLive: new(true)}},
+	}
+	delta := CatalogDelta{
+		CloneTracks: []TrackClone{{
+			Track:      Track{Name: "copy"},
+			ParentName: "nonexistent",
+		}},
+	}
+
+	_, err := base.ApplyDelta(delta)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot clone unknown parent")
+}
+
+// --- RegisterTrack replace existing track ---
+
+func TestBroadcast_RegisterTrack_ReplacesExisting(t *testing.T) {
+	b, err := NewBroadcast(Catalog{Version: 1})
+	require.NoError(t, err)
+
+	handler1 := &FakeTrackHandler{}
+	require.NoError(t, b.RegisterTrack(Track{Name: "video", Packaging: PackagingLOC, IsLive: new(true)}, handler1))
+
+	// Register same track name again — hits replaced=true path.
+	handler2 := &FakeTrackHandler{}
+	err = b.RegisterTrack(Track{Name: "video", Packaging: PackagingLOC, IsLive: new(false)}, handler2)
+	require.NoError(t, err)
+
+	catalog := b.Catalog()
+	require.Len(t, catalog.Tracks, 1)
+	require.NotNil(t, catalog.Tracks[0].IsLive)
+	assert.False(t, *catalog.Tracks[0].IsLive)
+}
+
+// --- staleTrackNamesLocked continue branch ---
+
+func TestBroadcast_SetCatalog_KeepsActiveRemovesStale(t *testing.T) {
+	b, err := NewBroadcast(Catalog{Version: 1})
+	require.NoError(t, err)
+
+	require.NoError(t, b.RegisterTrack(Track{Name: "video", Packaging: PackagingLOC, IsLive: new(true)}, &FakeTrackHandler{}))
+	require.NoError(t, b.RegisterTrack(Track{Name: "audio", Packaging: PackagingLOC, IsLive: new(true)}, &FakeTrackHandler{}))
+
+	// New catalog keeps "video", drops "audio" → staleTrackNamesLocked hits continue for "video", appends "audio".
+	newCatalog := Catalog{
+		Version: 1,
+		Tracks:  []Track{{Name: "video", Packaging: PackagingLOC, IsLive: new(true)}},
+	}
+	require.NoError(t, b.SetCatalog(newCatalog))
+
+	catalog := b.Catalog()
+	assert.Len(t, catalog.Tracks, 1)
+	assert.Equal(t, "video", catalog.Tracks[0].Name)
+}
