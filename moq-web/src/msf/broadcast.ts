@@ -21,8 +21,8 @@ export const DefaultCatalogTrackName = "catalog";
  *
  * @example
  * ```ts
- * import { Broadcast } from "@okdaichi/moq/msf";
- * import type { Catalog } from "@okdaichi/moq/msf";
+ * import { Broadcast } from "@qumo/moq/msf";
+ * import type { Catalog } from "@qumo/moq/msf";
  *
  * const catalog: Catalog = { tracks: [{ name: "audio", packaging: "cmaf" }] };
  * const broadcast = new Broadcast(catalog);

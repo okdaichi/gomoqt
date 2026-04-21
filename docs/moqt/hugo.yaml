@@ -1,4 +1,4 @@
-baseURL: https://okdaichi.github.io/gomoqt/
+baseURL: https://qumo-dev.github.io/gomoqt/
 languageCode: en
 title: gomoqt
 description: Fast, simply designed MoQ implementation for building scalable real-time apps.
@@ -25,7 +25,7 @@ menu:
     - identifier: sponsor
       name: ❤ Sponsor ↗
       weight: 4
-      url: https://github.com/sponsors/okdaichi
+      url: https://github.com/sponsors/qumo-dev
     - identifier: search
       name: Search
       params:
@@ -92,7 +92,7 @@ params:
   editURL:
     enable: true
     base: "https://github.com/qumo-dev/gomoqt/edit/main"
-  
+
   # SEO and Social Media Configuration
   social:
     twitter: OD47215  # Your Twitter handle (without @)

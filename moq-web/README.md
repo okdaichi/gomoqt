@@ -1,6 +1,6 @@
-# @okdaichi/moq
+# @qumo/moq
 
-[![JSR](https://jsr.io/badges/@okdaichi/moq)](https://jsr.io/@okdaichi/moq)
+[![JSR](https://jsr.io/badges/@qumo/moq)](https://jsr.io/@qumo/moq)
 
 TypeScript/JavaScript implementation of Media over QUIC (MOQ Lite) for Deno (and
 Node via JSR). It is the web/JS client counterpart to the Go implementation in
@@ -16,28 +16,28 @@ this repository.
 
 ### Deno
 
-Install from [JSR](https://jsr.io/@okdaichi/moq):
+Install from [JSR](https://jsr.io/@qumo/moq):
 
 ```bash
-deno add jsr:@okdaichi/moq
+deno add jsr:@qumo/moq
 ```
 
 Then import:
 
 ```typescript
-import { Session } from "@okdaichi/moq";
+import { Session } from "@qumo/moq";
 ```
 
 ### Node.js (npm via JSR)
 
 ```bash
-npx jsr add @okdaichi/moq
+npx jsr add @qumo/moq
 ```
 
 ## Usage (minimal)
 
 ```ts
-import { Session } from "@okdaichi/moq";
+import { Session } from "@qumo/moq";
 
 const session = new Session({ url: "https://example.com/interop" });
 // TODO: add track subscription/publish based on your app

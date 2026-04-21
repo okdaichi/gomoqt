@@ -9,7 +9,7 @@
  *
  * @example
  * ```ts
- * import { connect } from "@okdaichi/moq";
+ * import { connect } from "@qumo/moq";
  *
  * const session = await connect("https://localhost:4443/moq");
  * const [reader] = await session.subscribe("/broadcast", "video");
