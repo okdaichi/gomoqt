@@ -29,5 +29,5 @@
 //	}
 //
 // Networking primitives themselves still live in the
-// github.com/okdaichi/gomoqt/moqt package.
+// github.com/qumo-dev/gomoqt/moqt package.
 package msf

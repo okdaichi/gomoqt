@@ -1,4 +1,4 @@
-import { connect, FetchRequest, Frame, TrackMux, TrackWriter } from "@okdaichi/moq";
+import { connect, FetchRequest, Frame, TrackMux, TrackWriter } from "@qumo/moq";
 import { background } from "@okdaichi/golikejs/context";
 
 // shared client logic exported as function

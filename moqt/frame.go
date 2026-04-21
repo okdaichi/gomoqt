@@ -3,7 +3,7 @@ package moqt
 import (
 	"io"
 
-	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/qumo-dev/gomoqt/moqt/internal/message"
 )
 
 // Frame represents a MOQ frame.

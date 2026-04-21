@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/okdaichi/gomoqt/moqt"
 	"github.com/quic-go/quic-go"
+	"github.com/qumo-dev/gomoqt/moqt"
 )
 
 func main() {

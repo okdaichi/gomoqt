@@ -65,10 +65,10 @@ The following table describes the public fields of the `Server` struct:
 | `Addr`                 | `string`                    | Server address and port                     |
 | `TLSConfig`            | [`*tls.Config`](https://pkg.go.dev/crypto/tls#Config) | TLS configuration for secure connections    |
 | `QUICConfig`           | [`*quic.Config`](https://pkg.go.dev/github.com/quic-go/quic-go#Config)              | QUIC protocol configuration                 |
-| `Config`               | [`*moqt.Config`](https://pkg.go.dev/github.com/okdaichi/gomoqt/moqt#Config)                   | MOQ protocol configuration                  |
+| `Config`               | [`*moqt.Config`](https://pkg.go.dev/github.com/qumo-dev/gomoqt/moqt#Config)                   | MOQ protocol configuration                  |
 | `TrackMux`             | `*moqt.TrackMux`              | Multiplexer for routing announcements and track subscriptions. If nil, a global default mux is used. |
-| `Handler`              | [`moqt.Handler`](https://pkg.go.dev/github.com/okdaichi/gomoqt/moqt#Handler)                 | Handler for accepted native QUIC sessions. If nil, native QUIC connections are not handled. |
-| `FetchHandler`         | [`moqt.FetchHandler`](https://pkg.go.dev/github.com/okdaichi/gomoqt/moqt#FetchHandler)       | Handles incoming FETCH requests on native QUIC sessions. If nil, FETCH requests are rejected. |
+| `Handler`              | [`moqt.Handler`](https://pkg.go.dev/github.com/qumo-dev/gomoqt/moqt#Handler)                 | Handler for accepted native QUIC sessions. If nil, native QUIC connections are not handled. |
+| `FetchHandler`         | [`moqt.FetchHandler`](https://pkg.go.dev/github.com/qumo-dev/gomoqt/moqt#FetchHandler)       | Handles incoming FETCH requests on native QUIC sessions. If nil, FETCH requests are rejected. |
 | `WebTransportServer`   | `moqt.WebTransportServer`     | WebTransport server for handling WebTransport sessions. If nil, a default implementation is used. |
 | `ListenFunc`           | `func(addr, tlsConfig, quicConfig) (QUICListener, error)` | Custom QUIC listener function. If nil, the default implementation is used. |
 | `ConnContext`          | `func(ctx context.Context, conn StreamConn) context.Context` | Modifies the context used for a new connection. Optional. |
@@ -87,7 +87,7 @@ The following table describes the public fields of the `Server` struct:
 
 To use a custom QUIC implementation, you need to provide your own `ListenFunc`. When `Server.ListenFunc` is set, it is used to listen for incoming QUIC connections instead of the default implementation.
 
-```go {filename="gomoqt/moqt/server.go",base_url="https://github.com/okdaichi/gomoqt/tree/main/moqt/server.go"}
+```go {filename="gomoqt/moqt/server.go",base_url="https://github.com/qumo-dev/gomoqt/tree/main/moqt/server.go"}
 type Server struct {
     // ...
 	ListenFunc func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (QUICListener, error)
@@ -110,7 +110,7 @@ type Server struct {
 
 To use a custom WebTransport implementation, provide your own implementation of the `WebTransportServer` interface:
 
-```go {filename="gomoqt/moqt/server.go",base_url="https://github.com/okdaichi/gomoqt/tree/main/moqt/server.go"}
+```go {filename="gomoqt/moqt/server.go",base_url="https://github.com/qumo-dev/gomoqt/tree/main/moqt/server.go"}
 type WebTransportServer interface {
     ServeQUICConn(conn StreamConn) error
     Close() error

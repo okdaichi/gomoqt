@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto/tls"
 
-	"github.com/okdaichi/gomoqt/transport"
 	"github.com/quic-go/quic-go"
 	quicgo_quicgo "github.com/quic-go/quic-go"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 func DialAddrEarly(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (transport.StreamConn, error) {

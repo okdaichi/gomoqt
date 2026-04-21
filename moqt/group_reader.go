@@ -6,7 +6,7 @@ import (
 	"iter"
 	"time"
 
-	"github.com/okdaichi/gomoqt/transport"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 func newGroupReader(sequence GroupSequence, stream transport.ReceiveStream, groupManager *groupReaderManager) *GroupReader {

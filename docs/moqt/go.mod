@@ -1,4 +1,4 @@
-module github.com/okdaichi/gomoqt/moqt
+module github.com/qumo-dev/gomoqt/moqt
 
 go 1.26
 

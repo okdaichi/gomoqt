@@ -11,13 +11,13 @@ This implementation is based on [Media over QUIC - Lite Draft 04](https://www.ie
 ## Installation
 
 ```go
-import "github.com/okdaichi/gomoqt/moqt"
+import "github.com/qumo-dev/gomoqt/moqt"
 ```
 
 ## Usage
 
 For detailed usage examples and API documentation, see:
-- [Documentation](https://okdaichi.github.io/gomoqt/) - Complete API reference and guides
+- [Documentation](https://qumo-dev.github.io/gomoqt/) - Complete API reference and guides
 - [Examples](../examples/) - Working examples (broadcast, relay, echo)
 
 ## Features & Implementation Status

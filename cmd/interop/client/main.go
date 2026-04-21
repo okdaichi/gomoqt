@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/okdaichi/gomoqt/moqt"
+	"github.com/qumo-dev/gomoqt/moqt"
 )
 
 func main() {

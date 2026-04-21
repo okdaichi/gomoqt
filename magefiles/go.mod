@@ -1,4 +1,4 @@
-module github.com/okdaichi/gomoqt/magefiles
+module github.com/qumo-dev/gomoqt/magefiles
 
 go 1.25.0
 

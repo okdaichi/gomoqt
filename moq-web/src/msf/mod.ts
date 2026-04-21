@@ -8,7 +8,7 @@
  *
  * @example
  * ```ts
- * import { parseCatalog, Broadcast } from "@okdaichi/moq/msf";
+ * import { parseCatalog, Broadcast } from "@qumo/moq/msf";
  *
  * const catalog = parseCatalog(catalogJson);
  * const broadcast = new Broadcast(catalog);

@@ -5,8 +5,8 @@ import (
 	"crypto/tls"
 	"net/http"
 
-	"github.com/okdaichi/gomoqt/transport"
 	quicgo_webtransportgo "github.com/okdaichi/webtransport-go"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 func Dial(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, appProtocols []string) (*http.Response, transport.WebTransportSession, error) {

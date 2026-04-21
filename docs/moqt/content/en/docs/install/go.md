@@ -26,7 +26,7 @@ go mod init [module_name]
 Download the package in your Go environment.
 
 ```bash
-go get github.com/okdaichi/gomoqt
+go get github.com/qumo-dev/gomoqt
 ```
 
 ### Importing packages
@@ -43,7 +43,7 @@ gomoqt provides several packages that can be imported into your Go application. 
 
 ```go
 import (
-	"github.com/okdaichi/gomoqt/moqt"
+	"github.com/qumo-dev/gomoqt/moqt"
 )
 ```
 {{% /steps %}}

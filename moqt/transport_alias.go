@@ -1,6 +1,6 @@
 package moqt
 
-import "github.com/okdaichi/gomoqt/transport"
+import "github.com/qumo-dev/gomoqt/transport"
 
 // Transport-facing aliases to keep public MOQ API surface cohesive while
 // preserving the dedicated transport package for cycle avoidance and abstraction.
