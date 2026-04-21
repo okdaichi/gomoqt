@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/okdaichi/gomoqt/transport"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 // FakeQUICStream is a fake implementation of transport.Stream for testing.

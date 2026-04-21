@@ -5,8 +5,8 @@ import (
 	"crypto/tls"
 	"net"
 
-	"github.com/okdaichi/gomoqt/transport"
 	quicgo_quicgo "github.com/quic-go/quic-go"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 func wrapConnection(conn *quicgo_quicgo.Conn) transport.StreamConn {

@@ -5,8 +5,8 @@ import (
 	"iter"
 	"sync"
 
-	"github.com/okdaichi/gomoqt/moqt/internal/message"
-	"github.com/okdaichi/gomoqt/transport"
+	"github.com/qumo-dev/gomoqt/moqt/internal/message"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 func newAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes []suffix) *AnnouncementReader {

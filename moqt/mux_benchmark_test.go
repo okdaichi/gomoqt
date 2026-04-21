@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okdaichi/gomoqt/transport"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 // BenchmarkTrackMux_NewTrackMux benchmarks TrackMux creation

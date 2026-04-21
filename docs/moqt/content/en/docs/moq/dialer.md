@@ -47,10 +47,10 @@ The following table describes the public fields of the `moqt.Dialer` struct:
 |------------------------|-----------------------------|---------------------------------------------|
 | `TLSConfig`            | [`*tls.Config`](https://pkg.go.dev/crypto/tls#Config) | TLS configuration for secure connections    |
 | `QUICConfig`           | [`*quic.Config`](https://pkg.go.dev/github.com/quic-go/quic-go#Config)              | QUIC configuration for raw QUIC connections                 |
-| `Config`               | [`*moqt.Config`](https://pkg.go.dev/github.com/okdaichi/gomoqt/moqt#Config)                   | MOQ protocol configuration                  |
+| `Config`               | [`*moqt.Config`](https://pkg.go.dev/github.com/qumo-dev/gomoqt/moqt#Config)                   | MOQ protocol configuration                  |
 | `DialQUICFunc`         | `func(ctx, addr, tlsConfig, quicConfig) (StreamConn, error)` | Custom QUIC dial function. If nil, the default dialer is used. |
 | `DialWebTransportFunc` | `func(ctx, addr, header, tlsConfig) (*http.Response, WebTransportSession, error)` | Custom WebTransport dial function. If nil, the default dialer is used. |
-| `FetchHandler`         | [`moqt.FetchHandler`](https://pkg.go.dev/github.com/okdaichi/gomoqt/moqt#FetchHandler) | Handles incoming fetch requests on WebTransport sessions. If nil, fetch requests are not handled. |
+| `FetchHandler`         | [`moqt.FetchHandler`](https://pkg.go.dev/github.com/qumo-dev/gomoqt/moqt#FetchHandler) | Handles incoming fetch requests on WebTransport sessions. If nil, fetch requests are not handled. |
 | `OnGoaway`             | `func(newSessionURI string)` | Called when the server requests session migration. The `newSessionURI` parameter contains the redirect URI, which may be empty. |
 | `Logger`               | [`*slog.Logger`](https://pkg.go.dev/log/slog#Logger)              | Logger for connection and session events. If nil, logging is disabled.         |
 
@@ -66,7 +66,7 @@ The following table describes the public fields of the `moqt.Dialer` struct:
 
 To use a custom QUIC implementation, you need to provide your own dial function. When `Dialer.DialQUICFunc` is set, it is used to dial QUIC connections instead of the default implementation.
 
-```go {filename="gomoqt/moqt/dialer.go",base_url="https://github.com/okdaichi/gomoqt/tree/main/moqt/dialer.go"}
+```go {filename="gomoqt/moqt/dialer.go",base_url="https://github.com/qumo-dev/gomoqt/tree/main/moqt/dialer.go"}
 type Dialer struct {
     // ...
 	DialQUICFunc func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (StreamConn, error)
@@ -89,7 +89,7 @@ type Dialer struct {
 
 To use a custom WebTransport implementation, you need to provide your own dial function. When `Dialer.DialWebTransportFunc` is set, it is used to dial WebTransport connections instead of the default implementation.
 
-```go {filename="gomoqt/moqt/dialer.go",base_url="https://github.com/okdaichi/gomoqt/tree/main/moqt/dialer.go"}
+```go {filename="gomoqt/moqt/dialer.go",base_url="https://github.com/qumo-dev/gomoqt/tree/main/moqt/dialer.go"}
 type Dialer struct {
     // ...
 	DialWebTransportFunc func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error)

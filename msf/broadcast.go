@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/okdaichi/gomoqt/moqt"
+	"github.com/qumo-dev/gomoqt/moqt"
 )
 
 // DefaultCatalogTrackName is the reserved MSF catalog track name from draft-00.

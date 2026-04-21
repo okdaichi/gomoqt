@@ -17,7 +17,7 @@ Most of the package is transport-agnostic. The networking primitives themselves 
 ## Installation
 
 ```go
-import "github.com/okdaichi/gomoqt/msf"
+import "github.com/qumo-dev/gomoqt/msf"
 ```
 
 ## Usage

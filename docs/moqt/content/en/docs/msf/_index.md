@@ -8,7 +8,7 @@ MSF (MOQT Streaming Format, [draft-ietf-moq-msf-00](https://datatracker.ietf.org
 While MoQ itself provides the transport primitives — broadcasts, tracks, groups, and frames — MSF defines the standard format for describing what media is available and how to consume it.
 
 ```go
-import "github.com/okdaichi/gomoqt/msf"
+import "github.com/qumo-dev/gomoqt/msf"
 ```
 
 ## Catalog

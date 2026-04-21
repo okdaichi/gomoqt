@@ -7,8 +7,8 @@ import (
 	"net"
 	"sync"
 
-	"github.com/okdaichi/gomoqt/transport"
 	quicgo "github.com/quic-go/quic-go"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 var _ StreamConn = (*FakeStreamConn)(nil)

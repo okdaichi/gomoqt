@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/okdaichi/gomoqt/transport"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 var (

@@ -8,9 +8,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/okdaichi/gomoqt/moqt/internal/quicgo"
-	"github.com/okdaichi/gomoqt/moqt/internal/webtransportgo"
 	"github.com/quic-go/quic-go"
+	"github.com/qumo-dev/gomoqt/moqt/internal/quicgo"
+	"github.com/qumo-dev/gomoqt/moqt/internal/webtransportgo"
 )
 
 // Dialer is a MOQ client that can establish sessions with MOQ servers.

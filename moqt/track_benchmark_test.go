@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/okdaichi/gomoqt/transport"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 // BenchmarkTrackReader_EnqueueDequeue benchmarks group enqueue and dequeue operations

@@ -1,6 +1,6 @@
 contact_links:
   - name: "💬 Questions"
-    url: https://github.com/okdaichi/gomoqt/discussions
+    url: https://github.com/qumo-dev/gomoqt/discussions
     about: "Use Discussions for implementation and usage questions"
 
   - name: "📚 Documentation"
@@ -8,9 +8,9 @@ contact_links:
     about: "Project documentation"
 
   - name: "🔐 Security Report"
-    url: https://github.com/okdaichi/gomoqt/security/advisories
+    url: https://github.com/qumo-dev/gomoqt/security/advisories
     about: "Report security vulnerabilities directly"
 
   - name: "🤝 Contributing"
-    url: https://github.com/okdaichi/gomoqt/blob/main/CONTRIBUTING.md
+    url: https://github.com/qumo-dev/gomoqt/blob/main/CONTRIBUTING.md
     about: "Please read our contributing guidelines"

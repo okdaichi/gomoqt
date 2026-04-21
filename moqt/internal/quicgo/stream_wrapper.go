@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/okdaichi/gomoqt/transport"
 	quicgo_quicgo "github.com/quic-go/quic-go"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 var _ transport.Stream = (*rawQuicStream)(nil)

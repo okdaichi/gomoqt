@@ -11,11 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/okdaichi/gomoqt/moqt/internal/message"
-	"github.com/okdaichi/gomoqt/moqt/internal/quicgo"
-	"github.com/okdaichi/gomoqt/moqt/internal/webtransportgo"
-	"github.com/okdaichi/gomoqt/transport"
 	"github.com/quic-go/quic-go"
+	"github.com/qumo-dev/gomoqt/moqt/internal/message"
+	"github.com/qumo-dev/gomoqt/moqt/internal/quicgo"
+	"github.com/qumo-dev/gomoqt/moqt/internal/webtransportgo"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 // ListenAndServe starts a new Server bound to the specified address and TLS

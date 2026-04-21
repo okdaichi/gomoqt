@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/okdaichi/gomoqt/transport"
 	quicgo_webtransportgo "github.com/okdaichi/webtransport-go"
 	quicgo_quicgo "github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 // Server is a wrapper for (quic-go/webtransport-go).Server

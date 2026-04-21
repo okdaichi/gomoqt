@@ -12,7 +12,7 @@ import (
 
 	"testing/synctest"
 
-	"github.com/okdaichi/gomoqt/transport"
+	"github.com/qumo-dev/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

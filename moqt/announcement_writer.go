@@ -7,8 +7,8 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/okdaichi/gomoqt/moqt/internal/message"
-	"github.com/okdaichi/gomoqt/transport"
+	"github.com/qumo-dev/gomoqt/moqt/internal/message"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 // newAnnouncementWriter creates a new AnnouncementWriter for the given stream and prefix.

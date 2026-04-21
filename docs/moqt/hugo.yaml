@@ -32,7 +32,7 @@ menu:
         type: search
     - identifier: github
       name: GitHub
-      url: "https://github.com/okdaichi/gomoqt"
+      url: "https://github.com/qumo-dev/gomoqt"
       params:
         icon: github
     # - identifier: introduction
@@ -59,7 +59,7 @@ menu:
       weight: 1
     - identifier: gomoqt
       name: gomoqt on pkg.go.dev
-      url: https://pkg.go.dev/github.com/okdaichi/gomoqt
+      url: https://pkg.go.dev/github.com/qumo-dev/gomoqt
       weight: 2
     - identifier: moq-lite-spec
       name: "MoQ-Lite Spec (draft-04)"
@@ -91,7 +91,7 @@ params:
       displayTags: true
   editURL:
     enable: true
-    base: "https://github.com/okdaichi/gomoqt/edit/main"
+    base: "https://github.com/qumo-dev/gomoqt/edit/main"
   
   # SEO and Social Media Configuration
   social:

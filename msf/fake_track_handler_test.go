@@ -1,7 +1,7 @@
 package msf
 
 import (
-	"github.com/okdaichi/gomoqt/moqt"
+	"github.com/qumo-dev/gomoqt/moqt"
 )
 
 var _ moqt.TrackHandler = (*FakeTrackHandler)(nil)

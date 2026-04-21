@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/okdaichi/gomoqt/transport"
+	"github.com/qumo-dev/gomoqt/transport"
 )
 
 var _ transport.SendStream = (*FakeQUICSendStream)(nil)
