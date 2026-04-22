@@ -3,56 +3,110 @@ title: Probe
 weight: 11
 ---
 
-Probe is a mechanism for measuring the available bitrate and round-trip time (RTT) between two peers. One peer sends a probe request with a local bitrate estimate, and the remote peer responds with its own bitrate and RTT information. This enables adaptive bitrate decisions without maintaining a persistent subscription.
+Probe is a mechanism for measuring the available bitrate between two peers.
+The subscriber sends a target bitrate hint to the publisher, and the publisher
+periodically reports back the bitrate it actually measured on the connection.
+This enables adaptive bitrate decisions without maintaining a persistent subscription.
 
-## Probe Bitrate
+### `moqt.ProbeResult`
 
-To probe the remote peer's bitrate and RTT, use the `Session.Probe` method:
+Both `Session.Probe` and `Session.ProbeTargets` deliver results via `ProbeResult`:
 
 ```go
-    localBitrate := uint64(5_000_000) // 5 Mbps
+type ProbeResult struct {
+    Bitrate uint64
+    Err     error
+}
+```
 
-    result, err := sess.Probe(localBitrate)
+| Field     | Type     | Description                                                    |
+|-----------|----------|----------------------------------------------------------------|
+| `Bitrate` | `uint64` | The measured bitrate in bits per second. 0 means unknown.      |
+| `Err`     | `error`  | Non-nil when the probe stream was closed with an error.        |
+
+> **Note:** RTT is not included in `ProbeResult`. Use the underlying
+> transport API (e.g. `quic.Connection.ConnectionStats()`) to obtain RTT.
+
+## Notify Target Bitrate
+
+Use `Session.Probe` to send a target bitrate hint to the publisher.
+The call can be repeated to update the target; the same underlying stream is
+reused. The returned channel is closed when the probe stream ends or the
+session terminates.
+
+```go
+func (s *Session) Probe(targetBitrate uint64) (<-chan ProbeResult, error)
+```
+
+```go
+    probeCh, err := sess.Probe(5_000_000) // hint: 5 Mbps
     if err != nil {
         // Handle error
         return
     }
 
-    fmt.Printf("Remote bitrate: %d bps\n", result.Bitrate)
-    fmt.Printf("RTT: %d ms\n", result.RTT)
+    result, ok := <-probeCh
+    if !ok {
+        // Stream closed without a result.
+        return
+    }
+    if result.Err != nil {
+        fmt.Printf("probe error: %v\n", result.Err)
+        return
+    }
+    fmt.Printf("Measured bitrate: %d bps\n", result.Bitrate)
 ```
 
-The method opens a bidirectional stream, sends a `PROBE` message with the local bitrate, and reads the remote peer's response containing the remote bitrate and RTT.
+## Receive Target Bitrate
 
-### Parameters
+Use `Session.ProbeTargets` to receive target bitrate hints sent by the subscriber.
+The channel has a buffer of 1 and uses latest-value semantics — if the
+previous value has not been consumed it is replaced by the newer one.
 
-| Parameter      | Type     | Description                              |
-|----------------|----------|------------------------------------------|
-| `bitrate`      | `uint64` | The local bitrate estimate in bits per second |
+```go
+func (s *Session) ProbeTargets() <-chan ProbeResult
+```
 
-### Return Values
+```go
+    for result := range sess.ProbeTargets() {
+        fmt.Printf("Subscriber target: %d bps\n", result.Bitrate)
+        // Adjust encoding bitrate accordingly.
+    }
+```
 
-`Probe` returns a `*moqt.ProbeResult`:
+The publisher automatically enforces a single active incoming probe stream;
+if the subscriber opens a new stream the previous one is cancelled.
 
-| Field      | Type     | Description                                    |
-|------------|----------|------------------------------------------------|
-| `Bitrate`  | `uint64` | The remote peer's bitrate in bits per second. 0 means unknown. |
-| `RTT`      | `uint64` | The smoothed round-trip time in milliseconds. 0 means unknown. |
+## Configuring Probe Behaviour
+
+The probe loop timing can be tuned via `moqt.Config`:
+
+```go
+    cfg := &moqt.Config{
+        ProbeInterval: 50 * time.Millisecond,
+        ProbeMaxAge:   5 * time.Second,
+        ProbeMaxDelta: 0.05,
+    }
+```
+
+| Field           | Type            | Default | Description                                                          |
+|-----------------|-----------------|---------|----------------------------------------------------------------------|
+| `ProbeInterval` | `time.Duration` | 100 ms  | Ticker period for the publisher-side probe loop.                     |
+| `ProbeMaxAge`   | `time.Duration` | 10 s    | Maximum interval between probe sends regardless of bitrate change.   |
+| `ProbeMaxDelta` | `float64`       | 0.10    | Fractional bitrate change threshold that triggers an early send.     |
 
 ## Error Handling
 
 Probe operations may return `moqt.ProbeError` or `moqt.SessionError`:
 
 ```go
-    result, err := sess.Probe(localBitrate)
+    probeCh, err := sess.Probe(5_000_000)
     if err != nil {
         var probeErr *moqt.ProbeError
         if errors.As(err, &probeErr) {
             switch probeErr.ProbeErrorCode() {
             case moqt.ProbeErrorCodeNotSupported:
                 // Remote peer does not support probing
-            case moqt.ProbeErrorCodeTimeout:
-                // Probe timed out
             default:
                 // Internal error
             }

@@ -17,7 +17,8 @@ type Session struct {
 func (s *Session) Subscribe(ctx context.Context, path BroadcastPath, name TrackName, config *SubscribeConfig) (*TrackReader, error)
 func (s *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error)
 func (s *Session) Fetch(req *FetchRequest) (*GroupReader, error)
-func (s *Session) Probe(bitrate uint64) (*ProbeResult, error)
+func (s *Session) Probe(targetBitrate uint64) (<-chan ProbeResult, error)
+func (s *Session) ProbeTargets() <-chan ProbeResult
 func (s *Session) CloseWithError(code SessionErrorCode, msg string) error
 func (s *Session) Context() context.Context
 func (s *Session) ConnectionState() ConnectionState
