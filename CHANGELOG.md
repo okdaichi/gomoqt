@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - Repository owner changed from `okdaichi` to `qumo-dev`.
+- **moqt:** WebTransport sessions no longer expose transport connection stats through the public `WebTransportSession` API. Connection stats are now treated as an optional raw transport capability and are accessed via type assertions on the underlying connection implementation.
 
 ## [v0.13.4] - 2026-04-20
 
