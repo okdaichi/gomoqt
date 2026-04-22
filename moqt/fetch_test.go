@@ -133,7 +133,8 @@ func TestFetchRequest_WithContext(t *testing.T) {
 
 	t.Run("panics on nil context", func(t *testing.T) {
 		r := &FetchRequest{}
-		assert.Panics(t, func() { r.WithContext(nil) })
+		var nilCtx context.Context
+		assert.Panics(t, func() { r.WithContext(nilCtx) })
 	})
 }
 
@@ -157,6 +158,7 @@ func TestFetchRequest_Clone(t *testing.T) {
 
 	t.Run("panics on nil context", func(t *testing.T) {
 		r := &FetchRequest{}
-		assert.Panics(t, func() { r.Clone(nil) })
+		var nilCtx context.Context
+		assert.Panics(t, func() { r.Clone(nilCtx) })
 	})
 }
