@@ -27,7 +27,11 @@ export async function runClient(
 		await Deno.stdout.write(encoder.encode(s));
 	}
 
-	async function step<T>(msg: string, fn: () => Promise<T>, detail?: (res: T) => string): Promise<T> {
+	async function step<T>(
+		msg: string,
+		fn: () => Promise<T>,
+		detail?: (res: T) => string,
+	): Promise<T> {
 		await write(`${msg}...`);
 		try {
 			const res = await fn();
