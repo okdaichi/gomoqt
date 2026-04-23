@@ -1380,8 +1380,9 @@ func TestSession_ProcessBiStream_ProbeMultipleMessages(t *testing.T) {
 		return quic.ConnectionStats{}
 	}
 
-	session := newTestSession(conn)
-	session.config = &Config{ProbeInterval: 5 * time.Millisecond, ProbeMaxAge: 15 * time.Millisecond}
+	session := newSession(conn, NewTrackMux(0), nil,
+		&Config{ProbeInterval: 5 * time.Millisecond, ProbeMaxAge: 15 * time.Millisecond},
+		nil, nil, nil)
 
 	probeStream := &FakeQUICStream{}
 
@@ -1494,7 +1495,9 @@ func TestSession_Probe_SecondCallReusesStream(t *testing.T) {
 	conn := &FakeStreamConn{}
 
 	var written bytes.Buffer
-	probeStream := &FakeQUICStream{}
+	// Use conn.Context() as parent so that closing the session also cancels the
+	// stream context, allowing readProbeResults to exit cleanly.
+	probeStream := &FakeQUICStream{ParentCtx: conn.Context()}
 	probeStream.WriteFunc = func(p []byte) (int, error) { return written.Write(p) }
 	// Block reads so the stream stays open throughout the test.
 	probeStream.ReadFunc = func(p []byte) (int, error) {

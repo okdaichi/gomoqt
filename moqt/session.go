@@ -178,6 +178,9 @@ func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 	// Wait for finishing handling streams
 	s.wg.Wait()
 
+	close(s.probeResponseCh)
+	close(s.probeTargetsCh)
+
 	if s.connManager != nil {
 		connManager := s.connManager
 		s.connManager = nil
@@ -455,7 +458,7 @@ func (sess *Session) Probe(targetBitrate uint64) (<-chan ProbeResult, error) {
 
 		probeStream = stream
 
-		go sess.readProbeResults(stream)
+		sess.wg.Go(func() { sess.readProbeResults(stream) })
 	}
 
 	// Send PROBE with the new target bitrate. Per draft4 the subscriber MAY send
@@ -480,7 +483,7 @@ func (sess *Session) Probe(targetBitrate uint64) (<-chan ProbeResult, error) {
 }
 
 // readProbeResults reads publisher PROBE messages from stream and forwards them to
-// ch. It is the sole writer to ch and the sole entity that closes it.
+// probeResponseCh. The channel is closed by CloseWithError after all wg goroutines finish.
 func (sess *Session) readProbeResults(stream transport.Stream) {
 	for {
 		var pm message.ProbeMessage
@@ -491,7 +494,7 @@ func (sess *Session) readProbeResults(stream transport.Stream) {
 		}
 		select {
 		case sess.probeResponseCh <- ProbeResult{Bitrate: pm.Bitrate}:
-		case <-sess.ctx.Done():
+		case <-stream.Context().Done():
 			return
 		}
 	}
