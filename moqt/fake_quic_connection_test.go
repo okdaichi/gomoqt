@@ -161,11 +161,8 @@ func (m *FakeStreamConn) RemoteAddr() net.Addr {
 //   - Subsequent calls are no-ops
 //   - Always returns nil (like quic-go)
 //
-// If CloseWithErrorFunc is set, it is called instead (for tests that need custom behavior).
+// If CloseWithErrorFunc is set, it is called in addition to the standard context cancellation.
 func (m *FakeStreamConn) CloseWithError(code transport.ConnErrorCode, reason string) error {
-	if m.CloseWithErrorFunc != nil {
-		return m.CloseWithErrorFunc(code, reason)
-	}
 	m.mu.Lock()
 	if m.closeErr != nil {
 		// Already closed — first-writer-wins, idempotent
@@ -180,6 +177,9 @@ func (m *FakeStreamConn) CloseWithError(code transport.ConnErrorCode, reason str
 	cancel := m.cancelCause
 	m.mu.Unlock()
 	cancel(m.closeErr)
+	if m.CloseWithErrorFunc != nil {
+		return m.CloseWithErrorFunc(code, reason)
+	}
 	return nil
 }
 
