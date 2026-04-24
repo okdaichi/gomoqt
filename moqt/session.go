@@ -818,11 +818,12 @@ func (sess *Session) detectBitrateChanges(provider probeStatsProvider) {
 		case now := <-ticker.C:
 			stats := provider.ConnectionStats()
 			bitrate, ok := tracker.next(stats, now)
+
+			sess.estimatedBitrate.Store(bitrate)
+
 			if !ok {
 				continue
 			}
-
-			sess.estimatedBitrate.Store(bitrate)
 
 			sess.incomingProbeMu.Lock()
 			stream := sess.incomingProbeStream
@@ -876,7 +877,7 @@ func (t *probeMeasurementTracker) next(stats quic.ConnectionStats, now time.Time
 		return bitrate, true
 	}
 
-	return 0, false
+	return bitrate, false
 }
 
 func (t *probeMeasurementTracker) record(bitrate uint64, now time.Time) {

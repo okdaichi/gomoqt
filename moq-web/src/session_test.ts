@@ -1111,5 +1111,46 @@ Deno.test({
 
 			await session.close();
 		});
+
+		await t.step(
+			"getStats reflects frequent estimatedBitrate updates even if delta is small",
+			async () => {
+				const req = new ProbeMessage({ bitrate: 1234 });
+				const reqBytes = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, BiStreamTypes.ProbeStreamType);
+					return await req.encode(w);
+				});
+
+				const stats = { estimatedSendRate: 8000 };
+				const mock = new MockWebTransportSession({
+					acceptStreamData: [{ type: BiStreamTypes.ProbeStreamType, data: reqBytes }],
+					stats,
+				});
+
+				const session = new Session({
+					transport: mock,
+					options: {
+						probeIntervalMs: 10,
+						probeMaxDelta: 1000.0, // huge delta
+					},
+				});
+				await session.ready;
+
+				// Wait for initial detection
+				await new Promise((resolve) => setTimeout(resolve, 50));
+				let currentStats = await session.getStats();
+				assertEquals(currentStats.estimatedBitrate, 8000);
+
+				// Update bitrate by a small amount
+				stats.estimatedSendRate = 8100; // 1.25% change, much smaller than 100000%
+
+				// Wait for next tick
+				await new Promise((resolve) => setTimeout(resolve, 50));
+				currentStats = await session.getStats();
+				assertEquals(currentStats.estimatedBitrate, 8100);
+
+				await session.close();
+			},
+		);
 	},
 });

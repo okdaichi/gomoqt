@@ -619,6 +619,7 @@ export class Session {
 			const bitrate = stats.estimatedSendRate;
 			const now = Date.now();
 			if (bitrate != null) {
+				this.#estimatedBitrate = bitrate;
 				const shouldSend = !firstSent ||
 					now - lastSentAt >= this.#probeMaxAgeMs ||
 					(lastBitrate === 0
@@ -635,7 +636,6 @@ export class Session {
 					firstSent = true;
 					lastBitrate = bitrate;
 					lastSentAt = now;
-					this.#estimatedBitrate = bitrate;
 				}
 			}
 

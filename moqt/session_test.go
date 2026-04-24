@@ -1641,7 +1641,7 @@ func TestSession_Probe_ChannelClosedOnSessionClose(t *testing.T) {
 	ch, err := session.Probe(1000000)
 	require.NoError(t, err)
 
-	// Close the session: cancels conn.Context() → probeStream.Context() → ReadFunc returns.
+	// Close the session: cancels conn.Context() -> probeStream.Context() -> ReadFunc returns.
 	_ = session.CloseWithError(NoError, "")
 
 	// The channel must be closed (range or two-value receive must see ok=false).
@@ -1919,7 +1919,7 @@ func TestSession_ProbeTargets_InitialMessageDelivered(t *testing.T) {
 
 	session := newTestSession(conn)
 
-	// Subscriber sends exactly ONE ProbeMessage — no further updates.
+	// Subscriber sends exactly ONE ProbeMessage -no further updates.
 	var incoming bytes.Buffer
 	require.NoError(t, message.StreamTypeProbe.Encode(&incoming))
 	require.NoError(t, message.ProbeMessage{Bitrate: 3_000_000}.Encode(&incoming))
@@ -2664,7 +2664,7 @@ func TestSession_Probe_EOFFromPublisher_NoStreamCancel(t *testing.T) {
 	for range ch {
 	}
 
-	// EOF is a normal close — CancelRead/CancelWrite must NOT be called.
+	// EOF is a normal close -CancelRead/CancelWrite must NOT be called.
 	select {
 	case code := <-cancelReadCalled:
 		t.Errorf("CancelRead must not be called on EOF (code %d)", code)
@@ -2780,7 +2780,7 @@ func TestSession_processBiStream_logError(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
 
-	// Create a stream that returns an immediate read error → logError should fire
+	// Create a stream that returns an immediate read error ->logError should fire
 	mockStream := &FakeQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
 			return 0, errors.New("broken stream")
@@ -2821,4 +2821,68 @@ func TestSession_processUniStream_logError(t *testing.T) {
 	assert.Contains(t, output, "broken uni stream")
 
 	_ = session.CloseWithError(NoError, "")
+}
+
+func TestSession_Stats_EstimatedBitrateUpdatedEveryInterval(t *testing.T) {
+	var mu sync.Mutex
+	var bytesSent uint64
+	delta := uint64(100_000)
+
+	conn := &FakeStreamConn{}
+	conn.ConnectionStatsFunc = func() quic.ConnectionStats {
+		mu.Lock()
+		defer mu.Unlock()
+		return quic.ConnectionStats{BytesSent: bytesSent}
+	}
+
+	// Set a very large MaxAge so it doesn't trigger by age.
+	// Set a huge MaxDelta so changes don't trigger a notification.
+	cfg := &Config{
+		ProbeInterval: 10 * time.Millisecond,
+		ProbeMaxAge:   1 * time.Hour,
+		ProbeMaxDelta: 1000.0, // 100000% change needed for notification
+	}
+	sess := newSession(conn, NewTrackMux(0), nil, cfg, nil, nil, nil)
+	t.Cleanup(func() { _ = sess.CloseWithError(NoError, "") })
+
+	// Initial tick to initialize tracker baseline
+	mu.Lock()
+	bytesSent = 100_000
+	mu.Unlock()
+
+	// Ensure bytesSent increases for the measurements
+	// We'll use a slower ticker to reduce jitter impact
+	go func() {
+		ticker := time.NewTicker(2 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				mu.Lock()
+				bytesSent += delta / 5 // Add 1/5 of delta every 2ms -> approx 1 delta every 10ms
+				mu.Unlock()
+			case <-time.After(500 * time.Millisecond):
+				return
+			}
+		}
+	}()
+
+	// Wait for first measurement (should be > 0)
+	assert.Eventually(t, func() bool {
+		return sess.Stats().EstimatedBitrate > 0
+	}, 300*time.Millisecond, 10*time.Millisecond)
+
+	firstBitrate := sess.Stats().EstimatedBitrate
+
+	// Now we want to check if it updates even if the change is small.
+	// We'll change the increment slightly.
+	mu.Lock()
+	delta = delta + 5_000 // 5% change
+	mu.Unlock()
+
+	// Wait for a few ticks
+	time.Sleep(100 * time.Millisecond)
+
+	secondBitrate := sess.Stats().EstimatedBitrate
+	assert.NotEqual(t, firstBitrate, secondBitrate, "EstimatedBitrate should update every interval even if change is small")
 }
