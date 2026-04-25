@@ -1,4 +1,4 @@
-import { assertEquals, assertExists, assertInstanceOf } from "@std/assert";
+import { assert, assertEquals, assertExists, assertInstanceOf } from "@std/assert";
 import { spy } from "@std/testing/mock";
 import { Session } from "./session.ts";
 import type { SessionStats } from "./session.ts";
@@ -1150,6 +1150,43 @@ Deno.test({
 				assertEquals(currentStats.estimatedBitrate, 8100);
 
 				await session.close();
+			},
+		);
+
+		await t.step(
+			"probe methods support concurrent access and splitting messages",
+			async () => {
+				const mock = new MockWebTransportSession({});
+				const session = new Session({ transport: mock });
+				await session.ready;
+
+				// Test probe() concurrency
+				const [gen1] = await session.probe(1000);
+				const [gen2] = await session.probe(2000);
+				assert(gen1 !== gen2, "each call should return a new iterator");
+
+				let count1 = 0;
+				let count2 = 0;
+
+				// Start two consumers
+				const p1 = (async () => {
+					for await (const _ of gen1!) count1++;
+				})();
+				const p2 = (async () => {
+					for await (const _ of gen2!) count2++;
+				})();
+
+				// Close the session to end the generators
+				await session.close();
+				await Promise.all([p1, p2]);
+
+				// Test probeTargets() concurrency
+				const session2 = new Session({ transport: new MockWebTransportSession({}) });
+				const tGen1 = session2.probeTargets();
+				const tGen2 = session2.probeTargets();
+				assert(tGen1 !== tGen2);
+
+				await session2.close();
 			},
 		);
 	},

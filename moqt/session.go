@@ -60,9 +60,7 @@ type Session struct {
 	incomingProbeStream transport.Stream
 	probeTargetsCh      chan ProbeResult
 
-	// estimatedBitrate is the most recently measured outbound bitrate in bps.
-	// Updated by detectBitrateChanges; zero until the first measurement.
-	estimatedBitrate atomic.Uint64
+	bitrateTracker bitrateTracker
 }
 
 func newSession(
@@ -90,8 +88,12 @@ func newSession(
 		trackReaders:    make(map[SubscribeID]*TrackReader),
 		trackWriters:    make(map[SubscribeID]*TrackWriter),
 		connManager:     manager,
-		probeResponseCh: make(chan ProbeResult),    // unbuffered channel for subscriber PROBE responses
-		probeTargetsCh:  make(chan ProbeResult, 1), // buffered channel for latest-value semantics
+		probeResponseCh: make(chan ProbeResult, 1), // latest-value semantics
+		probeTargetsCh:  make(chan ProbeResult, 1), // latest-value semantics
+		bitrateTracker: bitrateTracker{
+			maxAge:   config.probeMaxAge(),
+			maxDelta: config.probeMaxDelta(),
+		},
 	}
 
 	if manager != nil {
@@ -165,9 +167,8 @@ func (s *Session) RemoteAddr() net.Addr {
 // It never returns an error; fields that cannot be measured on the current
 // transport (e.g. RTT on a WebTransport/Browser session) are zero.
 func (s *Session) Stats() SessionStats {
-	stats := SessionStats{
-		EstimatedBitrate: s.estimatedBitrate.Load(),
-	}
+	var stats SessionStats
+	stats.EstimatedBitrate = s.bitrateTracker.getEstimatedBitrate()
 
 	if provider, ok := s.conn.(probeStatsProvider); ok {
 		cs := provider.ConnectionStats()
@@ -515,12 +516,22 @@ func (sess *Session) Probe(targetBitrate uint64) (<-chan ProbeResult, error) {
 					}
 					return
 				}
+				sess.bitrateTracker.record(pm.Bitrate, time.Now())
+
+				// Update the latest probe result, dropping it if the channel buffer is full (i.e. the previous value has not been consumed).
 				select {
-				case sess.probeResponseCh <- ProbeResult{
-					Bitrate: pm.Bitrate,
-				}:
+				case <-sess.probeResponseCh:
+				default:
+				}
+				select {
+				case sess.probeResponseCh <- ProbeResult{Bitrate: pm.Bitrate}:
+				default:
+				}
+
+				select {
 				case <-streamCtx.Done():
 					return
+				default:
 				}
 			}
 		})
@@ -784,72 +795,74 @@ func (sess *Session) handleProbeStream(stream transport.Stream) error {
 	}()
 
 	for {
-		var probe message.ProbeMessage
-		if err := probe.Decode(stream); err != nil {
+		var pm message.ProbeMessage
+		if err := pm.Decode(stream); err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
 		}
 
+		// Update the latest probe target, dropping it if the channel buffer is full (i.e. the previous value has not been consumed).
 		select {
 		case <-sess.probeTargetsCh:
 		default:
 		}
 		select {
-		case sess.probeTargetsCh <- ProbeResult{Bitrate: probe.Bitrate}:
+		case sess.probeTargetsCh <- ProbeResult{Bitrate: pm.Bitrate}:
 		default:
 		}
 	}
 }
 
+func (sess *Session) notifyResults(bitrate uint64) {
+	select {
+	case <-sess.probeResponseCh:
+	default:
+	}
+	select {
+	case sess.probeResponseCh <- ProbeResult{Bitrate: bitrate}:
+	default:
+	}
+}
+
+func (sess *Session) notifyTargets(bitrate uint64) {
+	select {
+	case <-sess.probeTargetsCh:
+	default:
+	}
+	select {
+	case sess.probeTargetsCh <- ProbeResult{Bitrate: bitrate}:
+	default:
+	}
+}
+
 func (sess *Session) detectBitrateChanges(provider probeStatsProvider) {
-	ticker := time.NewTicker(sess.config.probeInterval())
-	defer ticker.Stop()
-
-	maxAge := sess.config.probeMaxAge()
-	maxDelta := sess.config.probeMaxDelta()
-	tracker := &probeMeasurementTracker{maxAge: maxAge, maxDelta: maxDelta}
-
-	for {
-		select {
-		case <-sess.ctx.Done():
+	sess.bitrateTracker.monitor(sess.ctx, sess.config.probeInterval(), provider, func(bitrate, rtt uint64) {
+		sess.incomingProbeMu.Lock()
+		stream := sess.incomingProbeStream
+		sess.incomingProbeMu.Unlock()
+		if stream == nil {
 			return
-		case now := <-ticker.C:
-			stats := provider.ConnectionStats()
-			bitrate, ok := tracker.next(stats, now)
+		}
 
-			sess.estimatedBitrate.Store(bitrate)
-
-			if !ok {
-				continue
-			}
-
-			sess.incomingProbeMu.Lock()
-			stream := sess.incomingProbeStream
-			sess.incomingProbeMu.Unlock()
-			if stream == nil {
-				continue
-			}
-
-			err := message.ProbeMessage{
-				Bitrate: bitrate,
-				RTT:     uint64(stats.SmoothedRTT.Milliseconds()),
-			}.Encode(stream)
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					continue
-				}
+		err := message.ProbeMessage{
+			Bitrate: bitrate,
+			RTT:     rtt,
+		}.Encode(stream)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				sess.logError("failed to send periodic probe", err)
 			}
 		}
-	}
+	})
 }
 
 type probeStatsProvider interface {
 	ConnectionStats() quic.ConnectionStats
 }
 
-type probeMeasurementTracker struct {
+type bitrateTracker struct {
 	maxAge   time.Duration
 	maxDelta float64
 
@@ -859,11 +872,35 @@ type probeMeasurementTracker struct {
 	sampleTime  time.Time
 
 	// throttle state
-	lastBitrate uint64
-	lastSentAt  time.Time
+	estimatedBitrate atomic.Uint64
+	lastSentBitrate  atomic.Uint64
+	lastSentAt       time.Time
 }
 
-func (t *probeMeasurementTracker) next(stats quic.ConnectionStats, now time.Time) (uint64, bool) {
+func (t *bitrateTracker) monitor(ctx context.Context, interval time.Duration, provider probeStatsProvider, onProbe func(bitrate, rtt uint64)) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			stats := provider.ConnectionStats()
+			bitrate, ok := t.next(stats, now)
+
+			if !ok {
+				continue
+			}
+
+			if onProbe != nil {
+				onProbe(bitrate, uint64(stats.SmoothedRTT.Milliseconds()))
+			}
+		}
+	}
+}
+
+func (t *bitrateTracker) next(stats quic.ConnectionStats, now time.Time) (uint64, bool) {
 	bitrate := t.measureBitrate(stats, now)
 
 	if t.lastSentAt.IsZero() {
@@ -871,8 +908,9 @@ func (t *probeMeasurementTracker) next(stats quic.ConnectionStats, now time.Time
 		return bitrate, true
 	}
 
+	lastSentBitrate := t.lastSentBitrate.Load()
 	if now.Sub(t.lastSentAt) >= t.maxAge ||
-		hasDelta(t.lastBitrate, bitrate, t.maxDelta) {
+		hasDelta(lastSentBitrate, bitrate, t.maxDelta) {
 		t.record(bitrate, now)
 		return bitrate, true
 	}
@@ -880,22 +918,23 @@ func (t *probeMeasurementTracker) next(stats quic.ConnectionStats, now time.Time
 	return bitrate, false
 }
 
-func (t *probeMeasurementTracker) record(bitrate uint64, now time.Time) {
-	t.lastBitrate = bitrate
+func (t *bitrateTracker) record(bitrate uint64, now time.Time) {
+	t.estimatedBitrate.Store(bitrate)
+	t.lastSentBitrate.Store(bitrate)
 	t.lastSentAt = now
 }
 
-func (t *probeMeasurementTracker) measureBitrate(stats quic.ConnectionStats, now time.Time) uint64 {
+func (t *bitrateTracker) measureBitrate(stats quic.ConnectionStats, now time.Time) uint64 {
 	if !t.initialized {
 		t.initialized = true
 		t.bytesSent = stats.BytesSent
 		t.sampleTime = now
-		return 0
+		return t.estimatedBitrate.Load()
 	}
 
 	elapsed := now.Sub(t.sampleTime)
 	if elapsed <= 0 {
-		return t.lastBitrate
+		return t.estimatedBitrate.Load()
 	}
 
 	bytesSent := stats.BytesSent
@@ -906,11 +945,13 @@ func (t *probeMeasurementTracker) measureBitrate(stats quic.ConnectionStats, now
 	t.bytesSent = bytesSent
 	t.sampleTime = now
 
-	if bytesDelta == 0 {
-		return 0
-	}
+	bitrate := uint64(float64(bytesDelta) * 8 / elapsed.Seconds())
+	t.estimatedBitrate.Store(bitrate)
+	return bitrate
+}
 
-	return uint64(float64(bytesDelta) * 8 / elapsed.Seconds())
+func (t *bitrateTracker) getEstimatedBitrate() uint64 {
+	return t.estimatedBitrate.Load()
 }
 
 func hasDelta(oldVal, newVal uint64, maxDelta float64) bool {

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -867,7 +868,7 @@ func TestSession_Stats_EstimatedBitrateUpdatedByDetectBitrateChanges(t *testing.
 	conn := &FakeStreamConn{}
 	conn.ConnectionStatsFunc = func() quic.ConnectionStats {
 		// Simulate ongoing traffic: each call advances BytesSent by 100 kB
-		// so that probeMeasurementTracker sees a non-zero byte delta.
+		// so that BitrateTracker sees a non-zero byte delta.
 		mu.Lock()
 		bytesSent += 100_000
 		n := bytesSent
@@ -2885,4 +2886,59 @@ func TestSession_Stats_EstimatedBitrateUpdatedEveryInterval(t *testing.T) {
 
 	secondBitrate := sess.Stats().EstimatedBitrate
 	assert.NotEqual(t, firstBitrate, secondBitrate, "EstimatedBitrate should update every interval even if change is small")
+}
+
+func TestSession_Probe_ConcurrentAccess(t *testing.T) {
+	session, _ := newTestSessionWithConn(t)
+	defer session.CloseWithError(NoError, "")
+
+	// Test concurrent access to Probe (receiving peer measurements)
+	results, _ := session.Probe(1000000)
+	results2, _ := session.Probe(2000000)
+
+	var count1, count2 atomic.Int32
+	ctx := t.Context()
+
+	consume := func(ch <-chan ProbeResult, counter *atomic.Int32) {
+		for {
+			select {
+			case <-ch:
+				counter.Add(1)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+
+	go consume(results, &count1)
+	go consume(results2, &count2)
+
+	// Simulate incoming peer measurements
+	for i := range 10 {
+		session.notifyResults(uint64(1000 + i))
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Because it's a channel, the 10 messages are split between the two consumers.
+	// We check that the sum of received messages is correct.
+	assert.Eventually(t, func() bool {
+		return count1.Load()+count2.Load() >= 10
+	}, 200*time.Millisecond, 10*time.Millisecond)
+
+	// Test concurrent access to ProbeTargets (receiving local target hints)
+	targets1 := session.ProbeTargets()
+	targets2 := session.ProbeTargets()
+
+	var tCount1, tCount2 atomic.Int32
+	go consume(targets1, &tCount1)
+	go consume(targets2, &tCount2)
+
+	for i := range 10 {
+		session.notifyTargets(uint64(2000 + i))
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	assert.Eventually(t, func() bool {
+		return tCount1.Load()+tCount2.Load() >= 10
+	}, 200*time.Millisecond, 10*time.Millisecond)
 }
