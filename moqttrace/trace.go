@@ -17,31 +17,20 @@ type SessionTrace struct {
 	IncomingUniStreamStart func(msgType uint8)
 }
 
-// SubscribeDropInfo contains information about a subscription drop.
-type SubscribeDropInfo struct {
-	SubscribeID uint64
-	StartGroup  uint64
-	EndGroup    uint64
-	ErrorCode   uint64
-}
+type traceContextKeyType struct{}
 
-// ProbeResultInfo contains information about a probe result.
-type ProbeResultInfo struct {
-	Bitrate uint64
-}
-
-type traceContextKey struct{}
+var traceContextKey traceContextKeyType
 
 // ContextWithSessionTrace returns a new context based on the provided parent
 // context that carries the given SessionTrace.
 func ContextWithSessionTrace(ctx context.Context, trace *SessionTrace) context.Context {
-	return context.WithValue(ctx, traceContextKey{}, trace)
+	return context.WithValue(ctx, traceContextKey, trace)
 }
 
 // SessionTraceFromContext returns the SessionTrace associated with the
 // provided context, or nil if none is present.
 func SessionTraceFromContext(ctx context.Context) *SessionTrace {
-	if trace, ok := ctx.Value(traceContextKey{}).(*SessionTrace); ok {
+	if trace, ok := ctx.Value(traceContextKey).(*SessionTrace); ok {
 		return trace
 	}
 	return nil
