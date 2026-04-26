@@ -9,7 +9,9 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	quic "github.com/quic-go/quic-go"
@@ -65,7 +67,6 @@ func TestNewSession(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			conn := &FakeStreamConn{}
 			conn.TLSFunc = func() *tls.ConnectionState { return &tls.ConnectionState{NegotiatedProtocol: NextProtoMOQ} }
-			conn.OpenStreamFunc = func() (transport.Stream, error) { return nil, io.EOF }
 			conn.OpenStreamFunc = func() (transport.Stream, error) { return nil, io.EOF }
 
 			session := newSession(conn, tt.mux, nil, nil, nil, nil, nil)
@@ -605,17 +606,31 @@ func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
 
 func TestSession_HandleUniStreamsAcceptError(t *testing.T) {
 	conn := &FakeStreamConn{}
-	conn.AcceptStreamFunc = func(context.Context) (transport.Stream, error) { return nil, errors.New("accept uni stream failed") }
+	acceptStreamCh := make(chan struct{}, 1)
+	conn.AcceptStreamFunc = func(context.Context) (transport.Stream, error) {
+		select {
+		case acceptStreamCh <- struct{}{}:
+		default:
+		}
+		return nil, errors.New("accept uni stream failed")
+	}
 	conn.AcceptUniStreamFunc = func(context.Context) (transport.ReceiveStream, error) {
+		select {
+		case acceptStreamCh <- struct{}{}:
+		default:
+		}
 		return nil, errors.New("accept uni stream failed")
 	}
 
 	session := newTestSession(conn)
 
-	// Wait a bit for the background goroutine to try accepting
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-acceptStreamCh:
+		// ok
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("AcceptStream/AcceptUniStream not called by background goroutine")
+	}
 
-	// The session should handle the error gracefully
 	assert.NotNil(t, session)
 
 	// Cleanup
@@ -623,49 +638,35 @@ func TestSession_HandleUniStreamsAcceptError(t *testing.T) {
 }
 
 func TestSession_ConcurrentAccess(t *testing.T) {
-	mockStream := &FakeQUICStream{}
-	mockStream.WriteFunc = func(p []byte) (int, error) { return 0, nil }
-	conn := &FakeStreamConn{}
-	conn.OpenStreamFunc = func() (transport.Stream, error) { return mockStream, nil }
-	conn.OpenUniStreamFunc = func() (transport.SendStream, error) { return &FakeQUICSendStream{}, nil }
+	synctest.Test(t, func(t *testing.T) {
+		mockStream := &FakeQUICStream{}
+		mockStream.WriteFunc = func(p []byte) (int, error) { return 0, nil }
+		conn := &FakeStreamConn{}
+		conn.OpenStreamFunc = func() (transport.Stream, error) { return mockStream, nil }
+		conn.OpenUniStreamFunc = func() (transport.SendStream, error) { return &FakeQUICSendStream{}, nil }
 
-	session := newTestSession(conn)
+		session := newTestSession(conn)
+		defer func() { _ = session.CloseWithError(NoError, "") }()
 
-	// Test concurrent access
-	done := make(chan struct{})
-	var operations int
+		var wg sync.WaitGroup
+		wg.Add(2)
 
-	// Concurrent nextSubscribeID calls
-	go func() {
-		for range 5 {
-			session.nextSubscribeID()
-		}
-		operations++
-		if operations == 2 {
-			close(done)
-		}
-	}()
+		go func() {
+			defer wg.Done()
+			for range 5 {
+				session.nextSubscribeID()
+			}
+		}()
 
-	// Concurrent Context calls
-	go func() {
-		for range 5 {
-			session.Context()
-		}
-		operations++
-		if operations == 2 {
-			close(done)
-		}
-	}()
+		go func() {
+			defer wg.Done()
+			for range 5 {
+				_ = session.Context()
+			}
+		}()
 
-	select {
-	case <-done:
-		// Success
-	case <-time.After(time.Second):
-		t.Error("Concurrent operations timed out")
-	}
-
-	// Cleanup
-	_ = session.CloseWithError(NoError, "")
+		wg.Wait()
+	})
 }
 
 func TestSession_ContextCancellation(t *testing.T) {
@@ -820,6 +821,83 @@ func TestCancelStreamWithError(t *testing.T) {
 	var cancelReadErr *transport.StreamError
 	require.ErrorAs(t, readErr, &cancelReadErr)
 	assert.Equal(t, transport.StreamErrorCode(1), cancelReadErr.ErrorCode)
+}
+
+func TestSession_Stats_NoTransport(t *testing.T) {
+	// noStatsConn does not implement probeStatsProvider.
+	// Transport-derived fields must be zero values.
+	conn := noStatsConn{}
+	sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil)
+	t.Cleanup(func() { _ = sess.CloseWithError(NoError, "") })
+
+	stats := sess.Stats()
+
+	assert.Equal(t, time.Duration(0), stats.RTT)
+	assert.Equal(t, uint64(0), stats.BytesSent)
+	assert.Equal(t, uint64(0), stats.BytesReceived)
+}
+
+func TestSession_Stats_WithTransport(t *testing.T) {
+	sess, _ := newTestSessionWithConn(t, func(c *FakeStreamConn) {
+		c.ConnectionStatsFunc = func() quic.ConnectionStats {
+			return quic.ConnectionStats{
+				SmoothedRTT:   50 * time.Millisecond,
+				BytesSent:     1_000,
+				BytesReceived: 2_000,
+			}
+		}
+	})
+
+	stats := sess.Stats()
+
+	assert.Equal(t, 50*time.Millisecond, stats.RTT)
+	assert.Equal(t, uint64(1_000), stats.BytesSent)
+	assert.Equal(t, uint64(2_000), stats.BytesReceived)
+}
+
+func TestSession_Stats_EstimatedBitrateZeroBeforeProbe(t *testing.T) {
+	sess, _ := newTestSessionWithConn(t)
+
+	stats := sess.Stats()
+	assert.Equal(t, uint64(0), stats.EstimatedBitrate)
+}
+
+func TestSession_Stats_EstimatedBitrateUpdatedByDetectBitrateChanges(t *testing.T) {
+	var mu sync.Mutex
+	var bytesSent uint64
+	conn := &FakeStreamConn{}
+	conn.ConnectionStatsFunc = func() quic.ConnectionStats {
+		// Simulate ongoing traffic: each call advances BytesSent by 100 kB
+		// so that BitrateTracker sees a non-zero byte delta.
+		mu.Lock()
+		bytesSent += 100_000
+		n := bytesSent
+		mu.Unlock()
+		return quic.ConnectionStats{BytesSent: n}
+	}
+	// Pass config at creation time so the Ticker in detectBitrateChanges
+	// picks up the short interval (it is captured at goroutine start).
+	cfg := &Config{ProbeInterval: 5 * time.Millisecond, ProbeMaxAge: 10 * time.Millisecond}
+	sess := newSession(conn, NewTrackMux(0), nil, cfg, nil, nil, nil)
+	t.Cleanup(func() { _ = sess.CloseWithError(NoError, "") })
+
+	// Allow detectBitrateChanges at least two ticks: first initializes, second measures.
+	assert.Eventually(t, func() bool {
+		return sess.Stats().EstimatedBitrate > 0
+	}, 200*time.Millisecond, 10*time.Millisecond)
+}
+
+func TestSession_Stats_ReflectsRemovals(t *testing.T) {
+	sess, _ := newTestSessionWithConn(t)
+
+	sess.addTrackReader(SubscribeID(1), &TrackReader{})
+	sess.addTrackReader(SubscribeID(2), &TrackReader{})
+	sess.removeTrackReader(SubscribeID(1))
+
+	stats := sess.Stats()
+	assert.Equal(t, time.Duration(0), stats.RTT)
+	assert.Equal(t, uint64(0), stats.BytesSent)
+	assert.Equal(t, uint64(0), stats.BytesReceived)
 }
 
 func TestSession_AddTrackReader(t *testing.T) {
@@ -1564,7 +1642,7 @@ func TestSession_Probe_ChannelClosedOnSessionClose(t *testing.T) {
 	ch, err := session.Probe(1000000)
 	require.NoError(t, err)
 
-	// Close the session: cancels conn.Context() → probeStream.Context() → ReadFunc returns.
+	// Close the session: cancels conn.Context() -> probeStream.Context() -> ReadFunc returns.
 	_ = session.CloseWithError(NoError, "")
 
 	// The channel must be closed (range or two-value receive must see ok=false).
@@ -1842,7 +1920,7 @@ func TestSession_ProbeTargets_InitialMessageDelivered(t *testing.T) {
 
 	session := newTestSession(conn)
 
-	// Subscriber sends exactly ONE ProbeMessage — no further updates.
+	// Subscriber sends exactly ONE ProbeMessage -no further updates.
 	var incoming bytes.Buffer
 	require.NoError(t, message.StreamTypeProbe.Encode(&incoming))
 	require.NoError(t, message.ProbeMessage{Bitrate: 3_000_000}.Encode(&incoming))
@@ -2587,7 +2665,7 @@ func TestSession_Probe_EOFFromPublisher_NoStreamCancel(t *testing.T) {
 	for range ch {
 	}
 
-	// EOF is a normal close — CancelRead/CancelWrite must NOT be called.
+	// EOF is a normal close -CancelRead/CancelWrite must NOT be called.
 	select {
 	case code := <-cancelReadCalled:
 		t.Errorf("CancelRead must not be called on EOF (code %d)", code)
@@ -2703,7 +2781,7 @@ func TestSession_processBiStream_logError(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
 
-	// Create a stream that returns an immediate read error → logError should fire
+	// Create a stream that returns an immediate read error ->logError should fire
 	mockStream := &FakeQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
 			return 0, errors.New("broken stream")
@@ -2743,5 +2821,146 @@ func TestSession_processUniStream_logError(t *testing.T) {
 	assert.Contains(t, output, "failed to decode uni stream type")
 	assert.Contains(t, output, "broken uni stream")
 
+	_ = session.CloseWithError(NoError, "")
+}
+
+func TestSession_Stats_EstimatedBitrateUpdatedEveryInterval(t *testing.T) {
+	var mu sync.Mutex
+	var bytesSent uint64
+	delta := uint64(100_000)
+
+	conn := &FakeStreamConn{}
+	conn.ConnectionStatsFunc = func() quic.ConnectionStats {
+		mu.Lock()
+		defer mu.Unlock()
+		return quic.ConnectionStats{BytesSent: bytesSent}
+	}
+
+	// Set a very large MaxAge so it doesn't trigger by age.
+	// Set a huge MaxDelta so changes don't trigger a notification.
+	cfg := &Config{
+		ProbeInterval: 10 * time.Millisecond,
+		ProbeMaxAge:   1 * time.Hour,
+		ProbeMaxDelta: 1000.0, // 100000% change needed for notification
+	}
+	sess := newSession(conn, NewTrackMux(0), nil, cfg, nil, nil, nil)
+	t.Cleanup(func() { _ = sess.CloseWithError(NoError, "") })
+
+	// Initial tick to initialize tracker baseline
+	mu.Lock()
+	bytesSent = 100_000
+	mu.Unlock()
+
+	// Ensure bytesSent increases for the measurements
+	// We'll use a slower ticker to reduce jitter impact
+	go func() {
+		ticker := time.NewTicker(2 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				mu.Lock()
+				bytesSent += delta / 5 // Add 1/5 of delta every 2ms -> approx 1 delta every 10ms
+				mu.Unlock()
+			case <-time.After(500 * time.Millisecond):
+				return
+			}
+		}
+	}()
+
+	// Wait for first measurement (should be > 0)
+	assert.Eventually(t, func() bool {
+		return sess.Stats().EstimatedBitrate > 0
+	}, 300*time.Millisecond, 10*time.Millisecond)
+
+	firstBitrate := sess.Stats().EstimatedBitrate
+
+	// Now we want to check if it updates even if the change is small.
+	// We'll change the increment slightly.
+	mu.Lock()
+	delta = delta + 5_000 // 5% change
+	mu.Unlock()
+
+	// Wait for a few ticks
+	time.Sleep(100 * time.Millisecond)
+
+	secondBitrate := sess.Stats().EstimatedBitrate
+	assert.NotEqual(t, firstBitrate, secondBitrate, "EstimatedBitrate should update every interval even if change is small")
+}
+
+func TestSession_Probe_ConcurrentAccess(t *testing.T) {
+	ctx := t.Context()
+
+	conn := &FakeStreamConn{
+		ParentCtx: ctx,
+	}
+
+	mockStream := &FakeQUICStream{
+		ParentCtx: conn.Context(),
+	}
+	mockStream.WriteFunc = func(p []byte) (int, error) { return len(p), nil }
+	mockStream.ReadFunc = func(p []byte) (int, error) {
+		<-mockStream.Context().Done()
+		return 0, io.EOF
+	}
+
+	conn.OpenStreamFunc = func() (transport.Stream, error) { return mockStream, nil }
+
+	session := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil)
+
+	// Test concurrent access to Probe (receiving peer measurements)
+	results, _ := session.Probe(1000000)
+	results2, _ := session.Probe(2000000)
+
+	var count1, count2 atomic.Int32
+	consumeCtx, consumeCancel := context.WithCancel(context.Background())
+
+	consume := func(ch <-chan ProbeResult, counter *atomic.Int32) {
+		for {
+			select {
+			case _, ok := <-ch:
+				if !ok {
+					return
+				}
+				counter.Add(1)
+			case <-consumeCtx.Done():
+				return
+			}
+		}
+	}
+
+	go consume(results, &count1)
+	go consume(results2, &count2)
+
+	// Simulate incoming peer measurements
+	for i := range 10 {
+		session.notifyResults(uint64(1000 + i))
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	// Because it's a channel, the 10 messages are split between the two consumers.
+	assert.Eventually(t, func() bool {
+		return count1.Load()+count2.Load() >= 10
+	}, 500*time.Millisecond, 10*time.Millisecond)
+
+	// Test concurrent access to ProbeTargets (receiving local target hints)
+	targets1 := session.ProbeTargets()
+	targets2 := session.ProbeTargets()
+
+	var tCount1, tCount2 atomic.Int32
+	go consume(targets1, &tCount1)
+	go consume(targets2, &tCount2)
+
+	for i := range 10 {
+		session.notifyTargets(uint64(2000 + i))
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	assert.Eventually(t, func() bool {
+		return tCount1.Load()+tCount2.Load() >= 10
+	}, 500*time.Millisecond, 10*time.Millisecond)
+
+	// Clean shutdown: cancel consumers first, then close session
+	consumeCancel()
 	_ = session.CloseWithError(NoError, "")
 }

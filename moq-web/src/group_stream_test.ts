@@ -45,7 +45,9 @@ Deno.test("GroupWriter", async (t) => {
 		const [ctx] = withCancelCause(background());
 		// failure writer that always returns an error
 		const writer: SendStream = {
-			write: spy(async (_p: Uint8Array) => [0, new Error("fail")]),
+			write: spy(async (
+				_p: Uint8Array,
+			): Promise<[number, Error | undefined]> => [0, new Error("fail")]),
 			close: async () => {},
 			cancel: async (_code: number) => {},
 			closed: () => new Promise<void>(() => {}),
@@ -324,7 +326,9 @@ Deno.test("GroupReader", async (t) => {
 
 	await t.step("readFrame returns EOFError when stream closes immediately", async () => {
 		const rs: ReceiveStream = {
-			read: spy(async () => [0, new EOFError()]),
+			read: spy(async (
+				_p: Uint8Array,
+			): Promise<[number, Error | undefined]> => [0, new EOFError()]),
 			cancel: async (_code: number) => {},
 			closed: () => new Promise<void>(() => {}),
 		};

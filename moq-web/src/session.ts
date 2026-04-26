@@ -17,6 +17,7 @@ import {
 	StreamConnError,
 	StreamConnErrorInfo,
 } from "./internal/webtransport/mod.ts";
+import { Channel } from "@okdaichi/golikejs";
 import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import type { CancelCauseFunc, Context } from "@okdaichi/golikejs/context";
 import { AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
@@ -44,9 +45,31 @@ function cancelStreamWithError(stream: Stream, code: number): void {
 	stream.writable.cancel(code).catch(() => {});
 }
 
-type ProbeStatsCapable = {
-	getStats?: () => Promise<{ estimatedSendRate: number | null }>;
+type TransportStats = {
+	estimatedSendRate?: number | null;
+	smoothedRtt?: number;
+	bytesSent?: number;
+	bytesReceived?: number;
 };
+
+type TransportStatsCapable = {
+	getStats?: () => Promise<TransportStats>;
+};
+
+/**
+ * A snapshot of statistics for a {@link Session}.
+ * Fields are 0 when not yet measured or not available.
+ */
+export interface SessionStats {
+	/** Estimated outbound bitrate in bits per second (0 until measured via probe). */
+	estimatedBitrate: number;
+	/** Smoothed round-trip time in milliseconds (0 when not available). */
+	rtt: number;
+	/** Total bytes sent on the underlying connection (0 when not available). */
+	bytesSent: number;
+	/** Total bytes received on the underlying connection (0 when not available). */
+	bytesReceived: number;
+}
 
 /** Options for constructing a {@link Session}. */
 export interface SessionInit {
@@ -93,27 +116,27 @@ export class Session {
 		Queue<[ReceiveStream, GroupMessage]>
 	> = new Map();
 
-	#probeStream?: Stream;
-	#probeResponseQueue: Queue<ProbeResult> = new Queue();
-	#probeResponseGen?: AsyncGenerator<ProbeResult>;
-	#probeStreamClosed: boolean = false;
+	#outgoingProbeStream?: Stream;
+	#outgoingProbeStreamClosed: boolean = false;
+	#probeResponseChan: Channel<ProbeResult> = new Channel(1);
 
 	#incomingProbeStream?: Stream;
-	#probeTargetsQueue: Queue<ProbeResult> = new Queue();
-	#probeTargetsGen?: AsyncGenerator<ProbeResult>;
+	#probeTargetsChan: Channel<ProbeResult> = new Channel(1);
 
-	#probeIntervalMs: number;
-	#probeMaxAgeMs: number;
-	#probeMaxDelta: number;
+	#bitrateTracker: BitrateTracker;
 
 	constructor(options: SessionInit) {
 		this.#webtransport = options.transport;
 		this.mux = options.mux ?? DefaultTrackMux;
 		this.#fetchHandler = options.fetchHandler;
 		this.#onGoaway = options.onGoaway;
-		this.#probeIntervalMs = options.options?.probeIntervalMs ?? defaultProbeIntervalMs;
-		this.#probeMaxAgeMs = options.options?.probeMaxAgeMs ?? defaultProbeMaxAgeMs;
-		this.#probeMaxDelta = options.options?.probeMaxDelta ?? defaultProbeMaxDelta;
+
+		this.#bitrateTracker = new BitrateTracker({
+			intervalMs: options.options?.probeIntervalMs ?? defaultProbeIntervalMs,
+			maxAgeMs: options.options?.probeMaxAgeMs ?? defaultProbeMaxAgeMs,
+			maxDelta: options.options?.probeMaxDelta ?? defaultProbeMaxDelta,
+		});
+
 		const [ctx, cancel] = withCancelCause(background());
 		this.#ctx = ctx;
 		this.#cancelFunc = cancel;
@@ -149,6 +172,13 @@ export class Session {
 	async #setup(): Promise<void> {
 		await this.#webtransport.ready;
 
+		// Initialize bitrate tracker baseline after transport is ready
+		const transport = this.#webtransport as unknown as TransportStatsCapable;
+		if (transport.getStats) {
+			const stats = await transport.getStats();
+			this.#bitrateTracker.init(stats, Date.now());
+		}
+
 		// Start listening for incoming streams
 		this.#wg.push(this.#listenBiStreams());
 		this.#wg.push(this.#listenUniStreams());
@@ -175,14 +205,28 @@ export class Session {
 			return [undefined, new Error("session is closing")];
 		}
 
-		if (!this.#probeStream || this.#probeStreamClosed) {
-			const openErr = await this.#openProbeStream();
+		if (!this.#outgoingProbeStream || this.#outgoingProbeStreamClosed) {
+			const [stream, openErr] = await this.#webtransport.openStream();
 			if (openErr) {
+				console.error("moq: failed to open probe stream:", openErr);
 				return [undefined, openErr];
 			}
+
+			const [, err] = await writeVarint(stream.writable, BiStreamTypes.ProbeStreamType);
+			if (err) {
+				console.error("moq: failed to open probe stream:", err);
+				cancelStreamWithError(stream, ProbeErrorCode.Internal);
+				return [undefined, err];
+			}
+
+			this.#outgoingProbeStream = stream;
+			this.#outgoingProbeStreamClosed = false;
+			this.#readProbeResponses(stream).catch((err) => {
+				console.warn("moq: probe stream reader failed:", err);
+			});
 		}
 
-		const stream = this.#probeStream!;
+		const stream = this.#outgoingProbeStream!;
 		const req = new ProbeMessage({ bitrate: targetBitrate });
 		const err = await req.encode(stream.writable);
 		if (err) {
@@ -191,63 +235,21 @@ export class Session {
 			return [undefined, err];
 		}
 
-		if (!this.#probeResponseGen) {
-			this.#probeResponseGen = this.#makeProbeResponseGen();
-		}
-		return [this.#probeResponseGen, undefined];
-	}
-
-	async *#makeProbeResponseGen(): AsyncGenerator<ProbeResult> {
-		while (true) {
-			const result = await this.#probeResponseQueue.dequeue();
-			if (result === undefined) return;
-			yield result;
-		}
+		return [
+			this.#probeResponseChan[Symbol.asyncIterator]() as AsyncGenerator<ProbeResult>,
+			undefined,
+		];
 	}
 
 	/**
 	 * Returns a channel that yields the latest target bitrate hints sent by
 	 * the subscriber via PROBE messages.
-	 * The same {@link AsyncGenerator} is returned on every call.
 	 * The generator ends when the session terminates.
 	 *
 	 * Mirrors Go's `Session.ProbeTargets() <-chan ProbeResult`.
 	 */
 	probeTargets(): AsyncGenerator<ProbeResult> {
-		if (!this.#probeTargetsGen) {
-			this.#probeTargetsGen = this.#makeProbeTargetsGen();
-		}
-		return this.#probeTargetsGen;
-	}
-
-	async *#makeProbeTargetsGen(): AsyncGenerator<ProbeResult> {
-		while (true) {
-			const result = await this.#probeTargetsQueue.dequeue();
-			if (result === undefined) return;
-			yield result;
-		}
-	}
-
-	async #openProbeStream(): Promise<Error | undefined> {
-		const [stream, openErr] = await this.#webtransport.openStream();
-		if (openErr) {
-			console.error("moq: failed to open probe stream:", openErr);
-			return openErr;
-		}
-
-		const [, err] = await writeVarint(stream.writable, BiStreamTypes.ProbeStreamType);
-		if (err) {
-			console.error("moq: failed to open probe stream:", err);
-			cancelStreamWithError(stream, ProbeErrorCode.Internal);
-			return err;
-		}
-
-		this.#probeStream = stream;
-		this.#probeStreamClosed = false;
-		this.#readProbeResponses(stream).catch((err) => {
-			console.warn("moq: probe stream reader failed:", err);
-		});
-		return undefined;
+		return this.#probeTargetsChan[Symbol.asyncIterator]() as AsyncGenerator<ProbeResult>;
 	}
 
 	async #readProbeResponses(stream: Stream): Promise<void> {
@@ -262,7 +264,11 @@ export class Session {
 					throw err;
 				}
 
-				await this.#probeResponseQueue.enqueue({ bitrate: rsp.bitrate });
+				this.#bitrateTracker.record(rsp.bitrate, Date.now());
+
+				// Notify any active probe() calls of the new measurement result.
+				this.#probeResponseChan.tryReceive(); // drop old
+				this.#probeResponseChan.trySend({ bitrate: rsp.bitrate });
 			}
 		} catch (err) {
 			if (!this.#ctx.err()) {
@@ -270,9 +276,9 @@ export class Session {
 				cancelStreamWithError(stream, ProbeErrorCode.Internal);
 			}
 		} finally {
-			this.#probeStreamClosed = true;
-			if (this.#probeStream === stream) {
-				this.#probeStream = undefined;
+			this.#outgoingProbeStreamClosed = true;
+			if (this.#outgoingProbeStream === stream) {
+				this.#outgoingProbeStream = undefined;
 			}
 		}
 	}
@@ -522,11 +528,22 @@ export class Session {
 	}
 
 	async #handleProbeStream(stream: Stream): Promise<void> {
-		const quic = this.#webtransport as unknown as ProbeStatsCapable;
+		const quic = this.#webtransport as unknown as TransportStatsCapable;
 
-		this.#setIncomingProbeStream(stream);
+		if (this.#incomingProbeStream && this.#incomingProbeStream !== stream) {
+			cancelStreamWithError(this.#incomingProbeStream, ProbeErrorCode.Internal);
+		}
+		this.#incomingProbeStream = stream;
+
 		if (quic.getStats) {
-			this.#detectProbeStats(stream, quic).catch((err) => {
+			this.#bitrateTracker.monitor(this.#ctx, quic, async (bitrate, rtt) => {
+				const rsp = new ProbeMessage({ bitrate, rtt });
+				const err = await rsp.encode(stream.writable);
+				if (err) {
+					cancelStreamWithError(stream, ProbeErrorCode.Internal);
+					return;
+				}
+			}).catch((err) => {
 				console.warn(`moq: probe detection failed: ${err}`);
 			});
 		}
@@ -543,7 +560,8 @@ export class Session {
 				}
 
 				// Notify publisher-side consumers of the new target bitrate.
-				this.#probeTargetsQueue.enqueue({ bitrate: req.bitrate }).catch(() => {});
+				this.#probeTargetsChan.tryReceive(); // drop old
+				this.#probeTargetsChan.trySend({ bitrate: req.bitrate });
 
 				let bitrate = 0;
 				if (quic.getStats) {
@@ -563,57 +581,9 @@ export class Session {
 				cancelStreamWithError(stream, ProbeErrorCode.Internal);
 			}
 		} finally {
-			this.#clearIncomingProbeStream(stream);
-		}
-	}
-
-	#setIncomingProbeStream(stream: Stream): void {
-		if (this.#incomingProbeStream && this.#incomingProbeStream !== stream) {
-			cancelStreamWithError(this.#incomingProbeStream, ProbeErrorCode.Internal);
-		}
-		this.#incomingProbeStream = stream;
-	}
-
-	#clearIncomingProbeStream(stream: Stream): void {
-		if (this.#incomingProbeStream === stream) {
-			this.#incomingProbeStream = undefined;
-		}
-	}
-
-	async #detectProbeStats(stream: Stream, quic: ProbeStatsCapable): Promise<void> {
-		let lastBitrate = 0;
-		let lastSentAt = 0;
-		let firstSent = false;
-
-		while (true) {
-			if (this.#ctx.err()) {
-				return;
+			if (this.#incomingProbeStream === stream) {
+				this.#incomingProbeStream = undefined;
 			}
-
-			const stats = await quic.getStats!();
-			const bitrate = stats.estimatedSendRate;
-			const now = Date.now();
-			if (bitrate != null) {
-				const shouldSend = !firstSent ||
-					now - lastSentAt >= this.#probeMaxAgeMs ||
-					(lastBitrate === 0
-						? bitrate !== 0
-						: Math.abs(bitrate - lastBitrate) / lastBitrate >= this.#probeMaxDelta);
-				if (shouldSend) {
-					const rsp = new ProbeMessage({ bitrate, rtt: 0 });
-					const err = await rsp.encode(stream.writable);
-					if (err) {
-						cancelStreamWithError(stream, ProbeErrorCode.Internal);
-						return;
-					}
-
-					firstSent = true;
-					lastBitrate = bitrate;
-					lastSentAt = now;
-				}
-			}
-
-			await new Promise((resolve) => setTimeout(resolve, this.#probeIntervalMs));
 		}
 	}
 
@@ -679,13 +649,10 @@ export class Session {
 			let err: Error | undefined;
 			while (true) {
 				const [stream, acceptErr] = await this.#webtransport.acceptStream();
-				// biStreams.releaseLock(); // Release the lock after reading
 				if (acceptErr) {
 					// Only log as error if session is not closing
 					if (!this.#ctx.err()) {
 						console.error("Bidirectional stream closed", acceptErr);
-					} else {
-						// debug log removed
 					}
 					break;
 				}
@@ -717,15 +684,13 @@ export class Session {
 				}
 			}
 		} catch (error) {
-			// "timed out" errors during connection close are expected
 			if (error instanceof Error && error.message === "timed out") {
-				// console.debug("listenBiStreams: connection closed (timed out)");
+				// expected
 			} else {
 				console.error("Error in listenBiStreams:", error);
 			}
 			return;
 		} finally {
-			// Wait for all pending handle operations to complete
 			if (pendingHandles.length > 0) {
 				await Promise.allSettled(pendingHandles);
 			}
@@ -740,11 +705,8 @@ export class Session {
 			while (true) {
 				const [stream, acceptErr] = await this.#webtransport.acceptUniStream();
 				if (acceptErr) {
-					// Only log as error if session is not closing
 					if (!this.#ctx.err()) {
 						console.error("Unidirectional stream closed", acceptErr);
-					} else {
-						// debug log removed
 					}
 					break;
 				}
@@ -761,25 +723,51 @@ export class Session {
 						pendingHandles.push(this.#handleGroupStream(stream));
 						break;
 					default:
-						// Unknown stream types are stream-local and non-fatal for extension probing.
 						stream.cancel(SessionErrorCode.InternalError).catch(() => {});
 						break;
 				}
 			}
 		} catch (error) {
-			// "timed out" errors during connection close are expected
 			if (error instanceof Error && error.message === "timed out") {
-				// console.debug("listenUniStreams: connection closed (timed out)");
+				// expected
 			} else {
 				console.error("Error in listenUniStreams:", error);
 			}
 			return;
 		} finally {
-			// Wait for all pending handle operations to complete
 			if (pendingHandles.length > 0) {
 				await Promise.allSettled(pendingHandles);
 			}
 		}
+	}
+
+	/**
+	 * Returns a snapshot of current session statistics.
+	 *
+	 * Mirrors Go's `Session.Stats() SessionStats`.
+	 * RTT, bytes sent/received are populated from the underlying transport's
+	 * `getStats()` when available (standard WebTransport API); all fields
+	 * default to `0` when not yet measured or not supported.
+	 *
+	 * @returns A {@link SessionStats} snapshot.
+	 */
+	async getStats(): Promise<SessionStats> {
+		const stats: SessionStats = {
+			estimatedBitrate: this.#bitrateTracker.estimatedBitrate,
+			rtt: 0,
+			bytesSent: 0,
+			bytesReceived: 0,
+		};
+
+		const transport = this.#webtransport as unknown as TransportStatsCapable;
+		if (transport.getStats) {
+			const wtStats = await transport.getStats();
+			stats.rtt = wtStats.smoothedRtt ?? 0;
+			stats.bytesSent = wtStats.bytesSent ?? 0;
+			stats.bytesReceived = wtStats.bytesReceived ?? 0;
+		}
+
+		return stats;
 	}
 
 	/** Gracefully close the session. */
@@ -799,12 +787,12 @@ export class Session {
 		if (this.#incomingProbeStream) {
 			cancelStreamWithError(this.#incomingProbeStream, ProbeErrorCode.Internal);
 		}
-		if (this.#probeStream) {
-			cancelStreamWithError(this.#probeStream, ProbeErrorCode.Internal);
+		if (this.#outgoingProbeStream) {
+			cancelStreamWithError(this.#outgoingProbeStream, ProbeErrorCode.Internal);
 		}
 
-		this.#probeResponseQueue.close();
-		this.#probeTargetsQueue.close();
+		this.#probeResponseChan.close();
+		this.#probeTargetsChan.close();
 
 		try {
 			await Promise.allSettled(this.#wg);
@@ -835,12 +823,12 @@ export class Session {
 		if (this.#incomingProbeStream) {
 			cancelStreamWithError(this.#incomingProbeStream, ProbeErrorCode.Internal);
 		}
-		if (this.#probeStream) {
-			cancelStreamWithError(this.#probeStream, ProbeErrorCode.Internal);
+		if (this.#outgoingProbeStream) {
+			cancelStreamWithError(this.#outgoingProbeStream, ProbeErrorCode.Internal);
 		}
 
-		this.#probeResponseQueue.close();
-		this.#probeTargetsQueue.close();
+		this.#probeResponseChan.close();
+		this.#probeTargetsChan.close();
 
 		try {
 			await Promise.allSettled(this.#wg);
@@ -848,5 +836,140 @@ export class Session {
 			// ignore
 		}
 		this.#wg = [];
+	}
+}
+
+export interface BitrateTrackerConfig {
+	intervalMs: number;
+	maxAgeMs: number;
+	maxDelta: number;
+}
+
+class BitrateTracker {
+	#intervalMs: number;
+	#maxAgeMs: number;
+	#maxDelta: number;
+
+	#initialized = false;
+	#bytesSent = 0;
+	#sampleTime = 0;
+	#estimatedBitrate = 0;
+	#lastSentBitrate = 0;
+
+	#lastSentAt = 0;
+
+	constructor(config: BitrateTrackerConfig) {
+		this.#intervalMs = config.intervalMs;
+		this.#maxAgeMs = config.maxAgeMs;
+		this.#maxDelta = config.maxDelta;
+	}
+
+	get estimatedBitrate(): number {
+		return this.#estimatedBitrate;
+	}
+
+	set estimatedBitrate(value: number) {
+		this.#estimatedBitrate = value;
+	}
+
+	init(stats: TransportStats, now: number): void {
+		this.#initialized = true;
+		this.#bytesSent = stats.bytesSent ?? 0;
+		this.#sampleTime = now;
+		if (stats.estimatedSendRate != null) {
+			this.#estimatedBitrate = stats.estimatedSendRate;
+		}
+	}
+
+	record(bitrate: number, now: number): void {
+		this.#estimatedBitrate = bitrate;
+		this.#lastSentBitrate = bitrate;
+		this.#lastSentAt = now;
+	}
+
+	async monitor(
+		ctx: Context,
+		quic: TransportStatsCapable,
+		onProbe: (bitrate: number, rtt: number) => Promise<void>,
+	): Promise<void> {
+		if (!quic.getStats) return;
+
+		while (true) {
+			if (ctx.err()) {
+				return;
+			}
+
+			const stats = await quic.getStats();
+			const now = Date.now();
+			const [bitrate, ok] = this.next(stats, now);
+
+			if (ok) {
+				await onProbe(bitrate, stats.smoothedRtt ? Math.floor(stats.smoothedRtt) : 0);
+			}
+
+			await new Promise((resolve) => setTimeout(resolve, this.#intervalMs));
+		}
+	}
+
+	next(stats: TransportStats, now: number): [number, boolean] {
+		const bitrate = this.measureBitrate(stats, now);
+
+		if (this.#lastSentAt === 0) {
+			this.record(bitrate, now);
+			return [bitrate, true];
+		}
+
+		if (
+			now - this.#lastSentAt >= this.#maxAgeMs ||
+			this.#hasDelta(this.#lastSentBitrate, bitrate, this.#maxDelta)
+		) {
+			this.record(bitrate, now);
+			return [bitrate, true];
+		}
+
+		return [bitrate, false];
+	}
+
+	measureBitrate(stats: TransportStats, now: number): number {
+		// Prefer estimatedSendRate if provided (e.g. standard WebTransport)
+		if (stats.estimatedSendRate != null) {
+			this.#estimatedBitrate = stats.estimatedSendRate;
+		}
+
+		if (stats.bytesSent === undefined) {
+			return this.#estimatedBitrate;
+		}
+
+		if (!this.#initialized) {
+			this.init(stats, now);
+			return this.#estimatedBitrate;
+		}
+
+		const elapsed = (now - this.#sampleTime) / 1000;
+		if (elapsed <= 0) {
+			return this.#estimatedBitrate;
+		}
+
+		const bytesSent = stats.bytesSent;
+		let bytesDelta = 0;
+		if (bytesSent >= this.#bytesSent) {
+			bytesDelta = bytesSent - this.#bytesSent;
+		}
+		this.#bytesSent = bytesSent;
+		this.#sampleTime = now;
+
+		// Only update #estimatedBitrate from bytes delta if estimatedSendRate was NOT provided
+		if (stats.estimatedSendRate == null) {
+			this.#estimatedBitrate = Math.floor((bytesDelta * 8) / elapsed);
+		}
+		return this.#estimatedBitrate;
+	}
+
+	#hasDelta(oldVal: number, newVal: number, maxDelta: number): boolean {
+		if (oldVal === 0) {
+			return newVal !== 0;
+		}
+		const diff = Math.abs(newVal - oldVal);
+		return diff / oldVal >= maxDelta;
 	}
 }

@@ -1,6 +1,7 @@
-import { assertEquals, assertExists, assertInstanceOf } from "@std/assert";
+import { assert, assertEquals, assertExists, assertInstanceOf } from "@std/assert";
 import { spy } from "@std/testing/mock";
 import { Session } from "./session.ts";
+import type { SessionStats } from "./session.ts";
 import {
 	AnnounceInterestMessage,
 	FetchMessage,
@@ -52,11 +53,19 @@ interface MockWebTransportSessionInit {
 	acceptUniStreamData?: Array<{ type: number; data: Uint8Array }>;
 	closedPromise?: Promise<WebTransportCloseInfo>;
 	protocol?: string;
-	stats?: { estimatedSendRate: number | null };
+	stats?: {
+		estimatedSendRate?: number | null;
+		smoothedRtt?: number;
+		bytesSent?: number;
+		bytesReceived?: number;
+	};
 }
 
-type WebTransportProbeStats = {
-	estimatedSendRate: number | null;
+type MockTransportStats = {
+	estimatedSendRate?: number | null;
+	smoothedRtt?: number;
+	bytesSent?: number;
+	bytesReceived?: number;
 };
 
 class MockWebTransportSession implements StreamConn {
@@ -72,7 +81,7 @@ class MockWebTransportSession implements StreamConn {
 	#closedPromise: Promise<WebTransportCloseInfo>;
 	#closedResolve?: (info: WebTransportCloseInfo) => void;
 	#waitingAcceptResolvers: Array<() => void> = [];
-	#stats: WebTransportProbeStats = { estimatedSendRate: null };
+	#stats: MockTransportStats = {};
 
 	ready: Promise<void> = Promise.resolve();
 	readonly protocol: string;
@@ -82,7 +91,7 @@ class MockWebTransportSession implements StreamConn {
 		this.#acceptStreamData = options.acceptStreamData ?? [];
 		this.#acceptUniStreamData = options.acceptUniStreamData ?? [];
 		this.protocol = options.protocol ?? "";
-		this.#stats = options.stats ?? { estimatedSendRate: null };
+		this.#stats = options.stats ?? {};
 		if (options.stats !== undefined) {
 			Object.defineProperty(this, "getStats", {
 				value: async () => this.#stats,
@@ -1015,6 +1024,169 @@ Deno.test({
 
 				await new Promise((resolve) => setTimeout(resolve, 10));
 				await session.close();
+			},
+		);
+
+		await t.step("getStats returns zero values when transport has no getStats", async () => {
+			const mock = new MockWebTransportSession({});
+
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const stats: SessionStats = await session.getStats();
+			assertEquals(stats.estimatedBitrate, 0);
+			assertEquals(stats.rtt, 0);
+			assertEquals(stats.bytesSent, 0);
+			assertEquals(stats.bytesReceived, 0);
+
+			await session.close();
+		});
+
+		await t.step(
+			"getStats populates rtt, bytesSent, bytesReceived from transport getStats",
+			async () => {
+				const mock = new MockWebTransportSession({
+					stats: {
+						smoothedRtt: 42,
+						bytesSent: 1000,
+						bytesReceived: 2000,
+					},
+				});
+
+				const session = new Session({ transport: mock });
+				await session.ready;
+
+				const stats: SessionStats = await session.getStats();
+				assertEquals(stats.rtt, 42);
+				assertEquals(stats.bytesSent, 1000);
+				assertEquals(stats.bytesReceived, 2000);
+				assertEquals(stats.estimatedBitrate, 0);
+
+				await session.close();
+			},
+		);
+
+		await t.step(
+			"getStats reflects estimatedBitrate after probe response received",
+			async () => {
+				const rsp = new ProbeMessage({ bitrate: 5000 });
+				const rspBytes = await encodeMessageToUint8Array(async (w) => rsp.encode(w));
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [rspBytes],
+				});
+
+				const session = new Session({ transport: mock });
+				await session.ready;
+
+				const [gen, err] = await session.probe(1234);
+				assertEquals(err, undefined);
+				await gen!.next();
+
+				const stats: SessionStats = await session.getStats();
+				assertEquals(stats.estimatedBitrate, 5000);
+
+				await session.close();
+			},
+		);
+
+		await t.step("getStats reflects estimatedBitrate set by detectProbeStats", async () => {
+			const req = new ProbeMessage({ bitrate: 1234 });
+			const reqBytes = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, BiStreamTypes.ProbeStreamType);
+				return await req.encode(w);
+			});
+			const mock = new MockWebTransportSession({
+				acceptStreamData: [{ type: BiStreamTypes.ProbeStreamType, data: reqBytes }],
+				stats: { estimatedSendRate: 7777 },
+			});
+
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			await new Promise((resolve) => setTimeout(resolve, 300));
+
+			const stats: SessionStats = await session.getStats();
+			assertEquals(stats.estimatedBitrate, 7777);
+
+			await session.close();
+		});
+
+		await t.step(
+			"getStats reflects frequent estimatedBitrate updates even if delta is small",
+			async () => {
+				const req = new ProbeMessage({ bitrate: 1234 });
+				const reqBytes = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, BiStreamTypes.ProbeStreamType);
+					return await req.encode(w);
+				});
+
+				const stats = { estimatedSendRate: 8000 };
+				const mock = new MockWebTransportSession({
+					acceptStreamData: [{ type: BiStreamTypes.ProbeStreamType, data: reqBytes }],
+					stats,
+				});
+
+				const session = new Session({
+					transport: mock,
+					options: {
+						probeIntervalMs: 10,
+						probeMaxDelta: 1000.0, // huge delta
+					},
+				});
+				await session.ready;
+
+				// Wait for initial detection
+				await new Promise((resolve) => setTimeout(resolve, 50));
+				let currentStats = await session.getStats();
+				assertEquals(currentStats.estimatedBitrate, 8000);
+
+				// Update bitrate by a small amount
+				stats.estimatedSendRate = 8100; // 1.25% change, much smaller than 100000%
+
+				// Wait for next tick
+				await new Promise((resolve) => setTimeout(resolve, 50));
+				currentStats = await session.getStats();
+				assertEquals(currentStats.estimatedBitrate, 8100);
+
+				await session.close();
+			},
+		);
+
+		await t.step(
+			"probe methods support concurrent access and splitting messages",
+			async () => {
+				const mock = new MockWebTransportSession({});
+				const session = new Session({ transport: mock });
+				await session.ready;
+
+				// Test probe() concurrency
+				const [gen1] = await session.probe(1000);
+				const [gen2] = await session.probe(2000);
+				assert(gen1 !== gen2, "each call should return a new iterator");
+
+				let count1 = 0;
+				let count2 = 0;
+
+				// Start two consumers
+				const p1 = (async () => {
+					for await (const _ of gen1!) count1++;
+				})();
+				const p2 = (async () => {
+					for await (const _ of gen2!) count2++;
+				})();
+
+				// Close the session to end the generators
+				await session.close();
+				await Promise.all([p1, p2]);
+
+				// Test probeTargets() concurrency
+				const session2 = new Session({ transport: new MockWebTransportSession({}) });
+				const tGen1 = session2.probeTargets();
+				const tGen2 = session2.probeTargets();
+				assert(tGen1 !== tGen2);
+
+				await session2.close();
 			},
 		);
 	},
