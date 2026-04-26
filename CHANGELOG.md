@@ -7,9 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.15.0] - 2026-04-26
+
 ### Added
 
 - **moqt:** `Session.Stats()` returns `SessionStats` with estimated bitrate, transport RTT, bytes sent, and bytes received.
+- **moqt/moq-web:** Added comprehensive concurrent access tests for probe methods.
+
+### Changed
+
+- **moqt/moq-web:** Refactored `bitrateTracker` to be an active monitor, encapsulating its own monitoring loop and sampling logic.
+- **moqt/moq-web:** Moved communication channels (`probeResponse` and `probeTargets`) back to the `Session` class, separating measurement from notification.
+- **moqt/moq-web:** Implemented robust "latest-value" semantics (buffer size of 1) for all probe notifications.
+- **moq-web:** Upgraded to `@okdaichi/golikejs@0.9.0` and integrated the native `Channel<T>` class for simplified asynchronous iteration.
+- **moq-web:** Optimized `probe()` and `probeTargets()` to return native iterators directly.
+
+### Fixed
+
+- **moqt/moq-web:** Fixed a delta detection bug where raw measurements were incorrectly compared against themselves instead of the last sent baseline.
+- **moqt:** Resolved a deadlock in tests by correctly linking mock stream contexts to the session lifecycle.
+- **moq-web:** Fixed an initialization race condition in TypeScript where initial probe messages were sometimes omitted.
+- **moqt:** Corrected visibility of internal components by unexporting `bitrateTracker` and its methods.
 
 ## [v0.14.0] - 2026-04-23
 
